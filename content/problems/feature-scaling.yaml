@@ -1,0 +1,79 @@
+slug: feature-scaling
+title: Feature Scaling
+url: https://scikit-learn.org/stable/modules/preprocessing.html
+difficulty: Easy
+area: Classical ML
+topics: [Preprocessing, Standardisation, Normalisation, Outliers]
+summary: |
+  Rescale each feature to a comparable range so distance-based and
+  gradient-based models are not dominated by whichever feature has the
+  largest units. Standard, min-max and robust scalers differ in what they
+  subtract and divide by.
+intuition: |
+  Many models implicitly compare features with one shared yardstick:
+  distances add squared differences, and a single learning rate steps
+  every weight. A feature measured in thousands then drowns one measured
+  in fractions. Scaling gives every feature the same units of spread,
+  and the choice of centre and spread decides how outliers behave.
+why_it_works: |
+  Each scaler is an affine map z = (x − c) / s with a per-feature centre
+  and scale. Standardisation uses mean and standard deviation, min-max
+  uses the minimum and range, and the robust scaler uses median and
+  interquartile range, which a few extreme values barely move. Affine maps
+  keep order and shape, so only the geometry the model sees changes.
+when_to_use: |
+  k-NN, k-means, SVM, PCA, regularised linear models and neural networks,
+  and anything optimised with gradient descent.
+when_not_to_use: |
+  Tree-based models (splits are invariant to monotone rescaling) and
+  features already on a meaningful common scale. Do not fit the scaler on
+  test data.
+math:
+  - "Standard: z = (x − μ) / σ"
+  - "Min-max: z = (x − min) / (max − min)"
+  - "Robust: z = (x − median) / (Q3 − Q1)"
+  - "Fit statistics on train only, then apply to val/test"
+  - "Constant column: scale 0 is replaced by 1, so z = 0"
+approach:
+  - "Choose centre and scale statistics per feature — they define the scaler"
+  - "Compute them on the training rows only — held-out rows must not influence them"
+  - "Replace zero scales with 1 — a constant column would divide by zero"
+  - "Apply (x − centre) / scale to train, validation and test — same parameters everywhere"
+  - "Invert with x = z·scale + centre when you need original units — the map is affine"
+code: |
+  import numpy as np
+
+  def fit_standard(X):
+      return X.mean(0), X.std(0)
+
+  def fit_minmax(X):
+      return X.min(0), X.max(0) - X.min(0)
+
+  def fit_robust(X):
+      q1, med, q3 = np.percentile(X, [25, 50, 75], axis=0)
+      return med, q3 - q1
+
+  def apply(X, stats):
+      center, scale = stats
+      return (X - center) / np.where(scale == 0, 1, scale)
+key_lines: [4, 10, 15]
+time: "O(n·d) to fit and to apply (percentiles need a partial sort)"
+space: "O(d) for the stored centre and scale"
+hyperparameters:
+  - "Which scaler — standard, min-max or robust"
+  - "Quantile range for the robust scaler"
+  - "Output range for min-max, such as 0 to 1 or −1 to 1"
+pitfalls:
+  - "Fitting on all data before splitting leaks test statistics"
+  - "Min-max is dominated by a single outlier, squeezing everything else"
+  - "Test values outside the train range land outside the target range"
+  - "Scaling a one-hot or sparse matrix by its mean destroys sparsity"
+interview_qa:
+  - q: "Which models need feature scaling?"
+    a: "Distance-based (k-NN, k-means, SVM), regularised and gradient-trained models; trees do not, since splits depend only on feature order."
+  - q: "Standardisation or min-max?"
+    a: "Standardise by default; use min-max when a bounded range is required and outliers are absent, and robust scaling when outliers are present."
+  - q: "How does scaling relate to data leakage?"
+    a: "The scaler's statistics are learned parameters, so fit them on training data only; fitting on everything lets test rows shape the transform."
+related: [data-leakage, pca, knn]
+patterns: ["Normalisation"]

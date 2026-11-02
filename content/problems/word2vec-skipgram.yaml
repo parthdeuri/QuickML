@@ -1,0 +1,83 @@
+slug: word2vec-skipgram
+title: Word2Vec Skip-gram
+url: https://arxiv.org/abs/1301.3781
+difficulty: Medium
+area: NLP
+topics: [Embeddings, Self-supervised, Language Modelling]
+summary: |
+  Learn a dense vector for every word by training it to predict the
+  words that appear in a small window around it.
+intuition: |
+  Words used in similar contexts must give similar predictions about
+  their neighbours, so the training signal forces them toward similar
+  vectors. No labels are needed: the text supplies its own targets, and
+  the vectors are the by-product of solving the prediction task.
+why_it_works: |
+  Each pair is a softmax classification over the vocabulary, so the
+  gradient is the familiar p − onehot. The centre vector moves toward
+  the output vectors of words that really occur nearby and away from
+  those the model over-predicts. Co-occurrence statistics end up encoded
+  in the dot products of the two embedding tables.
+when_to_use: |
+  Cheap unsupervised word features from a large unlabelled corpus, or to
+  understand how embeddings are trained before moving to contextual
+  models.
+when_not_to_use: |
+  Each word has one vector regardless of context, so polysemy is lost.
+  Use contextual encoders for that. The full softmax here is too slow
+  for large vocabularies.
+math:
+  - "Pair (c, o): predict context word o from centre word c"
+  - "s = U v_c   (one score per vocabulary word)"
+  - "p = softmax(s)"
+  - "L = −log p_o"
+  - "∂L/∂s = p − onehot(o)"
+  - "∂L/∂U = (p − onehot(o)) v_cᵀ"
+  - "∂L/∂v_c = Uᵀ (p − onehot(o))"
+  - "Negative sampling replaces the softmax with a few sigmoid terms"
+approach:
+  - "Slide a window over the token ids and emit (centre, context) pairs — the self-made training set"
+  - "Look up the centre vector and score it against all output vectors — one logit per word"
+  - "Softmax and take the negative log-probability of the true context word — the loss for the pair"
+  - "Backpropagate p − onehot into both embedding tables — the exact gradient"
+  - "Take SGD steps over many pairs and keep the input table as the embeddings — nearby words end up close"
+code: |
+  import numpy as np
+
+  def pairs(ids, win):
+      n = len(ids)
+      return [(c, ids[j]) for i, c in enumerate(ids)
+              for j in range(max(0, i - win), min(n, i + win + 1))
+              if j != i]
+
+  def sg_loss_grads(W, U, c, o):
+      v = W[c]
+      s = U @ v
+      s = s - s.max()
+      p = np.exp(s) / np.exp(s).sum()
+      loss = -np.log(p[o])
+      p[o] -= 1
+      return loss, U.T @ p, np.outer(p, v)
+key_lines: [11, 13, 15]
+time: "O(V·d) per pair with the full softmax"
+space: "O(V·d) for the two embedding tables"
+hyperparameters:
+  - "Embedding dimension d"
+  - "Window size (small windows capture syntax, large ones topic)"
+  - "Number of negative samples when using negative sampling"
+  - "Learning rate and number of epochs"
+  - "Subsampling of very frequent words"
+pitfalls:
+  - "The full softmax costs O(V) per pair; real implementations use negative sampling or hierarchical softmax"
+  - "The returned centre gradient applies to row c of W only; the rest of W has zero gradient"
+  - "Very frequent words dominate the pairs unless subsampled"
+  - "Two tables are learned; using only the input table is the usual convention"
+interview_qa:
+  - q: "How does skip-gram differ from CBOW?"
+    a: "Skip-gram predicts each context word from the centre word, while CBOW predicts the centre word from the averaged context. Skip-gram handles rare words better."
+  - q: "Why is negative sampling used?"
+    a: "The softmax normalises over the whole vocabulary on every pair. Negative sampling contrasts the true pair with a few random words, making each step cheap."
+  - q: "Why are there two embedding matrices?"
+    a: "A word plays two roles, centre and context. Separate tables keep the scores asymmetric, and the input table is usually kept as the final embedding."
+related: [softmax-cross-entropy, tf-idf]
+patterns: ["Text processing"]

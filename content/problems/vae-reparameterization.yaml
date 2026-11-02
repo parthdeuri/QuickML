@@ -1,0 +1,87 @@
+slug: vae-reparameterization
+title: VAE and the Reparameterisation Trick
+url: https://arxiv.org/abs/1312.6114
+difficulty: Hard
+area: Deep Learning
+topics: [Generative Models, Variational Inference, Latent Variables]
+summary: |
+  A variational autoencoder encodes each input as a Gaussian over latent
+  codes, samples a code, decodes it, and trains on reconstruction error
+  plus a KL penalty toward a standard normal prior.
+intuition: |
+  Sampling is not differentiable, so gradients cannot flow back to the
+  encoder. Writing the sample as z = μ + σ·ε, with all the randomness
+  moved into a parameter-free ε, makes z a smooth function of μ and σ.
+  The KL term keeps codes near a common prior so that sampling from the
+  prior later yields sensible outputs.
+why_it_works: |
+  The loss is the negative evidence lower bound: expected reconstruction
+  likelihood minus the KL between the encoder's posterior and the prior.
+  Reparameterising turns the expectation over z into one over ε, whose
+  distribution does not depend on the parameters, so the gradient can be
+  moved inside the expectation and estimated with a single sample.
+when_to_use: |
+  Learning a smooth latent space for generation, interpolation and
+  representation learning, and as the basis for latent diffusion
+  autoencoders.
+when_not_to_use: |
+  Discrete latent variables cannot be reparameterised this way, and
+  samples are often blurrier than those of GANs or diffusion models.
+  Watch for posterior collapse, where the decoder ignores z.
+math:
+  - "Encoder: μ = X Wₘ + bₘ,  log σ² = X Wₛ + bₛ"
+  - "Reparameterise: z = μ + σ ⊙ ε,  ε ~ N(0, I)"
+  - "Decoder: X̂ = z W_d + b_d"
+  - "Recon = ½ ‖X̂ − X‖²  (Gaussian likelihood, unit variance)"
+  - "KL = −½ Σⱼ (1 + log σⱼ² − μⱼ² − σⱼ²)"
+  - "Loss = mean over the batch of (Recon + KL)"
+  - "∂z/∂μ = 1,   ∂z/∂log σ² = ½ σ ε"
+  - "∂KL/∂μ = μ,   ∂KL/∂log σ² = ½ (σ² − 1)"
+approach:
+  - "Encode x to a mean and a log-variance — the parameters of q(z|x)"
+  - "Draw ε from a standard normal and form z = μ + σ·ε — the sample is now differentiable in μ and σ"
+  - "Decode z into a reconstruction and score it against x — the likelihood term"
+  - "Add the closed-form KL to the standard normal prior — regularises the latent space"
+  - "Backpropagate through z into both encoder heads — dz flows to μ directly and to log σ² via ½σε"
+code: |
+  import numpy as np
+
+  def vae_loss_grads(x, P, eps):
+      Wm, bm, Ws, bs, Wd, bd = P
+      n = len(x)
+      mu = x @ Wm + bm
+      lv = x @ Ws + bs
+      sig = np.exp(0.5 * lv)
+      z = mu + sig * eps
+      xh = z @ Wd + bd
+      rec = 0.5 * ((xh - x) ** 2).sum()
+      kl = -0.5 * (1 + lv - mu ** 2 - np.exp(lv)).sum()
+      dxh = (xh - x) / n
+      dz = dxh @ Wd.T
+      dmu = dz + mu / n
+      dlv = dz * eps * 0.5 * sig + 0.5 * (np.exp(lv) - 1) / n
+      g = [x.T @ dmu, dmu.sum(0), x.T @ dlv, dlv.sum(0),
+           z.T @ dxh, dxh.sum(0)]
+      return (rec + kl) / n, g
+key_lines: [9, 12, 16]
+time: "O(n·d·k) per step for input size d and latent size k"
+space: "O(n·(d+k)) for activations and O(d·k) for weights"
+hyperparameters:
+  - "Latent dimension k"
+  - "KL weight β (β > 1 gives β-VAE with a more disentangled, blurrier model)"
+  - "Decoder likelihood and its variance (Gaussian or Bernoulli)"
+  - "KL annealing schedule to avoid posterior collapse"
+pitfalls:
+  - "Predict log-variance, not variance or σ, so the value is unconstrained and stable"
+  - "Use one fresh ε per sample per step; reusing ε removes the noise"
+  - "Reconstruction and KL must be on the same scale (sum over features, mean over batch)"
+  - "The linear encoder and decoder here are only for checking gradients; real VAEs use deep nonlinear networks"
+interview_qa:
+  - q: "Why do we need the reparameterisation trick?"
+    a: "Sampling z from q(z|x) blocks gradients to the encoder. Writing z = μ + σε makes the randomness external and the path differentiable."
+  - q: "What does the KL term do?"
+    a: "It pulls each posterior toward the prior, which keeps the latent space smooth and lets us generate by sampling z from the prior."
+  - q: "What is posterior collapse?"
+    a: "The KL term goes to zero because a strong decoder ignores z, so the latent code carries no information. KL annealing or a weaker decoder helps."
+related: [autoencoder, entropy-kl-divergence, backpropagation]
+patterns: ["Information-theoretic losses"]

@@ -1,0 +1,65 @@
+slug: residual-connections
+title: Residual Connections
+url: https://d2l.ai/chapter_convolutional-modern/resnet.html
+difficulty: Easy
+area: Deep Learning
+topics: [Skip Connections, ResNet, Gradient Flow]
+summary: |
+  Add a block's input to its output, so the block only has to learn a
+  correction to the identity instead of a whole new mapping.
+intuition: |
+  If an extra layer is not useful, it should be able to do nothing. With
+  y = x + F(x), doing nothing just means F outputs zero, which is easy
+  to reach from small weights. The addition also gives gradients a
+  direct highway back to earlier layers that bypasses the block.
+approach:
+  - "Compute the block's transformation F(x) with its own weights — the learned correction"
+  - "Keep the original x untouched — this is the skip path"
+  - "Return x + F(x) — the shapes must match so the addition is valid"
+  - "Stack many such blocks — each refines the representation instead of replacing it"
+code: |
+  import numpy as np
+
+  def relu(z):
+      return np.maximum(0, z)
+
+  def residual_block(x, W1, b1, W2, b2):
+      f = relu(x @ W1 + b1) @ W2 + b2
+      return x + f
+key_lines: [7, 8]
+time: "Same as the block F plus one element-wise add"
+space: "O(width) extra to keep x for the addition and backward pass"
+when_to_use: |
+  Any deep network: ResNets, transformers, and most modern
+  architectures. Use it whenever depth causes optimisation trouble.
+when_not_to_use: |
+  Shallow networks gain little, and when input and output shapes differ
+  you need a projection on the skip path, which weakens the clean
+  identity shortcut.
+why_it_works: |
+  For y = x + F(x) the Jacobian is I + ∂F/∂x, so the gradient always
+  includes an identity term that passes through unchanged. Across many
+  blocks the gradient therefore has a path whose size does not shrink
+  with depth, and zero-initialising F gives an exact identity start.
+math:
+  - "y = x + F(x)"
+  - "F(x) = relu(xW₁ + b₁)W₂ + b₂"
+  - "∂y/∂x = I + ∂F/∂x"
+  - "Stack of L blocks: ∂y_L/∂x = Π over blocks of (I + ∂F_l/∂x)"
+interview_qa:
+  - q: "Why do residual connections help train deep networks?"
+    a: "They give gradients an identity path around each block, and a block can fall back to the identity by outputting zero, so extra depth need not hurt."
+  - q: "What if input and output dimensions differ?"
+    a: "Add a projection (a linear or 1x1 convolution) on the skip path so shapes match before the addition."
+  - q: "How does the original ResNet block differ from this one?"
+    a: "It uses convolutions with batch norm and applies a ReLU after the addition; this card keeps only the identity-plus-correction idea."
+hyperparameters:
+  - "Block width and depth"
+  - "Whether the skip path uses a projection"
+  - "Placement of normalisation and activation (pre- or post-)"
+pitfalls:
+  - "Shapes must match exactly for x + F(x); a broadcast that silently succeeds is a bug"
+  - "This card omits normalisation and the post-addition ReLU of the original ResNet"
+  - "Residual stacks can grow activation scale with depth; normalisation or scaled initialisation controls it"
+related: [layer-normalization, backpropagation, batch-normalization]
+patterns: ["Network building blocks"]

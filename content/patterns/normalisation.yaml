@@ -1,0 +1,32 @@
+id: normalisation
+name: Normalisation
+order: 9
+summary: Rescale features or activations to a stable range so optimisation and distances
+  behave.
+when_to_use:
+- Features have very different scales.
+- Deep network training is unstable or slow.
+- Distance-based or penalised models are used.
+key_idea: Subtract a mean and divide by a spread. Feature scaling does it once on
+  the inputs; batch norm and layer norm do it on hidden activations, differing only
+  in which axis the statistics are taken over.
+template: |
+  import numpy as np
+
+  def standardise(X, mean, std, eps=1e-8):
+      return (X - mean) / (std + eps)
+
+  def layer_norm(h, gamma, beta, eps=1e-5):
+      mu = h.mean(-1, keepdims=True)
+      var = h.var(-1, keepdims=True)
+      return gamma * (h - mu) / np.sqrt(var + eps) + beta
+complexity: O(n·d); batch norm also stores running statistics.
+pitfalls:
+- Compute scaling statistics on training data only.
+- Batch norm behaves differently in train and eval mode.
+problems:
+- batch-normalization
+- layer-normalization
+- feature-scaling
+aliases:
+- Normalisation

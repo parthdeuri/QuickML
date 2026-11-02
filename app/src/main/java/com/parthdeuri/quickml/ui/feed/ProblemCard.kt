@@ -677,7 +677,7 @@ private fun PatternQuizCard(quiz: QuizUi) {
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(
-            text = "Which pattern fits?",
+            text = "Which family fits?",
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold
         )
@@ -723,7 +723,7 @@ private fun PatternQuizCard(quiz: QuizUi) {
                     onClick = { quiz.onReview(review.id) },
                     contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)
                 ) {
-                    Text("Review pattern: " + review.name, color = colors.accent)
+                    Text("Review family: " + review.name, color = colors.accent)
                 }
             }
         }

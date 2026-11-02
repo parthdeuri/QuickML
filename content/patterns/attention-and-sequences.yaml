@@ -1,0 +1,34 @@
+id: attention-and-sequences
+name: Attention and sequences
+order: 10
+summary: Model ordered data by carrying state through time or by letting every position
+  look at every other.
+when_to_use:
+- Inputs are sequences such as text, audio or time series.
+- Long-range dependencies matter.
+- You want parallel training over positions.
+key_idea: Recurrent cells compress the past into one state, which is sequential
+  and forgets. Attention scores every pair of positions directly, so it is parallel
+  and long-range, at the price of quadratic cost and the need for positional information.
+template: |
+  import numpy as np
+
+  def softmax(x):
+      e = np.exp(x - x.max(-1, keepdims=True))
+      return e / e.sum(-1, keepdims=True)
+
+  def attention(Q, K, V):
+      scores = Q @ K.T / np.sqrt(K.shape[-1])
+      return softmax(scores) @ V
+complexity: Attention O(n²·d) in sequence length n; an RNN is O(n·d²) but sequential.
+pitfalls:
+- Without positional encoding attention ignores order.
+- Plain RNNs suffer vanishing gradients on long sequences.
+problems:
+- self-attention
+- multi-head-attention
+- positional-encoding
+- rnn-cell
+- lstm-cell
+aliases:
+- Attention and sequences

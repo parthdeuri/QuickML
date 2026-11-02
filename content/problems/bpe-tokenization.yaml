@@ -1,0 +1,93 @@
+slug: bpe-tokenization
+title: Byte-Pair Encoding Tokenization
+url: https://huggingface.co/learn/llm-course/chapter6/5
+difficulty: Medium
+area: NLP
+topics: [Tokenization, Subword Units, Language Models]
+summary: |
+  Build a subword vocabulary by repeatedly merging the most frequent
+  adjacent pair of symbols in a corpus, starting from single characters.
+intuition: |
+  Frequent character sequences become single tokens, so common words are
+  short in token count while rare words fall back to smaller pieces and
+  never become unknown. The vocabulary size is simply the number of
+  merges you choose to run, a direct knob between characters and words.
+why_it_works: |
+  Each merge replaces the most common pair by one symbol, which is a
+  greedy step toward the shortest encoding of the training corpus. The
+  ordered merge list is the whole model: encoding replays the merges in
+  order on a new word, so training and encoding agree exactly.
+when_to_use: |
+  Tokenising text for language models and translation when you need a
+  fixed-size vocabulary that handles rare and unseen words.
+when_not_to_use: |
+  Not ideal for languages without clear whitespace unless pre-tokenised
+  appropriately, and merges chosen by frequency need not match
+  morphology. Unigram or byte-level variants are alternatives.
+math:
+  - "Start: each word is a sequence of characters"
+  - "count(a, b) = number of adjacent occurrences of the pair (a, b)"
+  - "Merge (a*, b*) = argmax count(a, b)"
+  - "Replace every adjacent a*, b* by the new symbol a*b*"
+  - "Repeat k times; the merge list is the model"
+  - "Encode a word: apply the merges in learned order"
+approach:
+  - "Split every word into characters — the initial symbols"
+  - "Count all adjacent symbol pairs over the corpus — pair frequencies"
+  - "Pick the most frequent pair, breaking ties deterministically — a reproducible merge order"
+  - "Rewrite every word with that pair fused into one symbol — new symbol joins the vocabulary"
+  - "Repeat for k merges, then encode new words by replaying merges in order — same procedure at train and test time"
+code: |
+  from collections import Counter
+
+  def merge(s, a, b):
+      out, i = [], 0
+      while i < len(s):
+          if i < len(s) - 1 and (s[i], s[i + 1]) == (a, b):
+              out.append(a + b)
+              i += 2
+          else:
+              out.append(s[i])
+              i += 1
+      return out
+
+  def bpe_train(words, k):
+      seqs, merges = [list(w) for w in words], []
+      for _ in range(k):
+          cnt = Counter()
+          for s in seqs:
+              cnt.update(zip(s, s[1:]))
+          if not cnt:
+              break
+          a, b = min(cnt, key=lambda p: (-cnt[p], p))
+          seqs = [merge(s, a, b) for s in seqs]
+          merges.append((a, b))
+      return merges
+
+  def bpe_encode(word, merges):
+      s = list(word)
+      for a, b in merges:
+          s = merge(s, a, b)
+      return s
+key_lines: [19, 22, 23]
+time: "O(k · corpus length) for training, O(k · word length) per encoded word"
+space: "O(corpus length) for the working symbol sequences"
+hyperparameters:
+  - "Number of merges k (sets vocabulary size)"
+  - "Tie-breaking rule for equally frequent pairs"
+  - "Pre-tokenisation (whitespace or regex split before BPE)"
+  - "Byte-level versus character-level base alphabet"
+pitfalls:
+  - "Recounting all pairs each merge is slow for big corpora; real code updates counts incrementally"
+  - "Without word-boundary markers a merge can cross word edges or lose where words end"
+  - "This sketch ignores word frequencies by taking a plain list of words, so repeats are counted by listing them"
+  - "Different tie-breaking gives different but equally valid vocabularies"
+interview_qa:
+  - q: "How does BPE avoid unknown tokens?"
+    a: "Its base alphabet is single characters, or bytes in byte-level BPE, so any word can be spelled out even if no merge applies."
+  - q: "How do you encode a new word?"
+    a: "Start from characters and apply the learned merges in the order they were learned, not by frequency in the new text."
+  - q: "How is BPE different from WordPiece?"
+    a: "BPE merges the most frequent pair. WordPiece picks the merge that most increases the likelihood of the training data under a language model."
+related: [tf-idf, word2vec-skipgram]
+patterns: ["Text processing"]

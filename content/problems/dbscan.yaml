@@ -1,0 +1,87 @@
+slug: dbscan
+title: DBSCAN
+url: https://scikit-learn.org/stable/modules/clustering.html#dbscan
+difficulty: Medium
+area: Classical ML
+topics: [Clustering, Unsupervised, Density-Based, Anomaly Detection]
+summary: |
+  Grow clusters from dense regions: a point with enough neighbours inside
+  radius eps is a core point, clusters are chains of overlapping core
+  neighbourhoods, and points reachable from no core are noise.
+intuition: |
+  A cluster is a region where you can keep walking from point to point
+  without ever stepping across a gap bigger than eps in a crowd of at
+  least min_pts. This defines clusters by connectivity of density rather
+  than by distance to a centre, so it finds crescents and rings and
+  needs no cluster count, and it can say that a point belongs nowhere.
+why_it_works: |
+  Core points that lie within eps of each other are density-connected,
+  and connectivity among core points is an equivalence relation, so each
+  connected component is one well-defined cluster. Border points
+  (non-core, but within eps of a core) attach to a neighbouring cluster,
+  and everything else is labelled noise.
+when_to_use: |
+  Non-convex clusters, unknown number of clusters, data with outliers you
+  want flagged, and low-dimensional spatial or geographic data.
+when_not_to_use: |
+  Skip it when clusters have very different densities (one eps cannot
+  fit both), in high dimensions where distances concentrate, or for big
+  data without a spatial index (this code is quadratic).
+math:
+  - "N_eps(i) = { j : ‖xᵢ − xⱼ‖ ≤ eps }  (includes i itself)"
+  - "Core: |N_eps(i)| ≥ min_pts"
+  - "j is directly reachable from i if i is core and j ∈ N_eps(i)"
+  - "Cluster = core points linked by reachability, plus their borders"
+  - "Noise = points not reachable from any core, label −1"
+approach:
+  - "Compute all pairwise distances and eps-neighbourhoods — the definition of density is neighbour count"
+  - "Mark points with at least min_pts neighbours as core — only these may grow clusters"
+  - "Visit unlabelled core points in order and start a new cluster at each — one seed per connected component"
+  - "Flood-fill from a core point through its neighbours, expanding only through other core points — border points join but do not spread the cluster"
+  - "Leave unreached points as −1 — noise is a legitimate outcome"
+code: |
+  import numpy as np
+
+  def dbscan(X, eps, min_pts):
+      n = len(X)
+      D = np.linalg.norm(X[:, None] - X[None], axis=2)
+      nbrs = [np.flatnonzero(D[i] <= eps) for i in range(n)]
+      core = np.array([len(nb) >= min_pts for nb in nbrs])
+      labels = np.full(n, -1)
+      c = 0
+      for i in range(n):
+          if labels[i] != -1 or not core[i]:
+              continue
+          labels[i] = c
+          stack = [i]
+          while stack:
+              j = stack.pop()
+              if not core[j]:
+                  continue
+              for k in nbrs[j]:
+                  if labels[k] == -1:
+                      labels[k] = c
+                      stack.append(k)
+          c += 1
+      return labels
+key_lines: [7, 17, 21]
+time: "O(n²) with the distance matrix here; O(n log n) with a KD/ball tree in low dimensions"
+space: "O(n²) for the distance matrix here; O(n) with a spatial index"
+hyperparameters:
+  - "eps — neighbourhood radius; read it off a k-distance plot"
+  - "min_pts — density threshold; a common start is twice the dimension"
+  - "metric — Euclidean by default, but any distance works"
+pitfalls:
+  - "Features must be scaled first, otherwise eps means nothing"
+  - "Border points touching two clusters go to whichever is reached first, so results depend on row order"
+  - "Mixed-density data: a single eps merges the dense clusters or drops the sparse ones as noise"
+  - "min_pts counts the point itself, so conventions differ between libraries"
+interview_qa:
+  - q: "What are core, border and noise points?"
+    a: "Core points have at least min_pts points within eps, border points are within eps of a core but not core themselves, and noise is everything else."
+  - q: "How do you choose eps?"
+    a: "Plot each point's distance to its k-th nearest neighbour sorted ascending and pick the knee, then sanity-check the clusters."
+  - q: "Why can DBSCAN beat k-means?"
+    a: "It needs no cluster count, finds arbitrary shapes, and marks outliers, whereas k-means assumes compact, similar-sized convex clusters and assigns every point."
+related: [k-means, knn, feature-scaling]
+patterns: ["Distance and clustering"]

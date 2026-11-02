@@ -1,0 +1,85 @@
+slug: iou-and-nms
+title: IoU and Non-Maximum Suppression
+url: https://docs.pytorch.org/vision/stable/generated/torchvision.ops.nms.html
+difficulty: Medium
+area: Vision
+topics: [Object Detection, Bounding Boxes, Post-processing]
+summary: |
+  Intersection-over-union measures how much two boxes overlap, and
+  non-maximum suppression uses it to keep one box per object out of many
+  overlapping detections.
+intuition: |
+  A detector fires many boxes around the same object. Taking the most
+  confident box and discarding every other box that overlaps it too much
+  removes the duplicates, and repeating on the remainder leaves roughly
+  one box per object. IoU is the yardstick for "overlaps too much" and is
+  scale-free because it divides by the union.
+why_it_works: |
+  IoU is a ratio between 0 and 1, so one threshold works for large and
+  small boxes alike. Processing boxes in descending score means each
+  kept box is the best one in its neighbourhood, and suppression only
+  removes boxes that are both lower scoring and heavily overlapping.
+when_to_use: |
+  Post-processing the raw output of detectors such as YOLO and Faster
+  R-CNN, and evaluating detections by matching boxes at an IoU
+  threshold.
+when_not_to_use: |
+  Greedy NMS removes true objects that really overlap heavily, such as
+  people in a crowd. Use Soft-NMS or learned set-based detectors in that
+  case. IoU is also zero for any two disjoint boxes, so it gives no
+  gradient there.
+math:
+  - "Boxes as (x1, y1, x2, y2), with x2 > x1 and y2 > y1"
+  - "inter = max(0, min(x2) − max(x1)) · max(0, min(y2) − max(y1))"
+  - "area(A) = (x2 − x1)(y2 − y1)"
+  - "union = area(A) + area(B) − inter"
+  - "IoU(A, B) = inter / union"
+  - "NMS: keep best-scoring box i, drop boxes j with IoU(i, j) > thr"
+approach:
+  - "Compute the intersection rectangle by taking the max of top-left and min of bottom-right corners — its width and height clip to zero when disjoint"
+  - "Divide intersection by the union of the areas — gives a scale-free overlap in 0 to 1"
+  - "Sort detections by confidence, highest first — the most trusted box wins its neighbourhood"
+  - "Keep the top box and compute its IoU with all remaining boxes — finds its duplicates"
+  - "Drop remaining boxes above the threshold and repeat — until no boxes remain"
+code: |
+  import numpy as np
+
+  def iou(a, b):
+      lt = np.maximum(a[:, None, :2], b[None, :, :2])
+      rb = np.minimum(a[:, None, 2:], b[None, :, 2:])
+      wh = np.clip(rb - lt, 0, None)
+      inter = wh[..., 0] * wh[..., 1]
+      area = lambda x: (x[:, 2] - x[:, 0]) * (x[:, 3] - x[:, 1])
+      return inter / (area(a)[:, None] + area(b)[None] - inter)
+
+  def nms(boxes, scores, thr):
+      order = scores.argsort()[::-1]
+      keep = []
+      while len(order):
+          i = order[0]
+          keep.append(i)
+          rest = order[1:]
+          order = rest[iou(boxes[i:i + 1], boxes[rest])[0] <= thr]
+      return keep
+key_lines: [7, 9, 18]
+time: "iou is O(n·m); nms is O(n²) in the worst case"
+space: "O(n·m) for the pairwise overlap matrix in iou"
+hyperparameters:
+  - "IoU threshold for suppression (common values are 0.5 to 0.7)"
+  - "Score threshold applied before NMS"
+  - "Per-class versus class-agnostic NMS"
+  - "Soft-NMS decay instead of hard removal"
+pitfalls:
+  - "Run NMS per class, otherwise a box can suppress a different class's box"
+  - "Degenerate boxes with zero area give 0/0 here; filter them first"
+  - "A low threshold removes real neighbouring objects, a high one keeps duplicates"
+  - "Greedy NMS depends on score order, so poorly calibrated scores hurt it"
+interview_qa:
+  - q: "Why is IoU better than comparing coordinates?"
+    a: "It is a single scale-free number that reflects overlap in area, whereas coordinate errors depend on box size."
+  - q: "What problem does NMS solve and what is its weakness?"
+    a: "It removes duplicate detections of one object, but it can also delete true detections of objects that overlap heavily."
+  - q: "How does IoU relate to detection metrics?"
+    a: "A predicted box counts as a true positive when its IoU with a ground-truth box exceeds a threshold, which then feeds precision, recall and mean average precision."
+related: [precision-recall-f1, convolution-2d]
+patterns: ["Convolution and vision"]

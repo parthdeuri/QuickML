@@ -1,0 +1,31 @@
+id: text-processing
+name: Text processing
+order: 15
+summary: 'Turn raw text into numbers: tokens, weights, embeddings and search over
+  outputs.'
+when_to_use:
+- Inputs are words or sentences.
+- You need a vocabulary that handles rare and unseen words.
+- You generate sequences and must choose among many continuations.
+key_idea: Models need numbers, so text is split into tokens. Tokens are then weighted
+  by how informative they are (TF-IDF), mapped to vectors (word2vec), and generated
+  by searching for the most likely sequence (beam search).
+template: |
+  import numpy as np
+
+  def tfidf(counts):
+      df = (counts > 0).sum(0)
+      idf = np.log((1 + len(counts)) / (1 + df)) + 1
+      x = counts * idf
+      return x / np.linalg.norm(x, axis=1, keepdims=True)
+complexity: TF-IDF O(documents·vocabulary); beam search O(width·vocabulary·length).
+pitfalls:
+- Word-level vocabularies fail on unseen words; subword tokenisation helps.
+- Greedy decoding misses sequences whose early tokens look unlikely.
+problems:
+- tf-idf
+- word2vec-skipgram
+- bpe-tokenization
+- beam-search
+aliases:
+- Text processing

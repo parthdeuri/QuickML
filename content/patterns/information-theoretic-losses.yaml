@@ -1,0 +1,33 @@
+id: information-theoretic-losses
+name: Information-theoretic losses
+order: 12
+summary: Train by minimising the gap between the model's distribution and the data's,
+  measured with entropy.
+when_to_use:
+- The model outputs a probability distribution.
+- You classify with softmax or sigmoid outputs.
+- You compare or regularise distributions (VAEs, distillation).
+key_idea: Cross-entropy equals entropy plus KL divergence, and the entropy of the
+  data is fixed, so minimising cross-entropy minimises KL and maximises likelihood.
+  Those three views are one idea.
+template: |
+  import numpy as np
+
+  def cross_entropy(logits, y):
+      z = logits - logits.max(-1, keepdims=True)
+      logp = z - np.log(np.exp(z).sum(-1, keepdims=True))
+      return -logp[np.arange(len(y)), y].mean()
+
+  def kl(p, q):
+      return np.sum(p * (np.log(p) - np.log(q)))
+complexity: O(n·classes).
+pitfalls:
+- Compute log-softmax with log-sum-exp, not log(softmax).
+- KL is asymmetric; the direction changes the behaviour.
+problems:
+- entropy-kl-divergence
+- softmax-cross-entropy
+- maximum-likelihood
+- vae-reparameterization
+aliases:
+- Information-theoretic losses

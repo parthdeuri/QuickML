@@ -1,0 +1,35 @@
+id: regularisation
+name: Regularisation
+order: 2
+summary: Constrain or perturb a model during training so it cannot memorise the
+  training set.
+when_to_use:
+- Training error is far below validation error.
+- You have many features or parameters relative to the data.
+- You want sparse weights (L1) or small stable weights (L2).
+key_idea: 'Every regulariser trades a little training fit for lower variance: penalties
+  shrink weights, dropout and noise stop co-adaptation, early stopping limits how
+  far optimisation goes. Pick the one whose bias you can live with.'
+template: |
+  import numpy as np
+
+  def l2_grad(w, lam):
+      return 2 * lam * w                 # adds to the loss gradient
+
+  def l1_grad(w, lam):
+      return lam * np.sign(w)            # pushes small weights to zero
+
+  def dropout(h, p, rng):
+      mask = rng.random(h.shape) >= p
+      return h * mask / (1 - p)          # inverted dropout
+complexity: Negligible extra cost per step; the tuning cost is choosing the strength.
+pitfalls:
+- Too much regularisation underfits.
+- Penalties assume scaled features; scale first.
+problems:
+- ridge-lasso-regularization
+- dropout
+- early-stopping
+- bias-variance-tradeoff
+aliases:
+- Regularisation

@@ -1,0 +1,74 @@
+slug: learning-rate-schedules
+title: Learning Rate Schedules
+url: https://docs.pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.CosineAnnealingLR.html
+difficulty: Easy
+area: Deep Learning
+topics: [Optimization, Step Decay, Cosine Annealing, Warmup]
+summary: |
+  Change the learning rate over training: large steps early to make
+  progress, small steps late to settle into a good minimum.
+intuition: |
+  A single fixed learning rate is a compromise: big enough to move fast
+  at the start means too noisy to converge at the end. A schedule lets
+  the optimiser explore with big steps and then anneal, shrinking the
+  noise from stochastic gradients so the weights can settle.
+approach:
+  - "Pick a base learning rate — the peak step size the schedule starts from"
+  - "Step decay: multiply by gamma every few epochs — simple, piecewise constant"
+  - "Cosine: follow half a cosine from base down to a floor — smooth, no extra decay hyperparameters"
+  - "Optionally warm up linearly first — avoids unstable early updates with large rates or adaptive optimisers"
+  - "Query the rate once per epoch or step and set it on the optimiser — the schedule is just a function of time"
+code: |
+  import numpy as np
+
+  def step_lr(base, epoch, step_size, gamma=0.1):
+      return base * gamma ** (epoch // step_size)
+
+  def cosine_lr(base, epoch, T_max, eta_min=0.0):
+      cos = 1 + np.cos(np.pi * epoch / T_max)
+      return eta_min + (base - eta_min) * cos / 2
+
+  def warmup_cosine(base, t, warmup, total):
+      if t < warmup:
+          return base * (t + 1) / warmup
+      return cosine_lr(base, t - warmup, total - warmup)
+key_lines: [4, 8, 12]
+time: "O(1) per query; negligible next to a training step"
+space: "O(1)"
+when_to_use: |
+  Almost any gradient-based training run. Cosine with warmup is a common
+  default for transformers; step decay is common for convolutional
+  networks trained with SGD.
+when_not_to_use: |
+  Optimisers with strong built-in adaptivity may need little decay, and
+  very short runs gain little. A tuned constant rate can be enough for
+  quick experiments.
+why_it_works: |
+  Near a minimum the gradient noise, not the curvature, limits how close
+  SGD gets, and the noise level scales with the step size. Decaying the
+  rate reduces that noise floor, while the large early rate speeds up
+  progress and helps escape poor regions. Warmup avoids taking huge
+  steps while statistics such as adaptive moments are still unreliable.
+math:
+  - "Step: ηₜ = η₀ · γ^⌊t / s⌋"
+  - "Cosine: ηₜ = η_min + (η₀ − η_min) · (1 + cos(πt / T_max)) / 2"
+  - "Linear warmup: ηₜ = η₀ · (t + 1) / W  for t < W"
+  - "Warmup then cosine: cosine applied to t − W over total − W steps"
+interview_qa:
+  - q: "Why use warmup?"
+    a: "At the start weights and optimiser statistics are poor, so a large rate can destabilise training; ramping up gives them time to settle."
+  - q: "What is the difference between step and cosine decay?"
+    a: "Step decay drops the rate in discrete jumps by a factor; cosine decays smoothly along a half cosine to a floor, with fewer hyperparameters."
+  - q: "How do schedules interact with the optimiser?"
+    a: "The schedule only sets the base rate each step; the optimiser, such as SGD or Adam, still decides the update direction and any per-parameter scaling."
+hyperparameters:
+  - "Base learning rate η₀"
+  - "Step size s and decay factor γ (step decay)"
+  - "T_max and floor η_min (cosine)"
+  - "Warmup length W"
+pitfalls:
+  - "Counting epochs versus optimiser steps inconsistently shifts the whole schedule"
+  - "Cosine from PyTorch with t beyond T_max rises again; clamp t to the range"
+  - "The warmup variant here is a common recipe, not a built-in PyTorch scheduler"
+related: [gradient-descent, adam-optimizer, backpropagation]
+patterns: ["Gradient-based optimisation"]

@@ -1,0 +1,66 @@
+slug: layer-normalization
+title: Layer Normalization
+url: https://docs.pytorch.org/docs/stable/generated/torch.nn.LayerNorm.html
+difficulty: Medium
+area: Deep Learning
+topics: [Normalization, Transformers, Training Stability]
+summary: |
+  Normalise each example's features to zero mean and unit variance, then
+  apply a learned scale and shift, with no dependence on the batch.
+intuition: |
+  Batch norm asks how a feature looks across the batch; layer norm asks
+  how the features look within one example. Because the statistics come
+  from a single vector, the layer behaves identically at training and
+  test time, for any batch size and for sequences of any length.
+approach:
+  - "Compute the mean over the feature axis — centres each example on its own"
+  - "Compute the variance over the same axis — measures its own spread"
+  - "Subtract the mean and divide by √(variance + ε) — ε prevents division by zero"
+  - "Multiply by γ and add β — lets the network undo or reshape the normalisation"
+code: |
+  import numpy as np
+
+  def layer_norm(x, gamma, beta, eps=1e-5):
+      mean = x.mean(axis=-1, keepdims=True)
+      var = x.var(axis=-1, keepdims=True)
+      x_hat = (x - mean) / np.sqrt(var + eps)
+      return gamma * x_hat + beta
+key_lines: [4, 6, 7]
+time: "O(N·D) for N rows and D features"
+space: "O(N·D) output plus O(D) parameters"
+when_to_use: |
+  Transformers and recurrent models, small or variable batch sizes, and
+  any place where batch statistics are unreliable or awkward, such as
+  sequence tasks and online inference.
+when_not_to_use: |
+  Convolutional networks with large batches often do well with batch
+  norm instead. If features have very different meanings, normalising
+  across them can erase useful scale differences.
+why_it_works: |
+  Normalising each layer's inputs keeps activations in a stable range as
+  earlier layers change, which makes gradients better behaved and lets
+  higher learning rates work. The learned γ and β restore expressiveness
+  so normalisation does not limit what the layer can represent.
+math:
+  - "μ = (1/D) Σⱼ xⱼ"
+  - "σ² = (1/D) Σⱼ (xⱼ − μ)²   (biased, divide by D)"
+  - "x̂ⱼ = (xⱼ − μ) / √(σ² + ε)"
+  - "yⱼ = γⱼ · x̂ⱼ + βⱼ"
+interview_qa:
+  - q: "How does layer norm differ from batch norm?"
+    a: "Layer norm computes statistics over the features of each example, batch norm over the batch for each feature; layer norm therefore has no batch dependence or running averages."
+  - q: "Why is layer norm common in transformers?"
+    a: "Sequence lengths and batch sizes vary, and it behaves identically at train and inference time without running statistics."
+  - q: "What are pre-norm and post-norm?"
+    a: "Post-norm normalises after the residual addition; pre-norm normalises the input of each sub-layer, which usually trains more stably in deep stacks."
+hyperparameters:
+  - "Epsilon ε"
+  - "Which axes are normalised (last axis here)"
+  - "Whether γ and β are learned"
+  - "Placement: pre-norm or post-norm"
+pitfalls:
+  - "The variance is the biased one (divide by D), matching PyTorch; using the unbiased estimate changes outputs"
+  - "Normalising over the wrong axis silently runs but is a different layer"
+  - "Constant input has zero variance, so ε controls the output there"
+related: [batch-normalization, residual-connections, multi-head-attention]
+patterns: ["Normalisation"]

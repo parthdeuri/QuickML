@@ -92,3 +92,4 @@ interview_qa:
   - q: "What is the trade-off between learning rate and number of trees?"
     a: "A smaller rate needs more trees but usually gives better generalisation; tune them together with early stopping."
 related: [decision-tree, random-forest, gradient-descent]
+patterns: ["Tree ensembles"]

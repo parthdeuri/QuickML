@@ -70,3 +70,4 @@ interview_qa:
   - q: "Why use k-means++ initialisation?"
     a: "It spreads initial centres apart, which gives better and more stable results than purely random starts."
 related: [gradient-descent]
+patterns: ["Distance and clustering"]

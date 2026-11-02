@@ -1,0 +1,33 @@
+id: validation-hygiene
+name: Validation hygiene
+order: 8
+summary: Evaluate a model so the number you report is an honest estimate of future
+  performance.
+when_to_use:
+- You tune hyperparameters or choose between models.
+- The dataset is small and one split is noisy.
+- Preprocessing uses statistics of the data.
+key_idea: Anything that sees the test data, even through a scaler or feature selection,
+  inflates the score. Fit every preprocessing step inside the training fold only,
+  and keep one untouched final test set.
+template: |
+  import numpy as np
+
+  def kfold(n, k, rng):
+      idx = rng.permutation(n)
+      folds = np.array_split(idx, k)
+      for i in range(k):
+          val = folds[i]
+          train = np.concatenate(folds[:i] + folds[i + 1:])
+          yield train, val
+complexity: k times the cost of one fit.
+pitfalls:
+- Time series need forward-chaining splits, not shuffled folds.
+- Repeated tuning on one validation set overfits it.
+problems:
+- cross-validation
+- data-leakage
+- hyperparameter-search
+- concept-drift
+aliases:
+- Validation hygiene

@@ -1,0 +1,35 @@
+id: gradient-optimisation
+name: Gradient-based optimisation
+order: 3
+summary: Improve parameters by following the gradient of a loss, with tricks for
+  speed and stability.
+when_to_use:
+- The loss is differentiable in the parameters.
+- There is no closed form or it is too expensive.
+- You train a neural network end to end.
+key_idea: The gradient says which way is downhill; the learning rate says how far
+  to step. Momentum, adaptive scaling and schedules are all ways of choosing a better
+  step from the same gradient history.
+template: |
+  import numpy as np
+
+  def sgd(w, g, lr):
+      return w - lr * g
+
+  def adam(w, g, m, v, t, lr=1e-3, b1=0.9, b2=0.999, eps=1e-8):
+      m = b1 * m + (1 - b1) * g
+      v = b2 * v + (1 - b2) * g * g
+      mh, vh = m / (1 - b1 ** t), v / (1 - b2 ** t)
+      return w - lr * mh / (np.sqrt(vh) + eps), m, v
+complexity: O(parameters) per step; memory doubles for Adam's two moments.
+pitfalls:
+- A learning rate that is too high diverges.
+- Adaptive methods can generalise slightly worse than tuned SGD.
+problems:
+- gradient-descent
+- adam-optimizer
+- learning-rate-schedules
+- backpropagation
+- weight-initialization
+aliases:
+- Gradient-based optimisation

@@ -103,3 +103,4 @@ interview_qa:
   - q: "What is out-of-bag error?"
     a: "Each tree misses about a third of the rows, so scoring each row only with trees that did not see it gives a free validation estimate."
 related: [decision-tree, gradient-boosting]
+patterns: ["Tree ensembles"]

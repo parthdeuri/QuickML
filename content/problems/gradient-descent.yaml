@@ -67,3 +67,4 @@ interview_qa:
   - q: "Why does feature scaling help?"
     a: "It makes the loss surface rounder, so one learning rate suits all directions and convergence is faster."
 related: [linear-regression, logistic-regression]
+patterns: ["Gradient-based optimisation"]

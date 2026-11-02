@@ -80,3 +80,4 @@ interview_qa:
   - q: "What is the dying ReLU problem?"
     a: "If a unit's input stays negative its output and gradient are zero, so its weights never update; leaky variants keep a small slope."
 related: [backpropagation, mlp-forward-pass, softmax-cross-entropy]
+patterns: ["Network building blocks"]

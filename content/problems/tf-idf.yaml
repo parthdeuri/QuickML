@@ -1,0 +1,79 @@
+slug: tf-idf
+title: TF-IDF
+url: https://scikit-learn.org/stable/modules/feature_extraction.html#tfidf-term-weighting
+difficulty: Easy
+area: NLP
+topics: [Text Features, Bag of Words, Information Retrieval]
+summary: |
+  Represent each document as a vector of word counts, rescaled so that
+  words found in few documents count more than words found everywhere.
+intuition: |
+  A word that appears in nearly every document says little about any one
+  of them, while a word concentrated in a few documents is a strong
+  signature. Multiplying the term count by the log of inverse document
+  frequency keeps the frequent-here, rare-elsewhere words and mutes
+  filler such as "the".
+why_it_works: |
+  The idf term is the log of how surprising it is to find a word in a
+  random document, so it is a cheap information weight. Smoothing adds
+  one to the counts so unseen words never divide by zero, and L2
+  normalisation makes the dot product of two rows their cosine
+  similarity, independent of document length.
+when_to_use: |
+  Strong, fast baseline features for text classification, search ranking
+  and document similarity, especially with linear models and small
+  datasets.
+when_not_to_use: |
+  It ignores word order and meaning, so synonyms look unrelated. Prefer
+  learned embeddings or transformers when semantics matter, and note
+  that idf must be fitted on training data only.
+math:
+  - "tf(t,d) = count of term t in document d"
+  - "df(t) = number of documents containing t"
+  - "idf(t) = ln((1 + N) / (1 + df(t))) + 1   (smooth form)"
+  - "x(t,d) = tf(t,d) · idf(t)"
+  - "Row norm: x(d) ← x(d) / ‖x(d)‖₂"
+  - "Cosine similarity of two rows = their dot product after L2 norm"
+approach:
+  - "Build a vocabulary and count terms per document — gives the raw tf matrix"
+  - "Count in how many documents each term occurs — this is df"
+  - "Compute idf with add-one smoothing — rare terms get larger weights, no division by zero"
+  - "Multiply tf by idf column-wise — reweights each term by informativeness"
+  - "Normalise each row to unit L2 length — removes the effect of document length"
+code: |
+  import numpy as np
+
+  def tfidf(docs):
+      vocab = sorted({w for d in docs for w in d.split()})
+      ix = {w: i for i, w in enumerate(vocab)}
+      tf = np.zeros((len(docs), len(vocab)))
+      for r, d in enumerate(docs):
+          for w in d.split():
+              tf[r, ix[w]] += 1
+      df = (tf > 0).sum(0)
+      idf = np.log((1 + len(docs)) / (1 + df)) + 1
+      x = tf * idf
+      return x / np.linalg.norm(x, axis=1, keepdims=True), vocab
+key_lines: [10, 11, 12]
+time: "O(total tokens) to count, O(N·V) for the dense weighting"
+space: "O(N·V) dense here; real systems use sparse matrices"
+hyperparameters:
+  - "smooth_idf (add one to document counts, as here)"
+  - "sublinear_tf (use 1 + ln(tf) so repeats saturate)"
+  - "norm (l2 for cosine similarity, l1, or none)"
+  - "min_df / max_df (drop very rare or very common terms)"
+  - "n-gram range (include word pairs to recover some order)"
+pitfalls:
+  - "Fitting idf on the full dataset leaks test statistics into training"
+  - "This sketch splits on spaces only; real tokenisation handles case and punctuation"
+  - "The dense matrix is huge for real vocabularies; use sparse storage"
+  - "Variants differ (log base, smoothing, norm), so scores are not portable between libraries"
+interview_qa:
+  - q: "Why take the log in idf?"
+    a: "It damps the ratio N/df so that a very rare word does not dominate, and it makes the weight behave like an information measure."
+  - q: "Why normalise rows?"
+    a: "Long documents have larger counts. L2 normalisation makes rows comparable and turns the dot product into cosine similarity."
+  - q: "How does TF-IDF differ from word embeddings?"
+    a: "TF-IDF vectors are sparse, one dimension per word, and carry no notion of meaning. Embeddings are dense and learned so similar words lie close together."
+related: [naive-bayes, word2vec-skipgram]
+patterns: ["Text processing"]

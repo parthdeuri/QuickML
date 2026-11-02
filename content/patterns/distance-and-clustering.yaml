@@ -1,0 +1,29 @@
+id: distance-and-clustering
+name: Distance and clustering
+order: 6
+summary: Group or classify points by how close they are in feature space.
+when_to_use:
+- You have no labels and want structure (clustering).
+- Similar examples should share a label (nearest neighbours).
+- A meaningful distance between examples exists.
+key_idea: Everything depends on the distance and the scale of the features. K-means
+  uses centres, DBSCAN uses density, kNN uses the nearest labelled points; all fail
+  if distances are meaningless.
+template: |
+  import numpy as np
+
+  def pairwise_dist(A, B):
+      return np.sqrt(((A[:, None] - B[None]) ** 2).sum(-1))
+
+  def assign(X, centres):
+      return pairwise_dist(X, centres).argmin(axis=1)
+complexity: O(n·k·d) per assignment pass; kNN prediction O(n·d) without an index.
+pitfalls:
+- Distances break down in very high dimensions.
+- Unscaled features let one column dominate.
+problems:
+- knn
+- k-means
+- dbscan
+aliases:
+- Distance and clustering

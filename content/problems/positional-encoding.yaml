@@ -1,0 +1,71 @@
+slug: positional-encoding
+title: Sinusoidal Positional Encoding
+url: https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html
+difficulty: Medium
+area: NLP
+topics: [Transformers, Position, Embeddings]
+summary: |
+  Add a fixed vector of sines and cosines at many frequencies to each
+  token embedding so an order-blind attention layer can tell positions
+  apart.
+intuition: |
+  Attention treats its input as a set, so something must say where each
+  token sits. Using sinusoids of geometrically spaced wavelengths gives
+  every position a unique code, like the digits of a clock with fast and
+  slow hands, and shifting by a fixed offset becomes a simple rotation
+  of each sin-cos pair.
+approach:
+  - "Make a column of positions and a row of even dimension indices — one grid covers every (position, dimension) pair"
+  - "Compute angle = pos / 10000^(i/d) — each pair gets its own wavelength, from short to long"
+  - "Put sin(angle) in the even columns and cos(angle) in the odd ones — a pair encodes position on a circle"
+  - "Add the result to the token embeddings — the model sees content and position together"
+code: |
+  import numpy as np
+
+  def sinusoidal_pe(T, d):
+      pos = np.arange(T)[:, None]
+      i = np.arange(0, d, 2)[None, :]
+      angle = pos / 10000 ** (i / d)
+      pe = np.zeros((T, d))
+      pe[:, 0::2] = np.sin(angle)
+      pe[:, 1::2] = np.cos(angle)
+      return pe
+key_lines: [6, 8, 9]
+time: "O(T·d) to build the table"
+space: "O(T·d); it can be precomputed once and reused"
+when_to_use: |
+  Transformers that need order information with no extra parameters and
+  possible use on sequences somewhat longer than seen in training.
+when_not_to_use: |
+  When learned, relative or rotary position schemes fit better: they are
+  often preferred in modern language models, especially for long
+  contexts. This code also assumes an even dimension d.
+why_it_works: |
+  Each sin-cos pair at frequency ω is a point on a circle, and moving k
+  positions rotates that point by angle ωk, which is the same linear map
+  for every starting position. A model can therefore compute relative
+  offsets from the encodings with linear operations, and the many
+  wavelengths make every position's overall code distinct.
+math:
+  - "PE(pos, 2i)   = sin(pos / 10000^(2i/d))"
+  - "PE(pos, 2i+1) = cos(pos / 10000^(2i/d))"
+  - "ωᵢ = 1 / 10000^(2i/d)"
+  - "[sin ω(p+k), cos ω(p+k)] = R(ωk) · [sin ωp, cos ωp]"
+  - "R(θ) = [[cos θ, sin θ], [−sin θ, cos θ]]"
+interview_qa:
+  - q: "Why does a transformer need positional encoding?"
+    a: "Self-attention is permutation-equivariant, so without position information it cannot distinguish word order."
+  - q: "Why sines and cosines of many frequencies?"
+    a: "They give each position a unique code, are bounded, and make relative shifts a linear rotation within each pair."
+  - q: "Fixed sinusoids versus learned position embeddings?"
+    a: "Sinusoids add no parameters and can extrapolate in form, while learned embeddings are flexible but limited to trained positions."
+hyperparameters:
+  - "Model dimension d"
+  - "Base constant (10000 in the original)"
+  - "Maximum sequence length T"
+pitfalls:
+  - "The code assumes d is even; odd d needs special handling for the last column"
+  - "Interleaved sin and cos columns versus concatenated halves are both used; the choice must match the rest of the model"
+  - "Adding to embeddings without matching scale can drown the content signal"
+related: [self-attention, multi-head-attention, layer-normalization]
+patterns: ["Attention and sequences"]

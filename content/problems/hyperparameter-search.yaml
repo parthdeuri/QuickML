@@ -1,0 +1,83 @@
+slug: hyperparameter-search
+title: Grid vs Random Hyperparameter Search
+url: https://scikit-learn.org/stable/modules/grid_search.html
+difficulty: Easy
+area: MLOps
+topics: [Hyperparameters, Model Selection, Grid Search, Random Search]
+summary: |
+  Grid search tries every combination of listed values; random search
+  samples configurations from distributions. Each configuration is scored
+  with validation data and the best one is kept.
+intuition: |
+  Usually only a few hyperparameters matter much for a given problem. A
+  grid spends its budget repeating the same few values of the important
+  ones across every setting of the unimportant ones, whereas random
+  sampling tries a fresh value of every parameter on every trial. At equal
+  budget, random search explores the important axes more densely, and it
+  can sample continuous ranges such as a log-uniform learning rate.
+why_it_works: |
+  If only a subset of parameters affects the score, a grid with m values
+  per parameter yields only m distinct values of each important one,
+  while n random trials yield n distinct values. Random trials are also
+  independent, so you can stop, extend or parallelise freely, whereas a
+  grid grows multiplicatively with the number of parameters.
+when_to_use: |
+  Grid for a few parameters with small discrete choices; random search
+  when there are many parameters, continuous ranges, or a fixed budget.
+when_not_to_use: |
+  Neither uses past results. For expensive models prefer successive
+  halving or Bayesian optimisation, and never pick the model by the same
+  data you report its final score on.
+math:
+  - "Grid size = Π_j |V_j|  (product over parameters)"
+  - "Grid order: keys sorted, last key varies fastest"
+  - "Random trial t: θ_j ~ Uniform(V_j) or a distribution, independently"
+  - "Best θ* = argmax over tried θ of validation score(θ)"
+  - "Log-uniform: log θ ~ Uniform(log a, log b)"
+approach:
+  - "Define the search space per hyperparameter — lists for discrete values, a sampler for continuous ones"
+  - "Grid: take the Cartesian product of the lists — it covers every combination exactly once"
+  - "Random: draw each parameter independently for each trial — a fresh value of every axis per trial"
+  - "Score every configuration with cross-validation or a validation set — the comparison must not use test data"
+  - "Keep the best, then refit on all training data — the final model uses the winning setting"
+code: |
+  import itertools
+  import numpy as np
+
+  def grid(space):
+      keys = sorted(space)
+      for vals in itertools.product(*(space[k] for k in keys)):
+          yield dict(zip(keys, vals))
+
+  def draw(v, rng):
+      return v(rng) if callable(v) else v[rng.integers(len(v))]
+
+  def random_search(space, n, rng):
+      keys = sorted(space)
+      for _ in range(n):
+          yield {k: draw(space[k], rng) for k in keys}
+
+  def best(score, configs):
+      scored = [(score(c), c) for c in configs]
+      return max(scored, key=lambda t: t[0])
+key_lines: [6, 10, 15]
+time: "O(trials · cost of one fit); grid trials = product of list sizes"
+space: "O(1) for the generators; best() stores all scored configs"
+hyperparameters:
+  - "Budget n_iter — number of random trials"
+  - "Distributions — log-uniform for rates and regularisation, uniform for others"
+  - "cv folds — more folds give steadier scores at higher cost"
+pitfalls:
+  - "Grids explode with the number of parameters"
+  - "Searching a learning rate on a linear scale wastes most trials"
+  - "Reporting the best validation score as the final estimate is optimistic; keep a test set"
+  - "This sampler draws with replacement, so repeats can occur; scikit-learn's ParameterSampler gives distinct combinations when every value is a list"
+interview_qa:
+  - q: "Why does random search often beat grid search at equal budget?"
+    a: "Most parameters barely matter, so a grid repeats the same few values of the important ones, while random trials test a new value of each every time."
+  - q: "How should you sample a learning rate?"
+    a: "Log-uniformly, because its effect is multiplicative; a linear scale puts nearly all trials at the large end."
+  - q: "How do you avoid overfitting the search?"
+    a: "Score with cross-validation inside the search, then evaluate the single chosen model once on untouched test data, or use nested cross-validation."
+related: [cross-validation, bias-variance-tradeoff, data-leakage]
+patterns: ["Validation hygiene"]

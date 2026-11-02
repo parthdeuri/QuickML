@@ -70,3 +70,4 @@ interview_qa:
   - q: "Is KL divergence a distance?"
     a: "No. It is asymmetric and does not satisfy the triangle inequality."
 related: [softmax-cross-entropy, maximum-likelihood, bayes-theorem]
+patterns: ["Information-theoretic losses"]

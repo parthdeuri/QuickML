@@ -498,7 +498,7 @@ private fun FeedTopBar(
                 FilterChip(
                     selected = mode == FeedMode.PATTERNS,
                     onClick = { onModeChange(FeedMode.PATTERNS) },
-                    label = { Text("Patterns") }
+                    label = { Text("Families") }
                 )
             }
             FilterChip(
@@ -533,7 +533,7 @@ private fun EmptyState(
                 "Mark problems solved to start revising"
             state.mode == FeedMode.REVISE -> "All caught up 🎉"
             state.mode == FeedMode.QUIZ -> "No problems with full notes to quiz on yet."
-            state.mode == FeedMode.PATTERNS -> "No patterns in this version of the content yet."
+            state.mode == FeedMode.PATTERNS -> "No technique families in this version of the content yet."
             (state.mode == FeedMode.LEARN || state.mode == FeedMode.SHUFFLE) &&
                 state.sheetId == ProblemRepository.MINE_SHEET_ID ->
                 "No problems of your own yet. Add one from the Sheet tab with +."

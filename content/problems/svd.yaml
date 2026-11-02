@@ -1,0 +1,84 @@
+slug: svd
+title: Singular Value Decomposition
+url: https://numpy.org/doc/stable/reference/generated/numpy.linalg.svd.html
+difficulty: Medium
+area: Math
+topics: [Linear Algebra, Matrix Factorisation, Low-Rank Approximation]
+summary: |
+  Every matrix factors as A = U S Vᵀ with orthonormal U and V and
+  non-negative singular values in S. Keeping only the largest few gives
+  the best low-rank approximation of A.
+intuition: |
+  A matrix maps the unit sphere to an ellipsoid. The SVD names the
+  ellipsoid's axes: V gives the input directions, the singular values give
+  how much each is stretched, and U gives the output directions. Directions
+  with tiny stretch contribute almost nothing, so you can drop them and
+  keep a compact matrix that behaves nearly the same.
+why_it_works: |
+  AᵀA = V S² Vᵀ, so the right singular vectors are eigenvectors of AᵀA
+  and the singular values are the square roots of its eigenvalues. The
+  Eckart-Young theorem says that, in both the Frobenius and spectral
+  norms, no rank-k matrix is closer to A than the truncation that keeps
+  the top k singular triplets, and the error is set by the discarded
+  singular values.
+when_to_use: |
+  PCA, low-rank compression, denoising, latent semantic analysis,
+  recommender factorisation, pseudo-inverses and least squares on
+  ill-conditioned problems.
+when_not_to_use: |
+  Skip a full SVD for huge sparse matrices (use truncated or randomised
+  methods) and when missing entries need handling, since SVD needs a
+  fully observed matrix. The eigen-route in the code squares the
+  condition number, so use a library SVD in production.
+math:
+  - "A = U S Vᵀ,  UᵀU = I,  VᵀV = I,  s₁ ≥ s₂ ≥ … ≥ 0"
+  - "AᵀA = V S² Vᵀ  (eigendecomposition)"
+  - "uᵢ = A vᵢ / sᵢ"
+  - "Rank-k truncation: A_k = Σ_{i≤k} sᵢ uᵢ vᵢᵀ"
+  - "‖A − A_k‖_F² = Σ_{i>k} sᵢ²"
+  - "‖A − A_k‖₂ = s_{k+1}"
+approach:
+  - "Form AᵀA — its eigenvectors are the right singular vectors"
+  - "Eigendecompose it and sort eigenvalues in decreasing order — singular values are conventionally ordered"
+  - "Take square roots (clipping tiny negatives from rounding) — gives the singular values"
+  - "Compute U = A V / s column by column — the left vectors follow from the right ones"
+  - "Truncate to the top k triplets for a low-rank approximation — Eckart-Young says this is optimal"
+code: |
+  import numpy as np
+
+  def svd(A):
+      w, V = np.linalg.eigh(A.T @ A)
+      idx = np.argsort(w)[::-1]
+      s = np.sqrt(np.clip(w[idx], 0, None))
+      V = V[:, idx]
+      U = A @ V / np.where(s > 1e-12, s, 1.0)
+      return U, s, V.T
+
+  def low_rank(U, s, Vt, k):
+      return (U[:, :k] * s[:k]) @ Vt[:k]
+
+  def rank_error(s, k):
+      return np.sqrt((s[k:] ** 2).sum())
+key_lines: [4, 6, 8]
+time: "O(m·n²) for AᵀA plus O(n³) for the eigen step (m ≥ n); library SVD is similar but more stable"
+space: "O(m·n) for the matrices and O(n²) for AᵀA"
+hyperparameters:
+  - "Rank k — chosen from the singular-value spectrum or an energy target"
+  - "Full or thin (economy) factorisation"
+  - "Solver — full, truncated or randomised"
+pitfalls:
+  - "This code assumes m ≥ n and nonzero singular values; zero ones leave zero columns in U"
+  - "Forming AᵀA squares the condition number and loses accuracy for small singular values"
+  - "Singular vectors are only defined up to a joint sign flip, and are unstable when singular values are close"
+  - "SVD of uncentred data is not PCA; centre the columns first"
+interview_qa:
+  - q: "How does SVD relate to eigendecomposition?"
+    a: "The right singular vectors are the eigenvectors of AᵀA and the left ones those of AAᵀ, with singular values the square roots of the shared non-zero eigenvalues."
+  - q: "What does the Eckart-Young theorem say?"
+    a: "Truncating the SVD to rank k gives the closest rank-k matrix to A in the spectral and Frobenius norms."
+  - q: "How is SVD used in PCA?"
+    a: "Centre the data, take its SVD, and the right singular vectors are the principal axes while squared singular values over n − 1 are the variances."
+  - q: "Why is SVD better than the normal equations for least squares?"
+    a: "It works with A directly, avoiding the squared condition number of AᵀA, and gives a stable pseudo-inverse for rank-deficient problems."
+related: [pca, linear-regression, ridge-lasso-regularization]
+patterns: ["Dimensionality reduction"]

@@ -81,3 +81,4 @@ interview_qa:
   - q: "Naive Bayes vs logistic regression?"
     a: "Naive Bayes is generative, fits fast and does well on little data; logistic regression is discriminative, handles correlated features better and wins with more data."
 related: [logistic-regression, softmax-cross-entropy]
+patterns: ["Probabilistic models"]

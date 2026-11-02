@@ -62,3 +62,4 @@ interview_qa:
     a: "It adds λI to XᵀX, so the system is always solvable and weights shrink."
 
 related: [gradient-descent, logistic-regression]
+patterns: ["Linear models"]

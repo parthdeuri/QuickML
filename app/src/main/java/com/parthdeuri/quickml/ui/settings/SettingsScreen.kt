@@ -288,11 +288,11 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "Pattern quiz before revealing (Revise mode)",
+                        "Family quiz before revealing (Revise mode)",
                         style = MaterialTheme.typography.bodyLarge
                     )
                     Text(
-                        text = "Guess the pattern before the topics and patterns are shown",
+                        text = "Guess the technique family before the topics and families are shown",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

@@ -87,3 +87,4 @@ interview_qa:
   - q: "How do you choose λ?"
     a: "Cross-validate over a log-spaced grid and pick the value with the best validation error, or the largest one within one standard error of it."
 related: [linear-regression, logistic-regression, gradient-descent]
+patterns: ["Linear models", "Regularisation"]

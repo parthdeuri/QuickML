@@ -1,0 +1,28 @@
+id: dimensionality-reduction
+name: Dimensionality reduction
+order: 11
+summary: Compress features into fewer coordinates that keep most of the structure.
+when_to_use:
+- There are many correlated features.
+- You want to visualise or denoise data.
+- Downstream models are slow or overfit in high dimensions.
+key_idea: Find the directions that carry the most variance (PCA, via SVD) or learn
+  a compressed code that reconstructs the input (autoencoder). A linear autoencoder
+  spans the same subspace as PCA.
+template: |
+  import numpy as np
+
+  def pca(X, k):
+      Xc = X - X.mean(0)
+      U, S, Vt = np.linalg.svd(Xc, full_matrices=False)
+      return Xc @ Vt[:k].T, Vt[:k]       # scores, components
+complexity: SVD O(min(n,d)·n·d).
+pitfalls:
+- Variance is not the same as usefulness for the label.
+- Scale features before PCA.
+problems:
+- pca
+- svd
+- autoencoder
+aliases:
+- Dimensionality reduction

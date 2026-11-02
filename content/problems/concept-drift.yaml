@@ -1,0 +1,82 @@
+slug: concept-drift
+title: Data and Concept Drift Detection
+url: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.ks_2samp.html
+difficulty: Medium
+area: MLOps
+topics: [Monitoring, Drift, PSI, Kolmogorov-Smirnov]
+summary: |
+  Production data shifts away from the training data. Compare the live
+  distribution of each feature with a reference window using PSI or the
+  Kolmogorov-Smirnov statistic, and track performance for changes in the
+  input-to-label relationship.
+intuition: |
+  A model is a snapshot of the world at training time. Inputs can move
+  (covariate drift) or the rule linking inputs to labels can move
+  (concept drift). Input drift is visible without labels by comparing
+  distributions, but concept drift can leave the inputs unchanged, so it
+  only shows up as delayed label feedback and falling performance.
+why_it_works: |
+  PSI bins the reference by its own quantiles and sums (current − reference)
+  times the log ratio of bin shares, which equals the symmetric KL
+  divergence between the binned distributions, so it is zero only when they
+  match. The KS statistic is the largest gap between two empirical CDFs,
+  a distribution-free measure of how far two samples are apart.
+when_to_use: |
+  Monitoring deployed models: per-feature input checks, prediction-score
+  drift, and scheduled comparison of recent data against the training or
+  a recent reference window.
+when_not_to_use: |
+  Drift in inputs is not the same as harm: a shifted feature may be
+  irrelevant. And these tests cannot see changes in P(y | x) with stable
+  inputs; use labelled performance monitoring for that.
+math:
+  - "Reference bin shares aᵢ, current bin shares bᵢ (bins from reference)"
+  - "PSI = Σᵢ (bᵢ − aᵢ) · ln(bᵢ / aᵢ)"
+  - "PSI = KL(a ‖ b) + KL(b ‖ a)"
+  - "KS = sup_x | F_ref(x) − F_cur(x) |"
+  - "Covariate drift: P(x) changes.  Concept drift: P(y | x) changes"
+  - "Shares are clipped below by ε so empty bins keep ln finite"
+approach:
+  - "Freeze a reference sample, usually training data or a healthy recent window — drift is relative to something"
+  - "Cut the reference into quantile bins, extending the outer edges to ±∞ — every new value falls in a bin"
+  - "Compare bin shares of reference and current data with PSI — a single drift score per feature"
+  - "Also compute the KS statistic between the raw samples — a bin-free cross-check"
+  - "Alert on thresholds you calibrate to your own data, then check labelled performance — input drift is a warning, not proof of harm"
+code: |
+  import numpy as np
+
+  def psi(ref, cur, bins=10, eps=1e-4):
+      edges = np.quantile(ref, np.linspace(0, 1, bins + 1))
+      edges[0], edges[-1] = -np.inf, np.inf
+      a = np.histogram(ref, edges)[0] / len(ref)
+      b = np.histogram(cur, edges)[0] / len(cur)
+      a, b = np.clip(a, eps, None), np.clip(b, eps, None)
+      return ((b - a) * np.log(b / a)).sum()
+
+  def ks_stat(a, b):
+      grid = np.sort(np.r_[a, b])
+      Fa = np.searchsorted(np.sort(a), grid, side="right") / len(a)
+      Fb = np.searchsorted(np.sort(b), grid, side="right") / len(b)
+      return np.abs(Fa - Fb).max()
+key_lines: [4, 8, 13]
+time: "O(n log n) for the sorts and quantiles per feature"
+space: "O(n) for the sorted copies, O(bins) for histograms"
+hyperparameters:
+  - "Bins for PSI — quantile bins from the reference"
+  - "Reference window — training data or a rolling recent period"
+  - "Alert thresholds — rules of thumb exist but should be tuned per feature"
+  - "Window size — small windows are noisy, large ones are slow to react"
+pitfalls:
+  - "Rule-of-thumb PSI cut-offs are conventions, not statistical tests"
+  - "Many features and many windows give false alarms by chance"
+  - "Large samples flag tiny, harmless shifts as significant with KS"
+  - "Concept drift with unchanged inputs is invisible to these statistics"
+interview_qa:
+  - q: "Covariate drift versus concept drift?"
+    a: "Covariate drift is a change in P(x) and can be seen without labels; concept drift is a change in P(y | x) and needs labels or proxy outcomes to detect."
+  - q: "How does PSI work and what are its weaknesses?"
+    a: "It sums bin-share differences times log ratios, equal to a symmetric KL divergence; it depends on the binning and has only conventional thresholds."
+  - q: "What do you do when drift is detected?"
+    a: "Check data pipelines first, assess impact on a labelled sample, then retrain on recent data, reweight, or roll back depending on the cause."
+related: [entropy-kl-divergence, data-leakage, roc-auc]
+patterns: ["Validation hygiene"]

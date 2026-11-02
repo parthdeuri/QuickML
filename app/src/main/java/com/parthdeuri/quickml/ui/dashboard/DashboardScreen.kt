@@ -138,7 +138,7 @@ private fun DashboardContent(state: DashboardState, modifier: Modifier = Modifie
         }
         StatTile(
             value = if (quizPercent == null) "—" else quizPercent.toString() + "%",
-            label = "Pattern quiz",
+            label = "Family quiz",
             subtext = if (quizPercent == null) {
                 "Try Quiz mode in the feed"
             } else {

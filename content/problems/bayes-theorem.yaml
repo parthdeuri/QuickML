@@ -66,3 +66,4 @@ interview_qa:
   - q: "What is the evidence term for?"
     a: "It normalises the numerator so the posterior is a proper distribution; it is often only needed up to a constant."
 related: [maximum-likelihood, entropy-kl-divergence]
+patterns: ["Probabilistic models"]

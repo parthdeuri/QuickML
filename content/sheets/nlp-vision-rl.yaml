@@ -1,0 +1,22 @@
+id: nlp-vision-rl
+name: NLP, Vision and RL
+description: Text, image and reinforcement-learning building blocks.
+sections:
+- name: NLP
+  problems:
+  - tf-idf
+  - word2vec-skipgram
+  - bpe-tokenization
+  - positional-encoding
+  - self-attention
+  - multi-head-attention
+  - beam-search
+- name: Vision
+  problems:
+  - convolution-2d
+  - max-pooling
+  - iou-and-nms
+- name: Reinforcement learning
+  problems:
+  - q-learning
+  - reinforce-policy-gradient

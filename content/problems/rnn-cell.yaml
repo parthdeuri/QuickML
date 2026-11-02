@@ -1,0 +1,74 @@
+slug: rnn-cell
+title: RNN Cell
+url: https://docs.pytorch.org/docs/stable/generated/torch.nn.RNNCell.html
+difficulty: Medium
+area: Deep Learning
+topics: [Recurrent Networks, Sequence Models, Hidden State]
+summary: |
+  Process a sequence one step at a time, mixing the current input with a
+  hidden state that carries a summary of everything seen so far.
+intuition: |
+  The hidden state is a small memory that is rewritten at every step: the
+  new state is a squashed blend of the new input and the old state. The
+  same weights are reused at every step, so the model handles any length
+  with a fixed number of parameters, but information must survive being
+  rewritten again and again.
+approach:
+  - "Compute x·Wxᵀ for the current input — projects the input into the hidden space"
+  - "Compute h·Whᵀ for the previous state — lets the past influence the present"
+  - "Add both and a bias, then apply tanh — keeps the state bounded and non-linear"
+  - "Return the new state and feed it back in at the next step — this loop is the recurrence"
+  - "Loop over the sequence with the same weights — parameter sharing across time"
+code: |
+  import numpy as np
+
+  def rnn_cell(x, h, Wx, Wh, b):
+      return np.tanh(x @ Wx.T + h @ Wh.T + b)
+
+  def rnn_forward(X, h0, Wx, Wh, b):
+      h, out = h0, []
+      for x in X:
+          h = rnn_cell(x, h, Wx, Wh, b)
+          out.append(h)
+      return np.stack(out), h
+key_lines: [4, 7, 9]
+time: "O(T·H·(I+H)) for T steps, input size I and hidden size H"
+space: "O(T·H) to store all hidden states for backprop through time"
+when_to_use: |
+  Small sequence problems, teaching, and as the building block to
+  understand LSTMs and GRUs. It suits streaming data where a compact
+  running state is enough.
+when_not_to_use: |
+  Long-range dependencies, where gradients vanish or explode over many
+  steps, and large-scale language tasks where attention-based models
+  train in parallel and scale better.
+why_it_works: |
+  The recurrence makes the final state a function of the whole input
+  history, so a fixed-size network can read variable-length sequences.
+  Weight sharing across time gives the same detector at every position.
+  Training works through backpropagation through time, which multiplies
+  many copies of the same Jacobian, and that repeated product is why
+  gradients tend to vanish or explode.
+math:
+  - "hₜ = tanh(Wₓxₜ + W_h hₜ₋₁ + b)"
+  - "Wₓ: H × I,  W_h: H × H,  b: H"
+  - "∂hₜ/∂hₜ₋₁ = diag(1 − hₜ²) W_h"
+  - "∂h_T/∂h_k = Π over t = k+1..T of diag(1 − hₜ²) W_h"
+interview_qa:
+  - q: "Why do vanilla RNNs have vanishing or exploding gradients?"
+    a: "Backpropagation through time multiplies the same recurrent Jacobian once per step; if its dominant scale is below one the product shrinks, above one it grows."
+  - q: "What is shared across time steps?"
+    a: "All weights and the bias; only the hidden state changes from step to step."
+  - q: "How do gradient clipping and LSTMs help?"
+    a: "Clipping bounds exploding gradients, while gated cells like the LSTM add an additive state path that lets gradients survive longer."
+hyperparameters:
+  - "Hidden size H (memory capacity)"
+  - "Number of stacked layers"
+  - "Nonlinearity (tanh or ReLU)"
+  - "Gradient clipping threshold"
+pitfalls:
+  - "This card uses one bias; PyTorch keeps two (b_ih and b_hh) that simply add, so they must be summed when comparing"
+  - "Shape mistakes are easy: weights are stored as (hidden, input) and applied transposed"
+  - "Long sequences need clipping or gated cells to train stably"
+related: [lstm-cell, backpropagation, activation-functions]
+patterns: ["Attention and sequences"]

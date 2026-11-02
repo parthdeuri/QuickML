@@ -76,3 +76,4 @@ interview_qa:
   - q: "Should a PyTorch model end in softmax before CrossEntropyLoss?"
     a: "No. CrossEntropyLoss takes raw logits and applies log-softmax internally."
 related: [logistic-regression, gradient-descent]
+patterns: ["Information-theoretic losses"]

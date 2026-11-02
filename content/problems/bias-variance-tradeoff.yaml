@@ -75,3 +75,4 @@ interview_qa:
   - q: "Why can test error never reach zero in this decomposition?"
     a: "The irreducible noise term σ² is part of every noisy target and no model can predict it."
 related: [linear-regression, cross-validation]
+patterns: ["Regularisation"]

@@ -1,0 +1,88 @@
+slug: autoencoder
+title: Autoencoder
+url: https://en.wikipedia.org/wiki/Autoencoder
+difficulty: Medium
+area: Deep Learning
+topics: [Representation Learning, Unsupervised, Dimensionality Reduction]
+summary: |
+  Train a network to reproduce its input after squeezing it through a
+  narrow bottleneck, so the bottleneck holds a compressed code.
+intuition: |
+  The target is the input itself, so the only way to get low error
+  through a small code is to keep the directions that carry the most
+  information about the data. With linear layers this is exactly
+  principal component analysis in disguise; nonlinear layers let the
+  code follow curved structure that PCA cannot.
+why_it_works: |
+  Minimising squared reconstruction error through a k-dimensional code
+  forces the encoder-decoder pair to span the best k-dimensional
+  subspace. For a linear autoencoder the optimum spans the top principal
+  subspace, though the learned axes are an arbitrary rotation of the
+  principal components.
+when_to_use: |
+  Nonlinear dimensionality reduction, denoising, anomaly detection by
+  reconstruction error, and pretraining representations without labels.
+when_not_to_use: |
+  If a linear projection is enough, PCA is exact and needs no training.
+  A bottleneck-free autoencoder can learn the identity and nothing
+  useful, and it is not a proper generative model.
+math:
+  - "Encode: h = f(X W₁ + b₁)"
+  - "Decode: X̂ = h W₂ + b₂"
+  - "Loss: L = (1/2n) Σᵢ ‖x̂ᵢ − xᵢ‖²"
+  - "E = (X̂ − X) / n   (∂L/∂X̂)"
+  - "∂L/∂W₂ = hᵀ E,  ∂L/∂b₂ = Σ E"
+  - "∂L/∂h = (E W₂ᵀ) ⊙ f′(·)"
+  - "∂L/∂W₁ = Xᵀ ∂L/∂h"
+  - "Linear f: optimum error equals the sum of dropped PCA variances"
+approach:
+  - "Encode the batch through a layer with fewer units than inputs — the bottleneck forces compression"
+  - "Decode back to input size with a second layer — produces the reconstruction"
+  - "Compute the reconstruction error against the input itself — no labels needed"
+  - "Backpropagate the error through decoder then encoder — chain rule layer by layer"
+  - "Take gradient steps until the error stops improving — the code now summarises the data"
+code: |
+  import numpy as np
+
+  def train_ae(X, k, f, df, lr=0.01, steps=20000, seed=0):
+      n, d = X.shape
+      rng = np.random.default_rng(seed)
+      W1 = rng.normal(0, 0.1, (d, k))
+      b1 = np.zeros(k)
+      W2 = rng.normal(0, 0.1, (k, d))
+      b2 = np.zeros(d)
+      for _ in range(steps):
+          H = f(X @ W1 + b1)
+          E = (H @ W2 + b2 - X) / n
+          dH = (E @ W2.T) * df(H)
+          W2 -= lr * H.T @ E
+          b2 -= lr * E.sum(0)
+          W1 -= lr * X.T @ dH
+          b1 -= lr * dH.sum(0)
+      return W1, b1, W2, b2
+
+  def reconstruct(P, X, f):
+      W1, b1, W2, b2 = P
+      return f(X @ W1 + b1) @ W2 + b2
+key_lines: [11, 12, 13]
+time: "O(steps · n·d·k) for full-batch training"
+space: "O(n·(d+k)) for activations and O(d·k) for the weights"
+hyperparameters:
+  - "Bottleneck size k"
+  - "Activation function f (identity here gives the PCA-like case)"
+  - "Learning rate and number of steps"
+  - "Regularisation: weight decay, sparsity penalty or input noise"
+pitfalls:
+  - "Too large a bottleneck lets the network copy the input"
+  - "df takes the activation output (tanh: 1 − h²); identity is the constant 1"
+  - "Inputs should be centred; the linear-to-PCA match here assumes centred data"
+  - "Full-batch gradient descent here is for clarity; real training uses minibatches and Adam"
+interview_qa:
+  - q: "How is a linear autoencoder related to PCA?"
+    a: "With linear layers and squared error, the best code spans the same subspace as the top principal components. The reconstruction error is the same, but the axes may be rotated."
+  - q: "How can an autoencoder detect anomalies?"
+    a: "Train on normal data only. Anomalies reconstruct poorly, so a large reconstruction error is the anomaly score."
+  - q: "What is a denoising autoencoder?"
+    a: "It corrupts the input with noise and trains to reconstruct the clean version, which prevents the identity solution and learns robust features."
+related: [pca, backpropagation, vae-reparameterization]
+patterns: ["Dimensionality reduction"]

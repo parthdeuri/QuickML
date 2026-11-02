@@ -76,3 +76,4 @@ interview_qa:
   - q: "Why does a decoder need a causal mask?"
     a: "So position i attends only to positions up to i, which keeps training consistent with left-to-right generation."
 related: [softmax-cross-entropy, mlp-forward-pass, backpropagation]
+patterns: ["Attention and sequences"]

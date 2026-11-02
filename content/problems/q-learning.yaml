@@ -1,0 +1,87 @@
+slug: q-learning
+title: Tabular Q-Learning
+url: https://en.wikipedia.org/wiki/Q-learning
+difficulty: Medium
+area: RL
+topics: [Reinforcement Learning, Temporal Difference, Value Functions]
+summary: |
+  Learn the value of every state-action pair from experience by nudging
+  each estimate toward the reward plus the discounted best value of the
+  next state.
+intuition: |
+  Q(s, a) should equal the reward you get now plus the value of playing
+  optimally afterwards. Each step turns that definition into an update:
+  compare the current estimate with reward plus discounted best next
+  value, and move a little toward it. Because the target uses the max,
+  the agent learns the optimal policy even while it explores randomly.
+why_it_works: |
+  The optimal Q-function is the fixed point of the Bellman optimality
+  operator, which is a contraction for discount below one. Q-learning
+  applies that operator to sampled transitions, so with every pair
+  visited often enough and suitable step sizes the estimates converge to
+  the optimum. Using the max makes it off-policy.
+when_to_use: |
+  Small discrete state and action spaces, such as grids and toy control
+  tasks, or as the conceptual base of DQN.
+when_not_to_use: |
+  Large or continuous state spaces, where a table is infeasible and
+  function approximation can make updates unstable. Also not when
+  transitions are costly to sample and a model is available.
+math:
+  - "Bellman optimality: Q*(s,a) = r + γ · maxₐ' Q*(s',a')"
+  - "TD target: y = r + γ · maxₐ' Q(s',a')"
+  - "TD error: δ = y − Q(s,a)"
+  - "Update: Q(s,a) ← Q(s,a) + α · δ"
+  - "Behaviour: ε-greedy; random action with probability ε"
+  - "Policy: π(s) = argmaxₐ Q(s,a)"
+approach:
+  - "Initialise the Q table to zeros — a neutral starting estimate"
+  - "Pick an action ε-greedily in the current state — mostly exploit, sometimes explore"
+  - "Step the environment to get reward and next state — one real transition"
+  - "Form the target r + γ max Q(next) and move Q(s,a) toward it by α — the temporal-difference update"
+  - "Repeat over many episodes and read the policy as argmax over actions — the learned behaviour"
+code: |
+  import numpy as np
+
+  def q_learning(nxt, rew, done, n_ep=3000, alpha=0.5, gamma=0.9,
+                 eps=0.3, seed=0):
+      rng = np.random.default_rng(seed)
+      S, A = nxt.shape
+      Q = np.zeros((S, A))
+      for _ in range(n_ep):
+          s = rng.integers(S)
+          for _ in range(100):
+              if done[s]:
+                  break
+              if rng.random() < eps:
+                  a = rng.integers(A)
+              else:
+                  a = Q[s].argmax()
+              s2 = nxt[s, a]
+              target = rew[s, a] + gamma * Q[s2].max()
+              Q[s, a] += alpha * (target - Q[s, a])
+              s = s2
+      return Q
+key_lines: [18, 19]
+time: "O(episodes · steps · |A|) for the max over actions"
+space: "O(|S|·|A|) for the Q table"
+hyperparameters:
+  - "Learning rate α (use a smaller α or decay it in stochastic environments)"
+  - "Discount γ"
+  - "Exploration rate ε (often decayed over training)"
+  - "Number of episodes"
+  - "Initial Q values (optimistic values encourage exploration)"
+pitfalls:
+  - "Terminal states must have value zero; here their rows stay zero because they are never updated"
+  - "The environment is deterministic here; stochastic transitions need decaying step sizes"
+  - "Starting each episode from a random state is a simplification that aids exploration of all pairs"
+  - "Max over noisy estimates is biased upward (overestimation); Double Q-learning corrects it"
+interview_qa:
+  - q: "Why is Q-learning off-policy?"
+    a: "The target uses the max over next actions, the greedy policy, no matter which action the exploring behaviour policy actually took."
+  - q: "How does Q-learning differ from SARSA?"
+    a: "SARSA bootstraps from the action actually taken next, so it learns the value of the exploring policy. Q-learning bootstraps from the max, learning the optimal value."
+  - q: "What is the exploration-exploitation trade-off?"
+    a: "The agent must try uncertain actions to find better ones but also use what it knows. ε-greedy mixes the two with a random-action probability."
+related: [gradient-descent, bayes-theorem]
+patterns: ["Reinforcement learning"]

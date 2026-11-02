@@ -1,0 +1,32 @@
+id: linear-models
+name: Linear models
+order: 1
+summary: Predict with a weighted sum of features, then fit the weights by minimising
+  a convex loss.
+when_to_use:
+- You need a fast, interpretable baseline.
+- Features are roughly linearly related to the target or a link of it.
+- Data is small or wide and a simple model should not overfit.
+key_idea: The model is one dot product, so the loss surface is a smooth bowl and
+  the weights can be read as feature effects. Changing the loss (squared, log, hinge)
+  changes the model but not the shape of the idea.
+template: |
+  import numpy as np
+
+  def predict(w, b, X):
+      return X @ w + b            # regression score
+
+  def step(w, b, X, y, lr, grad_of_loss):
+      g = grad_of_loss(predict(w, b, X), y)   # dL/d(score)
+      return w - lr * X.T @ g / len(X), b - lr * g.mean()
+complexity: Fit O(n·d) per gradient step or O(n·d² + d³) closed form; predict O(d).
+pitfalls:
+- Collinear features make the weights unstable.
+- Unscaled features slow gradient descent and skew regularisation.
+problems:
+- linear-regression
+- logistic-regression
+- svm
+- ridge-lasso-regularization
+aliases:
+- Linear models

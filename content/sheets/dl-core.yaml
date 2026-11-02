@@ -2,9 +2,36 @@ id: dl-core
 name: Deep Learning Core
 description: Neural network foundations, training tricks and the first architectures.
 sections:
-  - name: Neural network foundations
-    problems: [softmax-cross-entropy, mlp-forward-pass, activation-functions, backpropagation]
-  - name: Training and regularisation
-    problems: [adam-optimizer, batch-normalization, dropout]
-  - name: Architectures
-    problems: [convolution-2d, self-attention]
+- name: Neural network foundations
+  problems:
+  - softmax-cross-entropy
+  - mlp-forward-pass
+  - activation-functions
+  - backpropagation
+- name: Training setup
+  problems:
+  - weight-initialization
+  - adam-optimizer
+  - learning-rate-schedules
+- name: Normalisation and regularisation
+  problems:
+  - batch-normalization
+  - layer-normalization
+  - dropout
+  - early-stopping
+  - residual-connections
+- name: Sequence models
+  problems:
+  - rnn-cell
+  - lstm-cell
+- name: Architectures
+  problems:
+  - convolution-2d
+  - max-pooling
+  - self-attention
+  - multi-head-attention
+  - positional-encoding
+- name: Generative models
+  problems:
+  - autoencoder
+  - vae-reparameterization

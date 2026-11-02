@@ -1,0 +1,82 @@
+slug: probability-calibration
+title: Probability Calibration
+url: https://scikit-learn.org/stable/modules/calibration.html
+difficulty: Medium
+area: MLOps
+topics: [Calibration, Evaluation, Reliability Diagram, Brier Score]
+summary: |
+  A model is calibrated when, among predictions of probability p, about a
+  fraction p are actually positive. Measure it with a reliability diagram,
+  expected calibration error and the Brier score.
+intuition: |
+  Ranking quality and honesty of probabilities are different things: a
+  model can order examples perfectly yet say 99% for things that happen
+  far less often. Bin the predictions, and in each bin compare the average
+  predicted probability with the observed frequency of positives; the gap
+  is the miscalibration, and decisions based on expected cost depend on
+  it.
+why_it_works: |
+  If predictions are calibrated, E[y | p̂ = p] = p, so every bin's observed
+  rate matches its mean prediction. The Brier score is the mean squared
+  error of the probabilities and is a proper scoring rule, so it is
+  minimised only by the true probabilities and rewards both calibration
+  and sharpness. ECE summarises the bin gaps, weighted by bin size.
+when_to_use: |
+  Whenever probabilities feed decisions (thresholds, costs, risk scores,
+  ensembles), after training boosted trees, SVMs or networks that tend to
+  be over- or under-confident.
+when_not_to_use: |
+  If only the ranking matters (AUC), calibration adds nothing. Binned ECE
+  is noisy with few samples, so do not over-read a single number.
+math:
+  - "Calibrated: P(y = 1 | p̂ = p) = p"
+  - "Bin b: acc_b = mean(y in b), conf_b = mean(p̂ in b)"
+  - "ECE = Σ_b (n_b / n) · |acc_b − conf_b|"
+  - "Brier = (1/n) Σᵢ (p̂ᵢ − yᵢ)²"
+  - "Bins: equal-width edges on [0, 1], empty bins skipped"
+approach:
+  - "Hold out data the model never trained on — in-sample probabilities are too confident"
+  - "Cut [0, 1] into equal-width bins and assign each prediction — groups predictions of similar confidence"
+  - "Per bin, compute the observed positive rate and the mean predicted probability — the two sides of the reliability diagram"
+  - "Weight the absolute gaps by bin size to get ECE — one summary number"
+  - "Compute the Brier score too — it needs no binning and is a proper scoring rule"
+  - "If miscalibrated, fit a monotone map (Platt, isotonic or temperature) on separate data — it fixes probabilities without changing the ranking"
+code: |
+  import numpy as np
+
+  def brier(y, p):
+      return np.mean((p - y) ** 2)
+
+  def reliability(y, p, n_bins=10):
+      edges = np.linspace(0, 1, n_bins + 1)[1:-1]
+      ids = np.searchsorted(edges, p)
+      n = np.bincount(ids, minlength=n_bins)
+      conf = np.bincount(ids, p, n_bins)
+      hit = np.bincount(ids, y, n_bins)
+      keep = n > 0
+      return hit[keep] / n[keep], conf[keep] / n[keep], n[keep]
+
+  def ece(y, p, n_bins=10):
+      acc, conf, n = reliability(y, p, n_bins)
+      return (n * np.abs(acc - conf)).sum() / n.sum()
+key_lines: [8, 10, 11]
+time: "O(n) for binning, Brier and ECE"
+space: "O(n_bins) beyond the input arrays"
+hyperparameters:
+  - "n_bins — fewer bins are stable but coarse, more bins are noisy"
+  - "Binning strategy — equal-width (this code) or equal-frequency quantiles"
+  - "Calibrator — Platt (sigmoid), isotonic or temperature scaling"
+pitfalls:
+  - "Calibrating on the training data, or on the same data used to evaluate it"
+  - "ECE depends on the bin count and is noisy in sparsely populated bins"
+  - "Isotonic regression can overfit when the calibration set is small"
+  - "A calibrated model can still be a poor classifier; check discrimination as well"
+interview_qa:
+  - q: "What does it mean for a classifier to be calibrated?"
+    a: "Among all cases given probability p, the observed positive rate is p; the reliability diagram then lies on the diagonal."
+  - q: "How is the Brier score related to calibration?"
+    a: "It is the squared error of the probabilities and a proper scoring rule, so it improves with better calibration and with sharper, more discriminative predictions."
+  - q: "How do you fix a miscalibrated model?"
+    a: "Fit a monotone post-hoc map such as Platt scaling, isotonic regression or temperature scaling on held-out data; ranking and AUC stay the same."
+related: [roc-auc, logistic-regression, class-imbalance]
+patterns: ["Classification metrics"]

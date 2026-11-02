@@ -1,0 +1,86 @@
+slug: class-imbalance
+title: Class Imbalance
+url: https://scikit-learn.org/stable/modules/generated/sklearn.utils.class_weight.compute_class_weight.html
+difficulty: Easy
+area: MLOps
+topics: [Imbalanced Data, Class Weights, Resampling, Evaluation]
+summary: |
+  When one class is rare, plain training optimises mostly for the common
+  class. Fix it by weighting the loss inversely to class frequency or by
+  resampling the training set, and judge the result with metrics that
+  ignore the base rate.
+intuition: |
+  A loss that sums over examples is dominated by the majority class, so a
+  model can look excellent by ignoring the minority. Reweighting says one
+  rare example should count as much as many common ones, and resampling
+  achieves the same by showing the rare ones more often. Neither adds
+  information; they only change what the optimiser cares about.
+why_it_works: |
+  With weight wᶜ on class c, the weighted loss is the expected loss under
+  a re-balanced class prior, so errors on the minority are no longer
+  drowned out. Random oversampling duplicates minority rows, which
+  matches integer weights in the loss on average. The decision threshold,
+  not only the weights, then sets the precision-recall trade-off.
+when_to_use: |
+  Fraud, defects, rare diseases and other skewed targets, when recall on
+  the rare class matters and plain accuracy is misleading.
+when_not_to_use: |
+  Skip it when you need calibrated probabilities (reweighting distorts
+  them unless you correct afterwards), or when a threshold change on an
+  unweighted model already gives the trade-off you need.
+math:
+  - "Balanced weight: wᶜ = n / (K · nᶜ)"
+  - "Weighted loss: L = Σᵢ w_{yᵢ} ℓᵢ / Σᵢ w_{yᵢ}"
+  - "Weighted log loss: ℓᵢ = −[y log p + (1−y) log(1−p)]"
+  - "Oversample: draw (n_max − nᶜ) extra rows of class c, with replacement"
+  - "Do it on the training split only, never before splitting"
+approach:
+  - "Split first, then look only at the training class counts — resampling must not touch validation or test rows"
+  - "Compute balanced weights n / (K·nᶜ) — each class then carries equal total weight"
+  - "Weight the per-example loss and normalise by the weight sum — rare-class errors count more and the scale stays comparable"
+  - "Alternatively oversample minority rows with replacement up to the majority count — the same effect through the data instead of the loss"
+  - "Evaluate with precision-recall, F1 or PR-AUC on untouched data and tune the threshold — accuracy hides minority failures"
+code: |
+  import numpy as np
+
+  def balanced_weights(y):
+      classes, counts = np.unique(y, return_counts=True)
+      return dict(zip(classes, len(y) / (len(classes) * counts)))
+
+  def weighted_logloss(y, p, w):
+      sw = np.array([w[c] for c in y])
+      ll = -(y * np.log(p) + (1 - y) * np.log(1 - p))
+      return (sw * ll).sum() / sw.sum()
+
+  def oversample(X, y, rng):
+      classes, counts = np.unique(y, return_counts=True)
+      idx = []
+      for c, n in zip(classes, counts):
+          pool = np.flatnonzero(y == c)
+          extra = rng.choice(pool, counts.max() - n, replace=True)
+          idx.append(np.r_[pool, extra])
+      idx = np.concatenate(idx)
+      return X[idx], y[idx]
+key_lines: [5, 10, 17]
+time: "O(n) for weights and for the weighted loss; oversampling grows n to K·n_max"
+space: "O(K) for weights; oversampling stores the enlarged dataset"
+hyperparameters:
+  - "class_weight — balanced, custom ratios, or none"
+  - "Resampling strategy — random over/under-sampling or synthetic (SMOTE)"
+  - "Decision threshold — tuned on validation data for the metric you care about"
+pitfalls:
+  - "Oversampling before the split puts duplicates of the same row in train and test, inflating scores"
+  - "Reweighting or resampling shifts predicted probabilities away from true rates"
+  - "Duplicated minority rows make flexible models memorise them and overfit"
+  - "Accuracy and ROC-AUC can both look fine while minority precision is poor"
+interview_qa:
+  - q: "A fraud model has high accuracy but catches no fraud. Why?"
+    a: "With a rare positive class, predicting all negatives scores high accuracy; use precision, recall, PR-AUC and a tuned threshold instead."
+  - q: "Class weights or resampling?"
+    a: "Weights are cheaper and add no duplicates; resampling works with any learner and can be paired with weights or ensembling. Compare them on validation data."
+  - q: "How do you evaluate fairly after resampling?"
+    a: "Keep validation and test sets at the natural class ratio and resample only the training fold, inside cross-validation."
+  - q: "Does rebalancing fix probabilities?"
+    a: "No, it distorts them; recalibrate or correct for the prior shift if you need real probabilities."
+related: [precision-recall-f1, data-leakage, probability-calibration]
+patterns: ["Classification metrics"]

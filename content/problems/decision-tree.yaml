@@ -91,3 +91,4 @@ interview_qa:
   - q: "Do trees need feature scaling?"
     a: "No. Splits compare a feature to a threshold, so any monotonic rescaling gives the same tree."
 related: [random-forest, gradient-boosting, logistic-regression]
+patterns: ["Tree ensembles"]

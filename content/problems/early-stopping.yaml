@@ -1,0 +1,75 @@
+slug: early-stopping
+title: Early Stopping
+url: https://scikit-learn.org/stable/auto_examples/ensemble/plot_gradient_boosting_early_stopping.html
+difficulty: Easy
+area: Deep Learning
+topics: [Regularization, Training, Validation, Overfitting]
+summary: |
+  Watch the validation loss during training and stop when it has not
+  improved for a set number of epochs, then keep the weights from the
+  best epoch. Training length becomes a regularised hyperparameter chosen
+  automatically.
+intuition: |
+  Training loss usually keeps falling, but past some point the model
+  starts fitting noise and validation loss turns upward. Number of epochs
+  therefore acts as a capacity knob: early on the model is simple, later
+  it is flexible. Stopping near the validation minimum buys a simple model
+  for free, and patience stops a noisy blip from ending training too soon.
+why_it_works: |
+  For gradient descent from small initial weights, the weights grow
+  gradually away from zero, so fewer steps restrict the effective model
+  size, similar in effect to an L2 penalty. The validation curve estimates
+  generalisation error, and the rule picks the epoch where that estimate
+  was lowest, with patience trading a small delay for robustness to noise.
+when_to_use: |
+  Neural networks and boosted ensembles trained iteratively, especially
+  when you cannot afford to tune the epoch count by hand.
+when_not_to_use: |
+  Skip it when the validation set is tiny or noisy (the stopping point
+  becomes random), and note that the chosen epoch is tuned on validation
+  data, so report results on a separate test set.
+math:
+  - "best = min over epochs so far of val_loss"
+  - "Improvement at epoch t: val_loss[t] < best − min_delta"
+  - "wait = 0 on improvement, otherwise wait ← wait + 1"
+  - "Stop at the first epoch where wait ≥ patience"
+  - "Return the weights saved at the best epoch"
+approach:
+  - "Hold out a validation set the model never trains on — it measures generalisation"
+  - "After each epoch, evaluate validation loss — the signal for when overfitting begins"
+  - "If it beats the best by more than min_delta, record it, save the weights and reset the counter — progress is real"
+  - "Otherwise increment the patience counter — a few bad epochs may just be noise"
+  - "Stop when the counter reaches patience and restore the saved weights — the last epochs were overfit"
+code: |
+  def early_stop(losses, patience, min_delta=0.0):
+      best, best_epoch, wait = float("inf"), -1, 0
+      for epoch, loss in enumerate(losses):
+          if loss < best - min_delta:
+              best, best_epoch, wait = loss, epoch, 0
+          else:
+              wait += 1
+              if wait >= patience:
+                  return epoch, best_epoch, best
+      return len(losses) - 1, best_epoch, best
+key_lines: [4, 5, 7]
+time: "O(1) per epoch for the check; the cost is the validation pass itself"
+space: "O(P) to keep a copy of the best weights (this snippet tracks indices only)"
+hyperparameters:
+  - "patience — epochs to wait without improvement"
+  - "min_delta — smallest change that counts as improvement"
+  - "monitor — the validation metric (loss or a score) and whether lower or higher is better"
+  - "restore_best_weights — whether to roll back to the best epoch"
+pitfalls:
+  - "Patience too small stops on noise; too large wastes compute and overfits"
+  - "Stopping on training loss never triggers, since it keeps decreasing"
+  - "The validation set is reused to choose the epoch, so it no longer gives an unbiased final score"
+  - "Without restoring the best weights you keep the over-trained final model"
+interview_qa:
+  - q: "Why is early stopping a regulariser?"
+    a: "Fewer gradient steps keep weights near their small initial values, limiting effective capacity, much as a weight penalty does."
+  - q: "What does patience do?"
+    a: "It tolerates a few non-improving epochs so a noisy validation curve does not end training prematurely."
+  - q: "Which data decides when to stop, and which reports the final score?"
+    a: "Validation data decides the stopping epoch; a separate untouched test set gives the final unbiased estimate."
+related: [bias-variance-tradeoff, dropout, ridge-lasso-regularization]
+patterns: ["Regularisation"]

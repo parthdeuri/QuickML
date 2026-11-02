@@ -1,0 +1,33 @@
+id: convolution-and-vision
+name: Convolution and vision
+order: 14
+summary: Process images with weights shared across positions, then pool and score
+  regions.
+when_to_use:
+- Inputs have a grid structure such as images.
+- The same pattern can appear anywhere in the input.
+- You detect objects and must merge overlapping boxes.
+key_idea: Sliding one small kernel over the image reuses its weights everywhere,
+  which gives translation equivariance with few parameters. Pooling then shrinks
+  the map, and IoU with non-maximum suppression cleans up detections.
+template: |
+  import numpy as np
+
+  def conv2d(x, k):
+      h, w = k.shape
+      H, W = x.shape[0] - h + 1, x.shape[1] - w + 1
+      out = np.zeros((H, W))
+      for i in range(H):
+          for j in range(W):
+              out[i, j] = (x[i:i + h, j:j + w] * k).sum()
+      return out
+complexity: O(H·W·kh·kw) per channel pair.
+pitfalls:
+- Strided pooling throws away fine position information.
+- Plain NMS removes overlapping true objects of different classes.
+problems:
+- convolution-2d
+- max-pooling
+- iou-and-nms
+aliases:
+- Convolution and vision

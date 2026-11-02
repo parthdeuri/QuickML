@@ -43,7 +43,7 @@ ALL_KEYS = set(REQUIRED_KEYS + CONTENT_KEYS + DETAIL_KEYS + EXPLAIN_KEYS
                + OPTIONAL_KEYS + [KEY_LINES_KEY])
 
 # Sheets whose size is fixed; the build fails if the count drifts.
-EXPECTED_SHEET_COUNTS = {"ml-core": 20, "dl-core": 9}
+EXPECTED_SHEET_COUNTS = {"ml-core": 28, "dl-core": 21, "nlp-vision-rl": 12}
 SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 MAX_CODE_LINE = 70  # only a warning: phone screens are narrow

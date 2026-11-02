@@ -1,0 +1,81 @@
+slug: reinforce-policy-gradient
+title: REINFORCE Policy Gradient
+url: https://spinningup.openai.com/en/latest/spinningup/rl_intro3.html
+difficulty: Hard
+area: RL
+topics: [Policy Gradient, Reinforcement Learning, Monte Carlo]
+summary: |
+  Improve a stochastic policy directly by raising the log-probability of
+  actions in proportion to the return that followed them.
+intuition: |
+  You cannot differentiate through the environment, but you can
+  differentiate the probability your policy gave to the actions it took.
+  Scaling that gradient by the return makes good trajectories more
+  likely and bad ones less likely. Subtracting a baseline leaves the
+  expected direction unchanged but cuts the noise.
+why_it_works: |
+  The log-derivative trick turns the gradient of expected return into an
+  expectation of return times the gradient of log-probability, which can
+  be estimated from sampled episodes. A baseline that does not depend on
+  the action has zero expected gradient, so it reduces variance without
+  adding bias.
+when_to_use: |
+  Problems with continuous or large action spaces and stochastic
+  policies, as the foundation for actor-critic methods and PPO.
+when_not_to_use: |
+  When sample efficiency matters and episodes are costly: the estimates
+  are high variance and need many episodes. Value-based methods are
+  often better for small discrete problems.
+math:
+  - "J(θ) = E[ Σₜ rₜ ]  over trajectories from π_θ"
+  - "∇J = E[ Σₜ Gₜ ∇ log π(aₜ | sₜ) ]"
+  - "Return: Gₜ = rₜ + γ Gₜ₊₁"
+  - "Baseline: use (Gₜ − b) in place of Gₜ; b must not depend on aₜ"
+  - "Softmax policy z = Xθ: ∇_z log π(a) = onehot(a) − π"
+  - "Gradient ascent: θ ← θ + α ∇J"
+approach:
+  - "Roll out an episode with the current stochastic policy — samples the states, actions and rewards"
+  - "Compute the discounted return from each step by a backward pass — credit for what followed each action"
+  - "Subtract a baseline from the returns — reduces variance, no bias"
+  - "Form the gradient of Gₜ·log π(aₜ|sₜ) summed over steps — onehot minus probabilities for a softmax policy"
+  - "Ascend this gradient and repeat with fresh episodes — the policy shifts toward higher return"
+code: |
+  import numpy as np
+
+  def returns(r, gamma):
+      G, run = np.zeros(len(r)), 0.0
+      for t in reversed(range(len(r))):
+          run = r[t] + gamma * run
+          G[t] = run
+      return G
+
+  def reinforce_grad(W, X, a, G, baseline=0.0):
+      z = X @ W
+      z = z - z.max(1, keepdims=True)
+      p = np.exp(z)
+      p /= p.sum(1, keepdims=True)
+      adv = (G - baseline)[:, None]
+      dz = adv * (np.eye(W.shape[1])[a] - p)
+      return X.T @ dz
+key_lines: [6, 16, 17]
+time: "O(T·d·|A|) per episode for T steps"
+space: "O(T·(d+|A|)) to store the episode"
+hyperparameters:
+  - "Learning rate"
+  - "Discount γ"
+  - "Baseline (constant, running mean or learned value function)"
+  - "Episodes per update (batching reduces variance)"
+pitfalls:
+  - "Gradient variance is high; without a baseline learning is slow and noisy"
+  - "This returns the ascent direction; frameworks minimise, so negate it for the loss"
+  - "A common implementation omits the γᵗ factor in the exact gradient, as here"
+  - "Updates must use trajectories from the current policy, so data cannot be reused freely"
+interview_qa:
+  - q: "What is the log-derivative trick?"
+    a: "∇ p = p ∇ log p, which rewrites the gradient of an expectation as an expectation of a score-function term that can be sampled."
+  - q: "Why does a baseline not bias the gradient?"
+    a: "For a baseline independent of the action, the expectation of baseline times the score function is zero, so only the variance changes."
+  - q: "How does REINFORCE relate to actor-critic?"
+    a: "Actor-critic replaces the Monte Carlo return with a learned value-based estimate, lowering variance at the cost of some bias."
+related: [softmax-cross-entropy, q-learning, gradient-descent]
+patterns: ["Reinforcement learning"]

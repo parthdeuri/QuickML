@@ -1,0 +1,28 @@
+id: reinforcement-learning
+name: Reinforcement learning
+order: 16
+summary: Learn to act by trial and error from rewards, by estimating values or improving
+  a policy directly.
+when_to_use:
+- There is no labelled answer, only a delayed reward.
+- Actions change the situation you see next.
+- You can simulate the environment cheaply.
+key_idea: Value methods such as Q-learning learn how good each action is and act
+  greedily on it. Policy-gradient methods such as REINFORCE nudge the policy toward
+  actions that led to high return. Both trade exploration against exploitation.
+template: |
+  import numpy as np
+
+  def q_update(Q, s, a, r, s2, alpha=0.1, gamma=0.99):
+      target = r + gamma * Q[s2].max()
+      Q[s, a] += alpha * (target - Q[s, a])
+      return Q
+complexity: O(1) per Q-learning update; table size O(states·actions).
+pitfalls:
+- Too little exploration locks in a poor policy.
+- Policy-gradient estimates have high variance; use a baseline.
+problems:
+- q-learning
+- reinforce-policy-gradient
+aliases:
+- Reinforcement learning

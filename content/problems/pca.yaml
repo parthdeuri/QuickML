@@ -82,3 +82,4 @@ interview_qa:
   - q: "Why centre the data?"
     a: "Without centring, the first component mostly points at the mean instead of the direction of maximum spread."
 related: [k-means, linear-regression, ridge-lasso-regularization]
+patterns: ["Dimensionality reduction"]

@@ -1,0 +1,74 @@
+slug: lstm-cell
+title: LSTM Cell
+url: https://docs.pytorch.org/docs/stable/generated/torch.nn.LSTMCell.html
+difficulty: Hard
+area: Deep Learning
+topics: [Recurrent Networks, Gating, Sequence Models]
+summary: |
+  A recurrent cell with a separate cell state and three learned gates
+  that decide what to forget, what to write and what to expose.
+intuition: |
+  The cell state is a conveyor belt that is mostly copied forward
+  unchanged; gates, which are sigmoids between zero and one, decide how
+  much old content to keep and how much new content to add. Because the
+  update is additive rather than a repeated squashing, both information
+  and gradients can travel across many steps.
+approach:
+  - "Compute one big affine map of x and h, then split it into four chunks — one matmul feeds all gates"
+  - "Turn three chunks into gates with a sigmoid — soft switches between zero and one"
+  - "Turn the fourth chunk into a candidate with tanh — the new content that may be written"
+  - "Update the cell as forget·c + input·candidate — keep part of the past, add part of the new"
+  - "Output h = output gate · tanh(c) — controls how much of the memory is exposed"
+code: |
+  import numpy as np
+
+  def sigmoid(z):
+      return 1 / (1 + np.exp(-z))
+
+  def lstm_cell(x, h, c, Wx, Wh, b):
+      z = x @ Wx.T + h @ Wh.T + b
+      i, f, g, o = np.split(z, 4, axis=-1)
+      c = sigmoid(f) * c + sigmoid(i) * np.tanh(g)
+      h = sigmoid(o) * np.tanh(c)
+      return h, c
+key_lines: [8, 9, 10]
+time: "O(4·H·(I+H)) per step for input size I and hidden size H"
+space: "O(H) extra for the cell state, plus stored gates for backprop"
+when_to_use: |
+  Sequence tasks with dependencies over many steps where a recurrent
+  model is still appropriate: streaming signals, small-scale text or
+  time series, and settings where memory and latency per step matter.
+when_not_to_use: |
+  Very long contexts or large corpora where attention-based models train
+  in parallel and scale better, and tiny tasks where a simpler cell or a
+  feed-forward model is enough.
+why_it_works: |
+  The cell state update c = f·c + i·g has a direct additive path from one
+  step to the next. Its derivative with respect to the previous cell
+  state is just the forget gate, so gradients are scaled by gates the
+  network can learn to keep near one, instead of by a repeated weight
+  matrix and squashing as in a vanilla RNN.
+math:
+  - "[i, f, g, o] = split(Wₓxₜ + W_h hₜ₋₁ + b)  (four chunks of size H)"
+  - "iₜ = σ(i),  fₜ = σ(f),  oₜ = σ(o),  gₜ = tanh(g)"
+  - "cₜ = fₜ ⊙ cₜ₋₁ + iₜ ⊙ gₜ"
+  - "hₜ = oₜ ⊙ tanh(cₜ)"
+  - "∂cₜ/∂cₜ₋₁ = fₜ  (direct path, ignoring gate dependence on h)"
+interview_qa:
+  - q: "How does an LSTM ease vanishing gradients?"
+    a: "Its cell state is updated additively, so the gradient along that path is scaled by the forget gate rather than a repeated matrix product and squashing."
+  - q: "What does each gate do?"
+    a: "The forget gate scales the old cell state, the input gate scales the new candidate, and the output gate scales how much of the cell is exposed as the hidden state."
+  - q: "Why initialise the forget-gate bias to a positive value?"
+    a: "It starts the gate near open so memory is retained early in training and gradients flow; this is a common practical trick."
+hyperparameters:
+  - "Hidden size H"
+  - "Number of stacked layers"
+  - "Forget-gate bias initialisation"
+  - "Dropout between layers and gradient clipping threshold"
+pitfalls:
+  - "Gate order matters: PyTorch packs the chunks as input, forget, cell candidate, output"
+  - "This card has one bias; PyTorch keeps two (b_ih and b_hh) that add, so sum them when comparing"
+  - "No peephole connections or projections are included"
+related: [rnn-cell, activation-functions, backpropagation]
+patterns: ["Attention and sequences"]

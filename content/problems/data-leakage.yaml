@@ -74,3 +74,4 @@ interview_qa:
   - q: "Is scaling before the split really a problem?"
     a: "It is a mild leak since only means and variances cross over, but selection, imputation and target encoding can leak far more."
 related: [cross-validation, bias-variance-tradeoff]
+patterns: ["Validation hygiene"]

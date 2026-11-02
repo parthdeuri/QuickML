@@ -1,0 +1,103 @@
+slug: gaussian-mixture-em
+title: Gaussian Mixture Model (EM)
+url: https://scikit-learn.org/stable/modules/mixture.html
+difficulty: Hard
+area: Classical ML
+topics: [Clustering, Unsupervised, Probabilistic, Expectation-Maximization]
+summary: |
+  Model the data as a weighted sum of Gaussians and fit it by alternating
+  soft cluster assignments (E-step) with weighted parameter updates
+  (M-step). It is k-means with soft membership and per-cluster covariance.
+intuition: |
+  If you knew which Gaussian produced each point, fitting would be trivial
+  weighted averaging; if you knew the Gaussians, assigning points would be
+  trivial Bayes' rule. EM breaks the chicken-and-egg loop by using the
+  current guess to assign fractional responsibilities, refitting with
+  them, and repeating, and each round can never lower the likelihood.
+why_it_works: |
+  The log-likelihood has a sum inside the log, so it has no closed form.
+  EM maximises a lower bound that is tight at the current parameters
+  (Jensen's inequality): the E-step makes the bound touch the likelihood,
+  and the M-step raises the bound, so the likelihood is non-decreasing.
+  It converges to a local optimum, not necessarily the global one.
+when_to_use: |
+  Soft clustering with elliptical clusters of different size and shape,
+  density estimation, anomaly scoring by low likelihood, and as a
+  generative model per class.
+when_not_to_use: |
+  Skip it for non-convex shapes (use DBSCAN or spectral clustering), when
+  clusters are tiny relative to the dimension (covariances become
+  singular), or when you need a unique answer independent of
+  initialisation.
+math:
+  - "p(x) = Σₖ πₖ N(x; μₖ, Σₖ)"
+  - "log N = −½ [ d·log 2π + log|Σ| + (x−μ)ᵀ Σ⁻¹ (x−μ) ]"
+  - "E-step: rᵢₖ = πₖ N(xᵢ; μₖ, Σₖ) / Σⱼ πⱼ N(xᵢ; μⱼ, Σⱼ)"
+  - "Nₖ = Σᵢ rᵢₖ"
+  - "M-step: πₖ = Nₖ / n,  μₖ = Σᵢ rᵢₖ xᵢ / Nₖ"
+  - "Σₖ = Σᵢ rᵢₖ (xᵢ−μₖ)(xᵢ−μₖ)ᵀ / Nₖ + ε I"
+  - "Objective: ℓ = Σᵢ log Σₖ πₖ N(xᵢ; μₖ, Σₖ)"
+approach:
+  - "Initialise means, equal weights and the data covariance — any start works but the result depends on it"
+  - "Compute log πₖ N(x; μₖ, Σₖ) per point and component with a Cholesky solve — stable and gives the log-determinant for free"
+  - "Normalise with log-sum-exp to get responsibilities — turns joint densities into soft assignments without underflow"
+  - "Re-estimate weights, means and covariances weighted by responsibilities — the exact maximiser given the soft labels"
+  - "Add a small ε to each covariance diagonal — stops a component collapsing onto one point"
+  - "Stop when the log-likelihood gain is tiny — it never decreases, so the gain is a safe test"
+code: |
+  import numpy as np
+
+  def log_joint(X, w, mu, S):
+      out = []
+      for k in range(len(w)):
+          L = np.linalg.cholesky(S[k])
+          z = np.linalg.solve(L, (X - mu[k]).T)
+          ld = 2 * np.log(np.diag(L)).sum()
+          q = (z ** 2).sum(0) + ld + X.shape[1] * np.log(2 * np.pi)
+          out.append(np.log(w[k]) - 0.5 * q)
+      return np.stack(out, 1)
+
+  def em(X, mu, iters=200, reg=1e-6):
+      n, d = X.shape
+      K = len(mu)
+      w = np.full(K, 1 / K)
+      S = np.array([np.cov(X.T, bias=True) + reg * np.eye(d)] * K)
+      ll = []
+      for _ in range(iters):
+          lj = log_joint(X, w, mu, S)
+          m = lj.max(1, keepdims=True)
+          tot = m + np.log(np.exp(lj - m).sum(1, keepdims=True))
+          R = np.exp(lj - tot)
+          ll.append(tot.sum())
+          Nk = R.sum(0)
+          w, mu = Nk / n, R.T @ X / Nk[:, None]
+          for k in range(K):
+              D = X - mu[k]
+              S[k] = (R[:, k] * D.T) @ D / Nk[k] + reg * np.eye(d)
+          if len(ll) > 1 and ll[-1] - ll[-2] < 1e-10:
+              break
+      return w, mu, S, ll
+key_lines: [23, 26, 29]
+time: "O(iters·n·K·d²) plus O(K·d³) per iteration for the Cholesky factors"
+space: "O(n·K) for responsibilities, O(K·d²) for covariances"
+hyperparameters:
+  - "n_components K — choose by BIC/AIC or held-out likelihood"
+  - "covariance_type — full, tied, diagonal or spherical (this code is full only)"
+  - "reg_covar ε — floor added to covariance diagonals"
+  - "Initialisation and n_init — several restarts guard against poor local optima"
+pitfalls:
+  - "Local optima: different starts give different fits, so run several restarts"
+  - "A component can collapse onto a single point, sending the likelihood to infinity without the ε floor"
+  - "Component labels are arbitrary, so compare fits after matching components"
+  - "Likelihood alone always favours more components; penalise with BIC or validate on held-out data"
+interview_qa:
+  - q: "How is a GMM different from k-means?"
+    a: "k-means is the hard-assignment, equal-spherical-covariance limit of EM; a GMM gives soft responsibilities and learns each cluster's weight and covariance."
+  - q: "Why does EM never decrease the likelihood?"
+    a: "The E-step builds a lower bound equal to the likelihood at the current parameters and the M-step maximises that bound, so the true likelihood can only go up."
+  - q: "How do you pick the number of components?"
+    a: "Fit several K and compare BIC, which penalises parameters, or compare held-out log-likelihood; likelihood on training data always improves with K."
+  - q: "What goes wrong when a covariance is singular?"
+    a: "The density at that component's point blows up, so the fit chases a spike; a covariance floor or priors prevent it."
+related: [k-means, maximum-likelihood, pca]
+patterns: ["Probabilistic models"]

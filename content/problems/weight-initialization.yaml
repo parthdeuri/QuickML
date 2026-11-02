@@ -1,0 +1,77 @@
+slug: weight-initialization
+title: Weight Initialization (Xavier and He)
+url: https://docs.pytorch.org/docs/stable/nn.init.html
+difficulty: Medium
+area: Deep Learning
+topics: [Initialization, Variance, Training Stability]
+summary: |
+  Choose the starting weight scale from the layer's fan-in and fan-out so
+  that signals and gradients neither shrink nor blow up with depth.
+intuition: |
+  Each layer multiplies the signal by a random matrix, so the signal's
+  variance gets multiplied by a factor set by the weight variance and the
+  layer width. Stack many layers and any factor away from one compounds
+  exponentially, so initialisation picks the weight variance that makes
+  the factor about one for the activation in use.
+approach:
+  - "Look up fan_in and fan_out of the layer — the scale depends on how many terms are summed"
+  - "Xavier: variance 2/(fan_in + fan_out) — balances forward and backward signal for tanh-like units"
+  - "He: variance 2/fan_in — ReLU zeroes half the signal, so the weights are doubled in variance"
+  - "Draw from a uniform or normal with that variance — both give the same second moment"
+  - "Check the signal scale through a deep stack — a quick sanity test for vanishing or exploding activations"
+code: |
+  import numpy as np
+
+  def xavier_uniform(fan_in, fan_out, rng, gain=1.0):
+      a = gain * np.sqrt(6 / (fan_in + fan_out))
+      return rng.uniform(-a, a, size=(fan_out, fan_in))
+
+  def he_normal(fan_in, fan_out, rng):
+      std = np.sqrt(2 / fan_in)
+      return rng.normal(0, std, size=(fan_out, fan_in))
+
+  def signal_rms(init, act, width, depth, rng):
+      x = rng.normal(size=(512, width))
+      for _ in range(depth):
+          x = act(x @ init(width, width, rng).T)
+      return np.sqrt((x ** 2).mean())
+key_lines: [4, 8, 14]
+time: "O(fan_in·fan_out) to draw one weight matrix"
+space: "O(fan_in·fan_out) for the matrix itself"
+when_to_use: |
+  Every time you build a network from scratch. Use He for ReLU-family
+  activations and Xavier for tanh, sigmoid or linear layers; frameworks
+  already apply a sensible default per layer type.
+when_not_to_use: |
+  Less critical when normalisation layers or residual connections keep
+  activations in range, and it does not replace tuning the learning
+  rate. Pretrained weights should be kept, not re-initialised.
+why_it_works: |
+  For y = Σ wᵢxᵢ with independent zero-mean terms, Var(y) = fan_in ·
+  Var(w) · Var(x). Setting Var(w) near 1/fan_in keeps the forward
+  variance stable, and the same argument backwards uses fan_out.
+  Xavier compromises between the two, and He adds a factor of two to
+  compensate for ReLU discarding the negative half of its input.
+math:
+  - "y = Σᵢ wᵢxᵢ  ⇒  Var(y) = fan_in · Var(w) · Var(x)"
+  - "Xavier: Var(w) = gain² · 2 / (fan_in + fan_out)"
+  - "Xavier uniform: w ~ U(−a, a), a = gain · √(6 / (fan_in + fan_out))"
+  - "He (ReLU): Var(w) = 2 / fan_in,  w ~ N(0, 2 / fan_in)"
+  - "Uniform U(−a, a) has variance a² / 3"
+interview_qa:
+  - q: "Why not initialise all weights to zero?"
+    a: "Every unit in a layer would compute the same output and receive the same gradient, so they would never differentiate; random values break the symmetry."
+  - q: "Why does He use a factor of two compared with plain fan-in scaling?"
+    a: "ReLU zeroes about half of the pre-activations, which halves the second moment of the output, so the weight variance is doubled to compensate."
+  - q: "What happens with too large or too small a scale?"
+    a: "Activations and gradients grow or shrink exponentially with depth, causing exploding values or vanishing learning signals."
+hyperparameters:
+  - "Gain (depends on the activation)"
+  - "Fan mode: fan_in, fan_out or their average"
+  - "Uniform or normal sampling"
+pitfalls:
+  - "Weights here are shaped (fan_out, fan_in) like PyTorch Linear; swapping the order changes which fan is used"
+  - "Convolution fans include the kernel area, not just channel counts"
+  - "The derivation assumes independent, zero-mean inputs, so it is a heuristic, not a guarantee"
+related: [activation-functions, backpropagation, batch-normalization]
+patterns: ["Gradient-based optimisation"]

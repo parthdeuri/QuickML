@@ -52,9 +52,9 @@ import kotlinx.coroutines.launch
 
 private enum class PatternSection(val label: String) {
     OVERVIEW("Overview"),
-    TEMPLATE("Template"),
+    TEMPLATE("Code sketch"),
     PITFALLS("Pitfalls"),
-    PROBLEMS("Problems")
+    PROBLEMS("Concepts")
 }
 
 /** One card of Patterns mode: Overview · Template · Pitfalls · Problems. */
@@ -216,7 +216,7 @@ private fun TemplateTab(template: String) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Python template",
+                text = "Python sketch",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
@@ -227,7 +227,7 @@ private fun TemplateTab(template: String) {
                 FilledTonalButton(
                     onClick = {
                         clipboard.setText(AnnotatedString(trimmed))
-                        Toast.makeText(context, "Template copied", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Code copied", Toast.LENGTH_SHORT).show()
                     }
                 ) {
                     Icon(
@@ -251,7 +251,7 @@ private fun TemplateTab(template: String) {
         ) {
             if (trimmed.isBlank()) {
                 Text(
-                    text = "No template for this pattern.",
+                    text = "No code sketch for this family.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(16.dp)
@@ -321,7 +321,7 @@ private fun ProblemsTab(problems: List<PatternProblemRow>, onOpenProblem: (Strin
     ) {
         if (problems.isEmpty()) {
             Text(
-                text = "No linked problems yet.",
+                text = "No linked concepts yet.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(8.dp)

@@ -69,3 +69,4 @@ interview_qa:
   - q: "How does MAP differ from MLE?"
     a: "MAP maximises likelihood times a prior, which adds a regulariser; with a flat prior they coincide."
 related: [bayes-theorem, logistic-regression, entropy-kl-divergence]
+patterns: ["Probabilistic models", "Information-theoretic losses"]

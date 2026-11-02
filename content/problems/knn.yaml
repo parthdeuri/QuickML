@@ -63,3 +63,4 @@ interview_qa:
   - q: "Why does it struggle in high dimensions?"
     a: "Distances between random points concentrate, so the nearest neighbour is barely closer than the farthest and the vote becomes uninformative."
 related: [k-means, logistic-regression]
+patterns: ["Distance and clustering"]

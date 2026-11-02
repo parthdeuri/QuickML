@@ -1,0 +1,78 @@
+slug: multi-head-attention
+title: Multi-Head Attention
+url: https://docs.pytorch.org/docs/stable/generated/torch.nn.MultiheadAttention.html
+difficulty: Hard
+area: NLP
+topics: [Transformers, Attention, Sequence Models]
+summary: |
+  Run several attention operations in parallel on lower-dimensional
+  slices of the projections, then concatenate and mix their outputs.
+intuition: |
+  One attention head produces a single weighting over tokens, so it must
+  pick one notion of relevance. Splitting the width into several heads
+  lets each attend with its own pattern, for example nearby words in one
+  and a matching subject in another, at about the same total cost as one
+  full-width head.
+approach:
+  - "Project X with Wq, Wk, Wv at full width — one matmul serves all heads"
+  - "Reshape the width into h heads of size d/h — each head works in its own subspace"
+  - "Compute scaled dot-product attention per head — separate attention patterns"
+  - "Concatenate head outputs back to width d — gathers what each head found"
+  - "Apply the output projection Wo — mixes information across heads"
+code: |
+  import numpy as np
+
+  def softmax(s):
+      e = np.exp(s - s.max(axis=-1, keepdims=True))
+      return e / e.sum(axis=-1, keepdims=True)
+
+  def multi_head_attention(X, Wq, Wk, Wv, Wo, h):
+      T, d = X.shape
+      dh = d // h
+      def split(M):
+          return (X @ M).reshape(T, h, dh).transpose(1, 0, 2)
+      Q, K, V = split(Wq), split(Wk), split(Wv)
+      A = softmax(Q @ K.transpose(0, 2, 1) / np.sqrt(dh))
+      heads = A @ V
+      return heads.transpose(1, 0, 2).reshape(T, d) @ Wo, A
+key_lines: [11, 13, 14]
+time: "O(T²·d + T·d²) for length T and width d"
+space: "O(h·T²) for the attention maps"
+when_to_use: |
+  Transformer encoders and decoders, and whenever one attention pattern
+  is too limiting, such as language, vision transformers and multimodal
+  models.
+when_not_to_use: |
+  Very long sequences where quadratic cost dominates, or tiny models
+  where extra heads add little. Heads can also be redundant, so more is
+  not always better.
+why_it_works: |
+  Each head projects into a lower-dimensional subspace, so different
+  heads can learn different query-key similarities and attend to
+  different positions at once. The output projection then recombines
+  them, giving a richer function than a single softmax average while the
+  total parameter count stays comparable to a single full-width head.
+math:
+  - "Q = XW_q,  K = XW_k,  V = XW_v   (T × d)"
+  - "Split width: d = h · d_h; head k uses columns k·d_h … (k+1)·d_h − 1"
+  - "Aₖ = softmax(Qₖ Kₖᵀ / √d_h)"
+  - "headₖ = Aₖ Vₖ"
+  - "Output = concat(head₁ … head_h) · W_o"
+interview_qa:
+  - q: "Why use multiple heads instead of one large head?"
+    a: "Each head can learn a different attention pattern in its own subspace, which a single softmax over all positions cannot express."
+  - q: "How does the cost compare with single-head attention?"
+    a: "Per-head width shrinks as d/h, so the total score computation is about the same as one full-width head; extra cost is the output projection."
+  - q: "Why is the output projection needed?"
+    a: "Concatenated heads are just side by side; Wo mixes information across heads and maps back to the model width."
+hyperparameters:
+  - "Number of heads h (must divide d here)"
+  - "Model width d"
+  - "Attention dropout"
+  - "Causal masking on or off"
+pitfalls:
+  - "d must be divisible by h, otherwise the reshape fails"
+  - "This code has no biases, masking or dropout; PyTorch adds biases by default"
+  - "Reshape and transpose order matters; a wrong order still runs but mixes heads"
+related: [self-attention, positional-encoding, layer-normalization]
+patterns: ["Attention and sequences"]

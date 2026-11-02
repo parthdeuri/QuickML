@@ -80,3 +80,4 @@ interview_qa:
   - q: "What is the kernel trick?"
     a: "The dual problem uses only dot products xᵢ·xⱼ, so replacing them with a kernel k(xᵢ, xⱼ) gives a linear margin in an implicit high-dimensional space without computing it."
 related: [logistic-regression, gradient-descent, softmax-cross-entropy]
+patterns: ["Linear models"]

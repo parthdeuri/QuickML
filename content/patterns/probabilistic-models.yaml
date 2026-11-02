@@ -1,0 +1,33 @@
+id: probabilistic-models
+name: Probabilistic models
+order: 5
+summary: Model the data distribution explicitly and reason with Bayes rule and likelihoods.
+when_to_use:
+- You need calibrated uncertainty, not only a label.
+- Data is scarce and a sensible prior helps.
+- A latent structure (clusters, classes) generates the data.
+key_idea: Write down how the data could have been generated, then fit parameters
+  by maximising likelihood or computing a posterior. Naive Bayes, Gaussian mixtures
+  and logistic regression are all this idea with different assumptions.
+template: |
+  import numpy as np
+
+  def gaussian_logpdf(x, mu, var):
+      return -0.5 * (np.log(2 * np.pi * var) + (x - mu) ** 2 / var)
+
+  def posterior(log_prior, log_lik):
+      s = log_prior + log_lik
+      s -= s.max()                      # stabilise
+      p = np.exp(s)
+      return p / p.sum()
+complexity: Usually O(n·d·k) for k components or classes.
+pitfalls:
+- Wrong independence assumptions give overconfident probabilities.
+- Work in log space to avoid underflow.
+problems:
+- naive-bayes
+- bayes-theorem
+- maximum-likelihood
+- gaussian-mixture-em
+aliases:
+- Probabilistic models

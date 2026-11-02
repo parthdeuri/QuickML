@@ -1,0 +1,71 @@
+slug: max-pooling
+title: Max Pooling
+url: https://docs.pytorch.org/docs/stable/generated/torch.nn.MaxPool2d.html
+difficulty: Easy
+area: Vision
+topics: [CNN, Downsampling, Translation Invariance]
+summary: |
+  Slide a small window over a feature map and keep only the maximum in
+  each window, shrinking the map while keeping the strongest responses.
+intuition: |
+  A feature detector fires strongly where its pattern appears. Taking
+  the maximum over a neighbourhood keeps that "it is here somewhere"
+  signal while discarding the exact position, which gives a little
+  tolerance to small shifts and cuts the size of later layers.
+approach:
+  - "Choose a window size k and stride — together they set the output size"
+  - "Compute the output size as ⌊(H − k) / stride⌋ + 1 — only full windows are used"
+  - "For each output cell, slice the matching k × k window — each window is independent"
+  - "Take the maximum of the window — keeps the strongest activation"
+code: |
+  import numpy as np
+
+  def max_pool2d(x, k=2, stride=2):
+      H, W = x.shape
+      oh, ow = (H - k) // stride + 1, (W - k) // stride + 1
+      out = np.empty((oh, ow))
+      for i in range(oh):
+          for j in range(ow):
+              r, c = i * stride, j * stride
+              out[i, j] = x[r:r + k, c:c + k].max()
+      return out
+key_lines: [5, 9, 10]
+time: "O(H·W) when windows do not overlap; O(oh·ow·k²) in general"
+space: "O(oh·ow) for the output"
+when_to_use: |
+  Downsampling feature maps in convolutional networks when you want
+  small shift tolerance and a cheaper next layer, especially with
+  detection-like features where a strong response matters.
+when_not_to_use: |
+  Tasks needing precise positions, such as segmentation or keypoints,
+  where strided convolutions or learned upsampling retain more. Many
+  modern networks replace pooling with strided convolution.
+why_it_works: |
+  The max is a cheap, parameter-free summary that keeps the strongest
+  evidence in each region, so a feature shifted slightly within its
+  window gives the same output. During backpropagation the gradient is
+  routed only to the position that held the maximum, which acts like a
+  sparse selection of the most responsive units.
+math:
+  - "out[i, j] = max over (u, v) in window of x[i·s + u, j·s + v]"
+  - "u, v range over 0 … k − 1,  s = stride"
+  - "Output size: ⌊(H − k) / s⌋ + 1  (no padding)"
+  - "Backward: gradient goes only to the arg-max position of each window"
+interview_qa:
+  - q: "What invariance does max pooling give?"
+    a: "Small local translations leave the output unchanged as long as the maximum stays inside the window; it is only approximate, not full invariance."
+  - q: "How is the gradient computed through max pooling?"
+    a: "Each output's gradient flows to the input position that held the maximum and is zero for the rest of the window."
+  - q: "Max pooling versus average pooling?"
+    a: "Max keeps the strongest activation and suits sparse feature detectors; average keeps the overall level and smooths."
+hyperparameters:
+  - "Window size k"
+  - "Stride"
+  - "Padding"
+  - "Dilation"
+pitfalls:
+  - "This code handles one channel, no padding and no dilation; real layers apply it per channel and batch item"
+  - "Leftover rows or columns that do not fill a window are dropped (floor mode)"
+  - "Ties in the maximum need a rule for gradient routing in backward"
+related: [convolution-2d, activation-functions, dropout]
+patterns: ["Convolution and vision"]

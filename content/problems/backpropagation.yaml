@@ -79,3 +79,4 @@ interview_qa:
   - q: "How do you check a backprop implementation?"
     a: "Compare against a finite-difference gradient or an autograd framework on a small random problem."
 related: [gradient-descent, mlp-forward-pass, activation-functions]
+patterns: ["Gradient-based optimisation"]

@@ -1,0 +1,29 @@
+id: network-building-blocks
+name: Network building blocks
+order: 13
+summary: The small differentiable pieces every neural network is assembled from.
+when_to_use:
+- You are designing or debugging a feed-forward network.
+- Gradients vanish or explode as depth grows.
+- You need non-linearity between linear layers.
+key_idea: A network is linear maps separated by non-linearities. Activations decide
+  what gradients survive, and residual connections give the gradient a shortcut
+  so depth stops hurting.
+template: |
+  import numpy as np
+
+  def relu(x):
+      return np.maximum(0, x)
+
+  def block(x, W, b):
+      return x + relu(x @ W + b)          # residual connection
+complexity: O(width²) per dense layer.
+pitfalls:
+- Without a non-linearity stacked layers collapse to one linear map.
+- Saturating activations such as sigmoid kill gradients in deep stacks.
+problems:
+- activation-functions
+- mlp-forward-pass
+- residual-connections
+aliases:
+- Network building blocks

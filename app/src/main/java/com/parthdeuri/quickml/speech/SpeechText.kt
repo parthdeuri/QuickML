@@ -1,5 +1,7 @@
 package com.parthdeuri.quickml.speech
 
+import com.parthdeuri.quickml.ui.common.stripMath
+
 /** What the Intuition tab reads: "When not to use. … Key insight. … Why it works. …". */
 fun intuitionSpeech(bruteForce: String?, insight: String, whyItWorks: String?): String {
     val parts = ArrayList<String>()
@@ -81,7 +83,7 @@ private val SpaceBeforePunctuation = Regex(" +([,.;:?!])")
 
 /** Turns symbols the TTS engine reads badly into words ("O(n)" → "O of n", "≤" → "at most"). */
 fun cleanForSpeech(text: String): String {
-    var s = speakBigO(text)
+    var s = speakBigO(stripMath(text))
     for ((target, replacement) in Replacements) {
         s = s.replace(target, replacement)
     }

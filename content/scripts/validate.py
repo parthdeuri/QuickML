@@ -67,6 +67,37 @@ def _is_text(v):
     return isinstance(v, str) and v.strip() != ""
 
 
+
+def _strings(v):
+    if isinstance(v, str):
+        yield v
+    elif isinstance(v, list):
+        for x in v:
+            yield from _strings(x)
+    elif isinstance(v, dict):
+        for x in v.values():
+            yield from _strings(x)
+
+
+try:  # optional: CI may not have matplotlib; the local run does
+    from matplotlib import mathtext as _mathtext
+except Exception:  # pragma: no cover
+    _mathtext = None
+
+
+def _check_inline_math(text, where, err):
+    """Formulas are written $...$; they must pair up and parse (matplotlib mathtext subset)."""
+    if text.count("$") % 2:
+        err(f"{where}: unbalanced $ in: {text[:60]}")
+        return
+    if _mathtext is None:
+        return
+    for seg in re.findall(r"\$([^$]+)\$", text):
+        try:
+            _mathtext.MathTextParser("path").parse("$" + seg + "$")
+        except Exception as e:
+            err(f"{where}: formula does not parse ({str(e).splitlines()[0][:80]}): {seg[:60]}")
+
 def _is_text_list(v):
     return isinstance(v, list) and all(_is_text(x) for x in v)
 
@@ -246,6 +277,13 @@ def check_problem(path, p, errors, warnings):
             for theme in ("light", "dark"):
                 if not (MATH_DIR / f"{slug}_{theme}.png").exists():
                     err(f"math image missing: {slug}_{theme}.png (run make_math.py)")
+
+    for key, val in p.items():
+        if key in ("code", "math", "math_tex", "key_lines", "diagram", "template"):
+            continue
+        for text in _strings(val):
+            if "$" in text:
+                _check_inline_math(text, f"'{key}'", err)
 
     # Full vs metadata-only: all or nothing.
     full_keys = CONTENT_KEYS + DETAIL_KEYS + EXPLAIN_KEYS

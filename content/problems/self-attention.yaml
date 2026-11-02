@@ -17,7 +17,7 @@ intuition: |
 why_it_works: |
   Content-based weights let the model decide at run time which tokens
   matter to each other, and a single layer connects all pairs, so long
-  range dependencies need no recurrence. Dividing scores by √d keeps
+  range dependencies need no recurrence. Dividing scores by $\sqrt{d}$ keeps
   their variance from growing with dimension, which would otherwise
   push softmax into saturated regions with tiny gradients.
 when_to_use: |
@@ -35,11 +35,11 @@ math:
   - "A = softmax(S) row-wise"
   - "Output = A·V"
 approach:
-  - "Project X into queries, keys and values — separate roles for asking, matching and contributing"
-  - "Compute scores QKᵀ and divide by √d_k — similarity of every pair, scaled to keep softmax healthy"
-  - "Mask future positions with −∞ if causal — stops a token from seeing what it must predict"
+  - "Project $X$ into queries, keys and values — separate roles for asking, matching and contributing"
+  - "Compute scores $QK^{\\top}$ and divide by $\\sqrt{d_k}$ — similarity of every pair, scaled to keep softmax healthy"
+  - "Mask future positions with $-\\infty$ if causal — stops a token from seeing what it must predict"
   - "Softmax each row — turns scores into weights that sum to one"
-  - "Multiply the weights by V — each output is a weighted average of values"
+  - "Multiply the weights by $V$ — each output is a weighted average of values"
 code: |
   import numpy as np
 
@@ -59,22 +59,22 @@ key_lines: [9, 12, 13]
 time: "O(T²·d) for sequence length T and width d"
 space: "O(T²) for the attention matrix"
 hyperparameters:
-  - "Key/query dimension d_k (sets the scale √d_k)"
+  - "Key/query dimension $d_k$ (sets the scale $\\sqrt{d_k}$)"
   - "Number of heads (this code is one head)"
   - "Causal masking on or off"
   - "Attention dropout"
 pitfalls:
-  - "Forgetting the √d_k scaling saturates the softmax"
-  - "A fully masked row gives NaN with −∞; causal masks always keep the diagonal"
+  - "Forgetting the $\\sqrt{d_k}$ scaling saturates the softmax"
+  - "A fully masked row gives NaN with $-\\infty$; causal masks always keep the diagonal"
   - "Without positional encodings the layer is permutation-equivariant"
   - "Quadratic memory limits sequence length"
 interview_qa:
-  - q: "Why divide by √d_k?"
-    a: "Dot products of d_k-dimensional vectors have variance growing with d_k; scaling keeps scores in a range where softmax gradients stay useful."
+  - q: "Why divide by $\\sqrt{d_k}$?"
+    a: "Dot products of $d_k$-dimensional vectors have variance growing with $d_k$; scaling keeps scores in a range where softmax gradients stay useful."
   - q: "What is the difference between self- and cross-attention?"
     a: "In self-attention queries, keys and values come from the same sequence; in cross-attention queries come from one sequence and keys and values from another."
   - q: "Why does a decoder need a causal mask?"
-    a: "So position i attends only to positions up to i, which keeps training consistent with left-to-right generation."
+    a: "So position $i$ attends only to positions up to $i$, which keeps training consistent with left-to-right generation."
 related: [softmax-cross-entropy, mlp-forward-pass, backpropagation]
 diagram: self-attention
 patterns: ["Attention and sequences"]

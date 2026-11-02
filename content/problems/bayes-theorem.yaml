@@ -15,7 +15,7 @@ intuition: |
   multiplies the odds by its likelihood ratio.
 why_it_works: |
   It is just the definition of conditional probability written both ways:
-  P(H, E) = P(E | H) P(H) = P(H | E) P(E). Dividing by P(E), which is the
+  $P(H,E) = P(E\,|\,H)\,P(H) = P(H\,|\,E)\,P(E)$. Dividing by $P(E)$, which is the
   sum of the joint over all hypotheses, makes the posteriors add up to one.
 when_to_use: |
   Combining prior knowledge with data: diagnostic tests, spam filters,
@@ -33,7 +33,7 @@ math:
 approach:
   - "List the hypotheses with their priors — the starting belief"
   - "Multiply each prior by the likelihood of the evidence — joint probability per hypothesis"
-  - "Sum the joints to get the evidence P(E) — the normalising constant"
+  - "Sum the joints to get the evidence $P(E)$ — the normalising constant"
   - "Divide each joint by the sum — posteriors now add to one"
   - "Feed the posterior in as the next prior — handles independent evidence in sequence"
 code: |

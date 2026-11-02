@@ -91,4 +91,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     implementation(libs.androidx.work.runtime.ktx)
+
+    // Typesets LaTeX written between dollar signs in card text (MathText).
+    implementation("ru.noties:jlatexmath-android:0.2.0")
 }

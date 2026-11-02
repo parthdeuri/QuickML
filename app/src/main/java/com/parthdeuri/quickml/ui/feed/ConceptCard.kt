@@ -99,6 +99,7 @@ import com.parthdeuri.quickml.domain.srs.Sm2Scheduler
 import com.parthdeuri.quickml.domain.srs.formatInterval
 import com.parthdeuri.quickml.domain.srs.label
 import com.parthdeuri.quickml.speech.LocalSpeaker
+import com.parthdeuri.quickml.ui.common.MathText
 import com.parthdeuri.quickml.speech.approachSpeech
 import com.parthdeuri.quickml.speech.intuitionSpeech
 import com.parthdeuri.quickml.ui.common.SolutionEditorDialog
@@ -826,21 +827,21 @@ private fun ConceptSection(
         }
         if (description != null) {
             if (summary != null) {
-                Text(
+                MathText(
                     text = summary,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             SectionHeading("When to use")
-            Text(
+            MathText(
                 text = description.trim(),
                 style = MaterialTheme.typography.bodyLarge,
                 lineHeight = 26.sp
             )
         } else if (summary != null) {
             if (item.isFull) SectionHeading("Concept")
-            Text(
+            MathText(
                 text = summary,
                 style = MaterialTheme.typography.bodyLarge,
                 lineHeight = 26.sp
@@ -869,7 +870,7 @@ private fun ConceptSection(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text(
+                        MathText(
                             text = constraint,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -951,7 +952,7 @@ private fun ExampleCard(number: Int, example: ExampleJson) {
         MonoLine(label = "Q", value = example.input)
         MonoLine(label = "A", value = example.output)
         if (example.explanation.isNotBlank()) {
-            Text(
+            MathText(
                 text = example.explanation.trim(),
                 style = MaterialTheme.typography.bodyMedium,
                 lineHeight = 22.sp
@@ -969,24 +970,34 @@ private fun MonoLine(label: String, value: String) {
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        val hasMath = value.contains('$')
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(8.dp))
                 .background(code.background)
-                .horizontalScroll(rememberScrollState())
+                .then(if (hasMath) Modifier else Modifier.horizontalScroll(rememberScrollState()))
                 .padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
-            Text(
-                text = value,
-                style = TextStyle(
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp
-                ),
-                color = code.text,
-                softWrap = false
-            )
+            if (hasMath) {
+                // Formulas need real typesetting and normal wrapping, not a one-line mono box.
+                MathText(
+                    text = value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = code.text
+                )
+            } else {
+                Text(
+                    text = value,
+                    style = TextStyle(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    ),
+                    color = code.text,
+                    softWrap = false
+                )
+            }
         }
     }
 }
@@ -1045,7 +1056,7 @@ private fun IntuitionSection(
         }
         if (plain) {
             insight.split("\n\n").filter { it.isNotBlank() }.forEach { paragraph ->
-                Text(
+                MathText(
                     text = paragraph.trim(),
                     style = MaterialTheme.typography.bodyLarge,
                     lineHeight = 26.sp
@@ -1109,7 +1120,7 @@ private fun ExplanationBlock(title: String, body: String, titleColor: Color, bac
             color = titleColor
         )
         body.split("\n\n").filter { it.isNotBlank() }.forEach { paragraph ->
-            Text(
+            MathText(
                 text = paragraph.trim(),
                 style = MaterialTheme.typography.bodyLarge,
                 lineHeight = 26.sp
@@ -1262,7 +1273,7 @@ private fun ApproachSection(
                     )
                 }
                 Spacer(Modifier.width(12.dp))
-                Text(
+                MathText(
                     text = step,
                     style = MaterialTheme.typography.bodyLarge,
                     lineHeight = 24.sp,
@@ -1634,7 +1645,7 @@ private fun EdgeSection(
                         style = MaterialTheme.typography.bodyLarge
                     )
                     Spacer(Modifier.width(10.dp))
-                    Text(
+                    MathText(
                         text = edge,
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.weight(1f)

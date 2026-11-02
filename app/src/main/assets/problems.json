@@ -1,5 +1,5 @@
 {
- "contentVersion": 7,
+ "contentVersion": 8,
  "problems": [
   {
    "slug": "ab-test-significance",
@@ -262,13 +262,13 @@
    "summary": "Gradient descent that keeps running averages of the gradient and its square, and scales each parameter's step by the inverse of the gradient's recent size.",
    "bruteForce": "Plain SGD with momentum can generalise better on some vision tasks, and when weight decay is wanted, prefer AdamW, which decouples decay from the adaptive step.",
    "intuition": "The first moment smooths noisy gradients like momentum, while the second moment gives each parameter its own step size, so weights with small gradients take larger steps and volatile ones take smaller steps. Bias correction fixes the zero start of the averages so the first steps are not artificially small.",
-   "whyItWorks": "Dividing by the root of the second moment makes the update roughly scale-invariant to the gradient magnitude, so one learning rate works across layers with very different gradient sizes. The averages start at zero and are therefore biased low early on; dividing by (1 − βᵗ) removes that bias.",
+   "whyItWorks": "Dividing by the root of the second moment makes the update roughly scale-invariant to the gradient magnitude, so one learning rate works across layers with very different gradient sizes. The averages start at zero and are therefore biased low early on; dividing by $(1-\\beta^t)$ removes that bias.",
    "approach": [
-    "Keep m, v (zeros) and a step counter t per parameter — the state that makes steps adaptive",
-    "Update m as a moving average of the gradient — smooths direction like momentum",
-    "Update v as a moving average of the squared gradient — tracks per-parameter scale",
-    "Bias-correct both with 1 − βᵗ — undoes the zero initialisation",
-    "Step by η·m̂ / (√v̂ + ε) — a normalised step whose size is roughly η"
+    "Keep $m$, $v$ (zeros) and a step counter $t$ per parameter — the state that makes steps adaptive",
+    "Update $m$ as a moving average of the gradient — smooths direction like momentum",
+    "Update $v$ as a moving average of the squared gradient — tracks per-parameter scale",
+    "Bias-correct both with $1-\\beta^t$ — undoes the zero initialisation",
+    "Step by $\\eta\\,\\hat{m}/(\\sqrt{\\hat{v}}+\\epsilon)$ — a normalised step whose size is roughly η"
    ],
    "time": "O(d) per step for d parameters",
    "space": "O(d) extra, two moment buffers the size of the parameters",
@@ -288,13 +288,13 @@
    "description": "Default optimiser for deep networks, transformers and problems with sparse or noisy gradients, where it needs little tuning.",
    "examples": [
     {
-     "input": "What do m and v represent?",
-     "output": "m is an exponential average of gradients (momentum) and v is an exponential average of squared gradients (per-parameter scale).",
+     "input": "What do $m$ and $v$ represent?",
+     "output": "$m$ is an exponential average of gradients (momentum) and $v$ is an exponential average of squared gradients (per-parameter scale).",
      "explanation": ""
     },
     {
      "input": "Why bias correction?",
-     "output": "m and v start at zero, so early averages are biased toward zero; dividing by 1 − βᵗ rescales them.",
+     "output": "m and v start at zero, so early averages are biased toward zero; dividing by $1-\\beta^t$ rescales them.",
      "explanation": ""
     },
     {
@@ -304,10 +304,10 @@
     }
    ],
    "constraints": [
-    "Learning rate η",
-    "β₁ (decay of the gradient average)",
-    "β₂ (decay of the squared-gradient average)",
-    "ε (numerical floor in the denominator)"
+    "Learning rate $\\eta$",
+    "$\\beta_1$ (decay of the gradient average)",
+    "$\\beta_2$ (decay of the squared-gradient average)",
+    "$\\epsilon$ (numerical floor in the denominator)"
    ],
    "edgeCases": [
     "Skipping bias correction makes early steps too small",
@@ -820,11 +820,11 @@
    "summary": "Update a prior belief about a hypothesis into a posterior after seeing evidence, by weighting each hypothesis by how well it predicted the data.",
    "bruteForce": "Be careful when the prior is unknown or contested, when the evidence items are not conditionally independent, or when the hypothesis space is too large to normalise exactly (use sampling or variational methods).",
    "intuition": "The posterior is the prior reweighted by the likelihood and then renormalised. A rare condition stays unlikely after a positive test unless the test is very specific, because most positives still come from the large healthy group. Think in terms of odds: each piece of evidence multiplies the odds by its likelihood ratio.",
-   "whyItWorks": "It is just the definition of conditional probability written both ways: P(H, E) = P(E | H) P(H) = P(H | E) P(E). Dividing by P(E), which is the sum of the joint over all hypotheses, makes the posteriors add up to one.",
+   "whyItWorks": "It is just the definition of conditional probability written both ways: $P(H,E) = P(E\\,|\\,H)\\,P(H) = P(H\\,|\\,E)\\,P(E)$. Dividing by $P(E)$, which is the sum of the joint over all hypotheses, makes the posteriors add up to one.",
    "approach": [
     "List the hypotheses with their priors — the starting belief",
     "Multiply each prior by the likelihood of the evidence — joint probability per hypothesis",
-    "Sum the joints to get the evidence P(E) — the normalising constant",
+    "Sum the joints to get the evidence $P(E)$ — the normalising constant",
     "Divide each joint by the sum — posteriors now add to one",
     "Feed the posterior in as the next prior — handles independent evidence in sequence"
    ],
@@ -7856,13 +7856,13 @@
    "summary": "Let every token build its output as a weighted average of all tokens' values, with weights from how well its query matches each token's key.",
    "bruteForce": "Cost grows quadratically with sequence length, so very long inputs need sparse, linear or chunked variants. It also has no built-in notion of order and needs positional information.",
    "intuition": "Each token asks a question (query), and every token advertises what it holds (key) and what it would contribute (value). A softmax over query-key similarity turns the match scores into mixing weights, so information moves directly between any two positions in one step, regardless of distance.",
-   "whyItWorks": "Content-based weights let the model decide at run time which tokens matter to each other, and a single layer connects all pairs, so long range dependencies need no recurrence. Dividing scores by √d keeps their variance from growing with dimension, which would otherwise push softmax into saturated regions with tiny gradients.",
+   "whyItWorks": "Content-based weights let the model decide at run time which tokens matter to each other, and a single layer connects all pairs, so long range dependencies need no recurrence. Dividing scores by $\\sqrt{d}$ keeps their variance from growing with dimension, which would otherwise push softmax into saturated regions with tiny gradients.",
    "approach": [
-    "Project X into queries, keys and values — separate roles for asking, matching and contributing",
-    "Compute scores QKᵀ and divide by √d_k — similarity of every pair, scaled to keep softmax healthy",
-    "Mask future positions with −∞ if causal — stops a token from seeing what it must predict",
+    "Project $X$ into queries, keys and values — separate roles for asking, matching and contributing",
+    "Compute scores $QK^{\\top}$ and divide by $\\sqrt{d_k}$ — similarity of every pair, scaled to keep softmax healthy",
+    "Mask future positions with $-\\infty$ if causal — stops a token from seeing what it must predict",
     "Softmax each row — turns scores into weights that sum to one",
-    "Multiply the weights by V — each output is a weighted average of values"
+    "Multiply the weights by $V$ — each output is a weighted average of values"
    ],
    "time": "O(T²·d) for sequence length T and width d",
    "space": "O(T²) for the attention matrix",
@@ -7882,8 +7882,8 @@
    "description": "Language, vision transformers, and any set or sequence where relations between arbitrary positions matter and sequence length is moderate.",
    "examples": [
     {
-     "input": "Why divide by √d_k?",
-     "output": "Dot products of d_k-dimensional vectors have variance growing with d_k; scaling keeps scores in a range where softmax gradients stay useful.",
+     "input": "Why divide by $\\sqrt{d_k}$?",
+     "output": "Dot products of $d_k$-dimensional vectors have variance growing with $d_k$; scaling keeps scores in a range where softmax gradients stay useful.",
      "explanation": ""
     },
     {
@@ -7893,19 +7893,19 @@
     },
     {
      "input": "Why does a decoder need a causal mask?",
-     "output": "So position i attends only to positions up to i, which keeps training consistent with left-to-right generation.",
+     "output": "So position $i$ attends only to positions up to $i$, which keeps training consistent with left-to-right generation.",
      "explanation": ""
     }
    ],
    "constraints": [
-    "Key/query dimension d_k (sets the scale √d_k)",
+    "Key/query dimension $d_k$ (sets the scale $\\sqrt{d_k}$)",
     "Number of heads (this code is one head)",
     "Causal masking on or off",
     "Attention dropout"
    ],
    "edgeCases": [
-    "Forgetting the √d_k scaling saturates the softmax",
-    "A fully masked row gives NaN with −∞; causal masks always keep the diagonal",
+    "Forgetting the $\\sqrt{d_k}$ scaling saturates the softmax",
+    "A fully masked row gives NaN with $-\\infty$; causal masks always keep the diagonal",
     "Without positional encodings the layer is permutation-equivariant",
     "Quadratic memory limits sequence length"
    ],

@@ -19,7 +19,7 @@ why_it_works: |
   scale-invariant to the gradient magnitude, so one learning rate works
   across layers with very different gradient sizes. The averages
   start at zero and are therefore biased low early on; dividing by
-  (1 − βᵗ) removes that bias.
+  $(1-\beta^t)$ removes that bias.
 when_to_use: |
   Default optimiser for deep networks, transformers and problems with
   sparse or noisy gradients, where it needs little tuning.
@@ -34,11 +34,11 @@ math:
   - "w ← w − η · m̂ / (√v̂ + ε)"
   - "Defaults: β₁ = 0.9, β₂ = 0.999, ε = 1e-8"
 approach:
-  - "Keep m, v (zeros) and a step counter t per parameter — the state that makes steps adaptive"
-  - "Update m as a moving average of the gradient — smooths direction like momentum"
-  - "Update v as a moving average of the squared gradient — tracks per-parameter scale"
-  - "Bias-correct both with 1 − βᵗ — undoes the zero initialisation"
-  - "Step by η·m̂ / (√v̂ + ε) — a normalised step whose size is roughly η"
+  - "Keep $m$, $v$ (zeros) and a step counter $t$ per parameter — the state that makes steps adaptive"
+  - "Update $m$ as a moving average of the gradient — smooths direction like momentum"
+  - "Update $v$ as a moving average of the squared gradient — tracks per-parameter scale"
+  - "Bias-correct both with $1-\\beta^t$ — undoes the zero initialisation"
+  - "Step by $\\eta\\,\\hat{m}/(\\sqrt{\\hat{v}}+\\epsilon)$ — a normalised step whose size is roughly η"
 code: |
   import numpy as np
 
@@ -56,20 +56,20 @@ key_lines: [8, 9, 12]
 time: "O(d) per step for d parameters"
 space: "O(d) extra, two moment buffers the size of the parameters"
 hyperparameters:
-  - "Learning rate η"
-  - "β₁ (decay of the gradient average)"
-  - "β₂ (decay of the squared-gradient average)"
-  - "ε (numerical floor in the denominator)"
+  - "Learning rate $\\eta$"
+  - "$\\beta_1$ (decay of the gradient average)"
+  - "$\\beta_2$ (decay of the squared-gradient average)"
+  - "$\\epsilon$ (numerical floor in the denominator)"
 pitfalls:
   - "Skipping bias correction makes early steps too small"
   - "L2 regularisation inside Adam is not true weight decay; use AdamW"
   - "Adam can generalise worse than tuned SGD on some tasks"
   - "Near-zero gradients with a tiny ε can still produce large steps"
 interview_qa:
-  - q: "What do m and v represent?"
-    a: "m is an exponential average of gradients (momentum) and v is an exponential average of squared gradients (per-parameter scale)."
+  - q: "What do $m$ and $v$ represent?"
+    a: "$m$ is an exponential average of gradients (momentum) and $v$ is an exponential average of squared gradients (per-parameter scale)."
   - q: "Why bias correction?"
-    a: "m and v start at zero, so early averages are biased toward zero; dividing by 1 − βᵗ rescales them."
+    a: "m and v start at zero, so early averages are biased toward zero; dividing by $1-\\beta^t$ rescales them."
   - q: "How does AdamW differ from Adam with L2?"
     a: "AdamW applies weight decay directly to the weights instead of adding it to the gradient, so the decay is not rescaled by the adaptive denominator."
 related: [gradient-descent, backpropagation, mlp-forward-pass]

@@ -1,0 +1,89 @@
+slug: ridge-lasso-regularization
+title: Ridge and Lasso Regularization
+url: https://scikit-learn.org/stable/modules/linear_model.html#ridge-regression-and-classification
+difficulty: Medium
+area: Classical ML
+topics: [Regression, Regularization, L1, L2]
+summary: |
+  Add a penalty on the size of the weights to least squares. L2 (ridge)
+  shrinks all weights smoothly and has a closed form; L1 (lasso) also
+  sets some weights exactly to zero and is solved by coordinate descent.
+intuition: |
+  Penalising weight size trades a little bias for a lot less variance, so
+  the fit stops chasing noise or collinear directions. The L1 penalty has
+  a sharp corner at zero, so small coefficients are pushed all the way to
+  zero, while the smooth L2 penalty only shrinks them.
+why_it_works: |
+  Ridge adds λI to XᵀX, which lifts every eigenvalue away from zero, so
+  the system is always solvable and noisy low-variance directions are
+  damped. For lasso, the one-coordinate subproblem has an exact
+  soft-threshold solution: any coordinate whose correlation with the
+  residual is below λ stays at zero.
+when_to_use: |
+  Many or correlated features, or fewer samples than features. Use ridge
+  to stabilise and shrink, and lasso when you also want feature
+  selection.
+when_not_to_use: |
+  Skip them when features are few, independent and data plentiful (plain
+  least squares is fine), or when lasso faces groups of correlated
+  features (it picks one arbitrarily; try elastic net).
+math:
+  - "Ridge: min ‖y − Xw‖² + λ‖w‖₂²"
+  - "w = (XᵀX + λI)⁻¹ Xᵀy  (data centred, bias not penalised)"
+  - "Lasso: min (1/2n)‖y − Xw‖² + λ‖w‖₁"
+  - "Soft(z, λ) = sign(z) · max(|z| − λ, 0)"
+  - "wⱼ ← Soft(xⱼᵀr / n, λ) / (xⱼᵀxⱼ / n)"
+  - "r = y − Σₖ≠ⱼ xₖwₖ  (partial residual)"
+  - "Intercept b = ȳ − x̄ᵀw"
+approach:
+  - "Centre X and y — so the intercept is not penalised"
+  - "Ridge: solve (XᵀX + λI)w = Xᵀy — the added λI makes it well conditioned"
+  - "Lasso: loop over coordinates, removing feature j from the residual — leaves the partial residual"
+  - "Soft-threshold the correlation with that residual — this is the exact 1-D L1 minimiser"
+  - "Put the coordinate back and repeat for several sweeps — convex, so it converges"
+  - "Recover the intercept from the means — to predict on uncentred data"
+code: |
+  import numpy as np
+
+  def ridge(X, y, lam):
+      xm, ym = X.mean(0), y.mean()
+      Xc = X - xm
+      A = Xc.T @ Xc + lam * np.eye(X.shape[1])
+      w = np.linalg.solve(A, Xc.T @ (y - ym))
+      return w, ym - xm @ w
+
+  def soft(z, t):
+      return np.sign(z) * np.maximum(np.abs(z) - t, 0)
+
+  def lasso(X, y, lam, sweeps=500):
+      xm, ym = X.mean(0), y.mean()
+      Xc, r = X - xm, y - ym
+      w = np.zeros(X.shape[1])
+      for _ in range(sweeps):
+          for j in range(len(w)):
+              r += Xc[:, j] * w[j]
+              z = Xc[:, j] @ r / len(r)
+              w[j] = soft(z, lam) / (Xc[:, j] ** 2).mean()
+              r -= Xc[:, j] * w[j]
+      return w, ym - xm @ w
+key_lines: [7, 20, 21]
+time: "Ridge O(n·d² + d³); lasso O(sweeps · n · d)"
+space: "O(d²) for ridge, O(n·d) for lasso"
+hyperparameters:
+  - "λ (alpha) — penalty strength; choose by cross-validation"
+  - "Penalty type — L2 (ridge), L1 (lasso), or a mix (elastic net)"
+  - "Feature scaling — required, since the penalty depends on units"
+  - "Sweeps / tolerance — stopping rule for lasso coordinate descent"
+pitfalls:
+  - "Unscaled features are penalised unevenly, so standardise first"
+  - "Do not penalise the intercept"
+  - "Lasso picks one of several correlated features arbitrarily"
+  - "sklearn's Ridge uses λ‖w‖² on the summed error but Lasso uses 1/(2n); the scales differ"
+interview_qa:
+  - q: "Why does L1 give sparse weights and L2 does not?"
+    a: "The L1 penalty has a corner at zero so the optimum often lands exactly on an axis; L2 has a smooth bowl whose gradient vanishes at zero, so weights shrink but rarely hit zero."
+  - q: "What is the Bayesian view?"
+    a: "Ridge is MAP estimation with a Gaussian prior on the weights; lasso is MAP with a Laplace prior."
+  - q: "How do you choose λ?"
+    a: "Cross-validate over a log-spaced grid and pick the value with the best validation error, or the largest one within one standard error of it."
+related: [linear-regression, logistic-regression, gradient-descent]

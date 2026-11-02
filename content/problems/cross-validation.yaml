@@ -1,0 +1,74 @@
+slug: cross-validation
+title: K-Fold Cross-Validation
+url: https://scikit-learn.org/stable/modules/cross_validation.html
+difficulty: Easy
+area: MLOps
+topics: [Evaluation, Model Selection, Generalisation]
+summary: |
+  Estimate generalisation by splitting the data into k folds, training on
+  k − 1 of them and scoring on the held-out one, rotating through all k.
+intuition: |
+  A single train/validation split wastes data and its score depends on
+  which rows landed where. Rotating the held-out fold means every row is
+  used for validation exactly once and for training k − 1 times, so the
+  averaged score is steadier and the spread shows how fragile it is.
+why_it_works: |
+  Each fold's score is an unbiased-ish estimate of error on unseen data
+  because the model never saw those rows. Averaging k such estimates
+  reduces the variance caused by one lucky or unlucky split. It is slightly
+  pessimistic because each model trains on only a fraction (k − 1)/k of
+  the data.
+when_to_use: |
+  Comparing models or hyperparameters on small to medium datasets when a
+  single hold-out set would be too noisy or too costly in data.
+when_not_to_use: |
+  Skip plain shuffled k-fold for time series (use forward chaining) and
+  grouped data (use group k-fold), and avoid it when one fit is so
+  expensive that k fits are impractical.
+math:
+  - "folds F₁ … F_k partition {1 … n}, sizes differ by at most 1"
+  - "ŵ₋ᵢ = fit(data outside Fᵢ)"
+  - "CV = (1/k) Σᵢ score(ŵ₋ᵢ, Fᵢ)"
+  - "spread = std of the k fold scores"
+approach:
+  - "Shuffle the row indices with a fixed seed — so folds are not ordered by collection time and runs repeat"
+  - "Split the indices into k nearly equal folds — each row lands in exactly one fold"
+  - "For each fold, train on the other k − 1 — the model must never see its validation rows"
+  - "Score the held-out fold — gives one honest estimate per fold"
+  - "Report mean and spread — the spread shows how stable the estimate is"
+code: |
+  import numpy as np
+
+  def kfold_indices(n, k, seed=0):
+      idx = np.random.RandomState(seed).permutation(n)
+      folds = np.array_split(idx, k)
+      for i in range(k):
+          train = np.concatenate(folds[:i] + folds[i + 1:])
+          yield train, folds[i]
+
+  def cross_val_score(fit, score, X, y, k=5, seed=0):
+      out = []
+      for tr, va in kfold_indices(len(X), k, seed):
+          model = fit(X[tr], y[tr])
+          out.append(score(model, X[va], y[va]))
+      return np.array(out)
+key_lines: [7, 13, 14]
+time: "k times the cost of one fit, plus O(n) for the splits"
+space: "O(n) for the index folds"
+hyperparameters:
+  - "Number of folds k (5 or 10 is typical; larger k means less bias and higher cost)"
+  - "Shuffling and random seed"
+  - "Stratification for classification (keeps class ratios per fold)"
+  - "Scoring metric"
+pitfalls:
+  - "Fitting preprocessing (scaler, imputer, feature selection) on all data before splitting leaks into the folds"
+  - "Using the CV score to tune many hyperparameters and then reporting it as final performance overfits to the folds"
+  - "Random folds on time-ordered or grouped data leak the future or the same entity"
+interview_qa:
+  - q: "Why k = 5 or 10 and not leave-one-out?"
+    a: "Leave-one-out has low bias but the n models are highly correlated, so the estimate has high variance and costs n fits; 5 or 10 folds is a good compromise."
+  - q: "Why use stratified k-fold for classification?"
+    a: "It keeps the class proportions in every fold, so rare classes do not vanish from some validation folds."
+  - q: "How do you tune hyperparameters without fooling yourself?"
+    a: "Use nested cross-validation: an inner loop picks hyperparameters and an outer loop scores the whole selection procedure."
+related: [bias-variance-tradeoff, data-leakage]

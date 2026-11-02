@@ -1,0 +1,65 @@
+slug: knn
+title: k-Nearest Neighbours
+url: https://scikit-learn.org/stable/modules/neighbors.html#classification
+difficulty: Easy
+area: Classical ML
+topics: [Classification, Supervised, Instance-based, Distance]
+summary: |
+  Predict a point's label by majority vote among the k closest training
+  points. There is no training step: the data itself is the model.
+intuition: |
+  Nearby points tend to share labels, so instead of learning a boundary
+  you look it up on demand. k sets the smoothness: k = 1 follows every
+  noisy point, while a large k averages so widely that local structure is
+  lost.
+why_it_works: |
+  With enough data, the label distribution among close neighbours
+  approximates the true class probabilities at that point. As n grows and
+  k grows more slowly than n, the vote approaches the Bayes-optimal
+  classifier, and even k = 1 has error at most twice the Bayes error.
+when_to_use: |
+  Small or medium datasets in a few meaningful, scaled dimensions, as a
+  quick non-parametric baseline, or when the boundary is irregular.
+when_not_to_use: |
+  Skip it for large n (each prediction scans all data), high-dimensional
+  data (distances concentrate and lose meaning), or unscaled features.
+math:
+  - "d(a, b)² = ‖a‖² + ‖b‖² − 2 aᵀb"
+  - "Nₖ(x) = indices of the k smallest d(x, xᵢ)"
+  - "ŷ(x) = argmax_c Σ_{i∈Nₖ(x)} 1[yᵢ = c]"
+  - "Weighted vote: wᵢ = 1 / d(x, xᵢ)"
+approach:
+  - "Compute all squared distances via ‖a‖² + ‖b‖² − 2ab — one matrix product, no loops over pairs"
+  - "Sort each row and keep the first k indices — these are the neighbours"
+  - "Look up the neighbours' labels — they are the voters"
+  - "Count votes per class and take the argmax — majority wins, ties go to the lower label"
+code: |
+  import numpy as np
+
+  def predict(Xtr, ytr, Xte, k=5):
+      d = ((Xte ** 2).sum(1)[:, None] + (Xtr ** 2).sum(1)
+           - 2 * Xte @ Xtr.T)
+      idx = np.argsort(d, axis=1)[:, :k]
+      votes = ytr[idx]
+      return np.array([np.bincount(v).argmax() for v in votes])
+key_lines: [4, 5, 6]
+time: "O(n_test · n_train · d) brute force; trees or ANN indexes cut this for low d"
+space: "O(n_train · d) to store the data, O(n_test · n_train) for the distance matrix"
+hyperparameters:
+  - "k — small is low-bias/high-variance, large is smooth; pick by cross-validation"
+  - "Distance metric — Euclidean, Manhattan, cosine"
+  - "Weights — uniform or inverse distance"
+  - "Feature scaling — mandatory, since distance depends on units"
+pitfalls:
+  - "Unscaled features: the largest-range feature decides the neighbours"
+  - "Curse of dimensionality makes all points nearly equidistant"
+  - "Use an odd k for two classes to avoid tied votes"
+  - "Irrelevant features add noise to every distance"
+interview_qa:
+  - q: "How do you choose k?"
+    a: "Cross-validate over odd values; small k overfits noise, large k underfits and blurs class boundaries."
+  - q: "Why must features be scaled?"
+    a: "Euclidean distance mixes units, so a feature with a large numeric range dominates which points count as near."
+  - q: "Why does it struggle in high dimensions?"
+    a: "Distances between random points concentrate, so the nearest neighbour is barely closer than the farthest and the vote becomes uninformative."
+related: [k-means, logistic-regression]

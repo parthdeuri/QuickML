@@ -1,0 +1,69 @@
+slug: gradient-descent
+title: Gradient Descent
+url: https://scikit-learn.org/stable/modules/sgd.html#mathematical-formulation
+difficulty: Easy
+area: Math
+topics: [Optimization, Calculus, Learning Rate]
+summary: |
+  Minimise a differentiable loss by repeatedly stepping the parameters a
+  small distance against the gradient.
+intuition: |
+  The gradient points uphill along the steepest direction, so a small
+  step the opposite way must lower the loss. The learning rate is the
+  whole trade-off: too small and you crawl, too large and you overshoot
+  the valley and bounce or diverge.
+why_it_works: |
+  Near any point the loss looks like a tilted plane, so moving against
+  the gradient lowers it to first order. If the step is below 2/L, where
+  L bounds the curvature, every step decreases a convex loss and the
+  iterates converge to the minimum.
+when_to_use: |
+  Whenever a model has many parameters and a differentiable loss without
+  a closed form: neural nets, logistic regression, large linear models.
+when_not_to_use: |
+  Prefer a closed form or second-order solver for small, well-conditioned
+  problems (like ordinary least squares). It also struggles on badly
+  scaled or non-convex surfaces with saddle points and plateaus.
+math:
+  - "Update: w ← w − η · ∇L(w)"
+  - "Least squares: ∇L = (2/n) · Xᵀ(Xw − y)"
+  - "Converges for convex L with L-Lipschitz gradient if η < 2/L"
+  - "Momentum: v ← βv + ∇L, w ← w − η·v"
+  - "Quadratic with curvature λ: error shrinks by (1 − ηλ) each step"
+approach:
+  - "Write the loss and its gradient — the gradient is the only thing the loop needs"
+  - "Initialise the parameters — any start works for convex losses"
+  - "Step w ← w − η·∇L(w) — moves downhill by an amount set by η"
+  - "Repeat until the gradient is near zero or steps run out — that is a stationary point"
+  - "Scale features and tune η — poor scaling forces a tiny stable step"
+code: |
+  import numpy as np
+
+  def descend(grad, w, lr=0.1, steps=500):
+      for _ in range(steps):
+          w = w - lr * grad(w)
+      return w
+
+  def mse_grad(X, y):
+      A = np.c_[np.ones(len(X)), X]
+      return lambda w: 2 / len(A) * A.T @ (A @ w - y)
+key_lines: [5, 10]
+time: "O(steps · n·d) for full-batch least squares"
+space: "O(d) beyond the data"
+hyperparameters:
+  - "Learning rate η (the most important knob)"
+  - "Number of steps or a tolerance on the gradient norm"
+  - "Batch size (full batch, mini-batch or single sample)"
+  - "Momentum β (0 for plain gradient descent)"
+pitfalls:
+  - "A learning rate above the stability limit makes the loss grow instead of shrink"
+  - "Features on very different scales make the loss valley narrow and slow"
+  - "On non-convex losses it can stop at a saddle point or poor local minimum"
+interview_qa:
+  - q: "What happens if the learning rate is too large?"
+    a: "Steps overshoot the minimum, the loss oscillates or diverges."
+  - q: "Batch, mini-batch and stochastic gradient descent: what differs?"
+    a: "Only how many samples estimate the gradient per step: all, a few, or one. Smaller batches are noisier but cheaper per step."
+  - q: "Why does feature scaling help?"
+    a: "It makes the loss surface rounder, so one learning rate suits all directions and convergence is faster."
+related: [linear-regression, logistic-regression]

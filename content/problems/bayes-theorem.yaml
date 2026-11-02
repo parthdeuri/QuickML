@@ -1,0 +1,68 @@
+slug: bayes-theorem
+title: Bayes' Theorem
+url: https://en.wikipedia.org/wiki/Bayes%27_theorem
+difficulty: Easy
+area: Math
+topics: [Probability, Bayesian Inference, Posterior]
+summary: |
+  Update a prior belief about a hypothesis into a posterior after seeing
+  evidence, by weighting each hypothesis by how well it predicted the data.
+intuition: |
+  The posterior is the prior reweighted by the likelihood and then
+  renormalised. A rare condition stays unlikely after a positive test
+  unless the test is very specific, because most positives still come from
+  the large healthy group. Think in terms of odds: each piece of evidence
+  multiplies the odds by its likelihood ratio.
+why_it_works: |
+  It is just the definition of conditional probability written both ways:
+  P(H, E) = P(E | H) P(H) = P(H | E) P(E). Dividing by P(E), which is the
+  sum of the joint over all hypotheses, makes the posteriors add up to one.
+when_to_use: |
+  Combining prior knowledge with data: diagnostic tests, spam filters,
+  Naive Bayes classifiers, and any sequential belief update.
+when_not_to_use: |
+  Be careful when the prior is unknown or contested, when the evidence
+  items are not conditionally independent, or when the hypothesis space is
+  too large to normalise exactly (use sampling or variational methods).
+math:
+  - "P(H | E) = P(E | H) · P(H) / P(E)"
+  - "P(E) = Σ_h P(E | h) · P(h)"
+  - "posterior ∝ likelihood × prior"
+  - "odds(H | E) = odds(H) · P(E | H) / P(E | ¬H)"
+  - "Sequential: posterior after E₁ is the prior for E₂"
+approach:
+  - "List the hypotheses with their priors — the starting belief"
+  - "Multiply each prior by the likelihood of the evidence — joint probability per hypothesis"
+  - "Sum the joints to get the evidence P(E) — the normalising constant"
+  - "Divide each joint by the sum — posteriors now add to one"
+  - "Feed the posterior in as the next prior — handles independent evidence in sequence"
+code: |
+  import numpy as np
+
+  def posterior(prior, lik):
+      joint = np.asarray(prior) * np.asarray(lik)
+      return joint / joint.sum()
+
+  def update(prior, lik_rows):
+      post = np.asarray(prior, dtype=float)
+      for lik in lik_rows:
+          post = posterior(post, lik)
+      return post
+key_lines: [4, 5, 10]
+time: "O(h) per update for h hypotheses"
+space: "O(h)"
+hyperparameters:
+  - "Prior distribution over hypotheses (flat, informative or empirical)"
+  - "Likelihood model for the evidence"
+pitfalls:
+  - "Ignoring the base rate (prior) and reading the likelihood as the posterior"
+  - "Zero prior or zero likelihood permanently rules a hypothesis out"
+  - "Sequential updating assumes the evidence items are conditionally independent given the hypothesis"
+interview_qa:
+  - q: "A test is accurate, so why can a positive result still mean you probably do not have the disease?"
+    a: "If the disease is rare, the healthy group is so large that its false positives outnumber the true positives; the base rate drives the posterior."
+  - q: "How is Naive Bayes related?"
+    a: "It applies Bayes' theorem with the assumption that features are conditionally independent given the class, so the likelihood is a product."
+  - q: "What is the evidence term for?"
+    a: "It normalises the numerator so the posterior is a proper distribution; it is often only needed up to a constant."
+related: [maximum-likelihood, entropy-kl-divergence]

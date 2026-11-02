@@ -1,0 +1,78 @@
+slug: self-attention
+title: Self-Attention
+url: https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
+difficulty: Hard
+area: NLP
+topics: [Transformers, Attention, Sequence Models]
+summary: |
+  Let every token build its output as a weighted average of all
+  tokens' values, with weights from how well its query matches each
+  token's key.
+intuition: |
+  Each token asks a question (query), and every token advertises what
+  it holds (key) and what it would contribute (value). A softmax over
+  query-key similarity turns the match scores into mixing weights, so
+  information moves directly between any two positions in one step,
+  regardless of distance.
+why_it_works: |
+  Content-based weights let the model decide at run time which tokens
+  matter to each other, and a single layer connects all pairs, so long
+  range dependencies need no recurrence. Dividing scores by √d keeps
+  their variance from growing with dimension, which would otherwise
+  push softmax into saturated regions with tiny gradients.
+when_to_use: |
+  Language, vision transformers, and any set or sequence where
+  relations between arbitrary positions matter and sequence length is
+  moderate.
+when_not_to_use: |
+  Cost grows quadratically with sequence length, so very long inputs
+  need sparse, linear or chunked variants. It also has no built-in
+  notion of order and needs positional information.
+math:
+  - "Q = XW_q,  K = XW_k,  V = XW_v   (X: T × d)"
+  - "S = QKᵀ / √d_k"
+  - "Causal: set S[i, j] = −∞ for j > i"
+  - "A = softmax(S) row-wise"
+  - "Output = A·V"
+approach:
+  - "Project X into queries, keys and values — separate roles for asking, matching and contributing"
+  - "Compute scores QKᵀ and divide by √d_k — similarity of every pair, scaled to keep softmax healthy"
+  - "Mask future positions with −∞ if causal — stops a token from seeing what it must predict"
+  - "Softmax each row — turns scores into weights that sum to one"
+  - "Multiply the weights by V — each output is a weighted average of values"
+code: |
+  import numpy as np
+
+  def softmax(s):
+      e = np.exp(s - s.max(axis=-1, keepdims=True))
+      return e / e.sum(axis=-1, keepdims=True)
+
+  def self_attention(X, Wq, Wk, Wv, causal=False):
+      Q, K, V = X @ Wq, X @ Wk, X @ Wv
+      scores = Q @ K.T / np.sqrt(K.shape[-1])
+      if causal:
+          keep = np.tril(np.ones(scores.shape, dtype=bool))
+          scores = np.where(keep, scores, -np.inf)
+      A = softmax(scores)
+      return A @ V, A
+key_lines: [9, 12, 13]
+time: "O(T²·d) for sequence length T and width d"
+space: "O(T²) for the attention matrix"
+hyperparameters:
+  - "Key/query dimension d_k (sets the scale √d_k)"
+  - "Number of heads (this code is one head)"
+  - "Causal masking on or off"
+  - "Attention dropout"
+pitfalls:
+  - "Forgetting the √d_k scaling saturates the softmax"
+  - "A fully masked row gives NaN with −∞; causal masks always keep the diagonal"
+  - "Without positional encodings the layer is permutation-equivariant"
+  - "Quadratic memory limits sequence length"
+interview_qa:
+  - q: "Why divide by √d_k?"
+    a: "Dot products of d_k-dimensional vectors have variance growing with d_k; scaling keeps scores in a range where softmax gradients stay useful."
+  - q: "What is the difference between self- and cross-attention?"
+    a: "In self-attention queries, keys and values come from the same sequence; in cross-attention queries come from one sequence and keys and values from another."
+  - q: "Why does a decoder need a causal mask?"
+    a: "So position i attends only to positions up to i, which keeps training consistent with left-to-right generation."
+related: [softmax-cross-entropy, mlp-forward-pass, backpropagation]

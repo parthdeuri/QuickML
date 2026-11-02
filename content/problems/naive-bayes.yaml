@@ -1,0 +1,83 @@
+slug: naive-bayes
+title: Gaussian Naive Bayes
+url: https://scikit-learn.org/stable/modules/naive_bayes.html#gaussian-naive-bayes
+difficulty: Easy
+area: Classical ML
+topics: [Classification, Supervised, Probabilistic, Bayes]
+summary: |
+  Classify with Bayes' rule while assuming features are independent given
+  the class. With Gaussian features, training is just a per-class mean,
+  variance and prior.
+intuition: |
+  The independence assumption is wrong almost always, but it turns an
+  impossible joint density into a product of one-dimensional densities,
+  each estimated from a few numbers. Each feature then casts an
+  independent vote, in log space, for every class, and the largest total
+  wins.
+why_it_works: |
+  The classifier only needs the ranking of P(c | x), not calibrated
+  probabilities. Even when correlated features double-count evidence and
+  push the probabilities toward 0 or 1, the argmax is often still right.
+  The model has so few parameters that it has very low variance, so it
+  works well on small data.
+when_to_use: |
+  A fast baseline for small datasets, high-dimensional data and text
+  (multinomial variant), and when you need training and prediction in a
+  single cheap pass.
+when_not_to_use: |
+  Skip it when strongly correlated features carry the signal, when you
+  need trustworthy probabilities, or when class-conditional features are
+  far from Gaussian.
+math:
+  - "P(c | x) ∝ P(c) · Πⱼ P(xⱼ | c)"
+  - "P(xⱼ | c) = N(xⱼ; μ_cj, σ²_cj)"
+  - "log P(xⱼ | c) = −½ log(2π σ²) − (xⱼ − μ)² / (2σ²)"
+  - "Score(c) = log P(c) + Σⱼ log P(xⱼ | c)"
+  - "ŷ = argmax_c Score(c)"
+  - "P(c | x) = softmax over c of Score(c)"
+approach:
+  - "Estimate the class priors from label frequencies — the P(c) term"
+  - "Estimate a mean and variance per class and feature — this fully defines each Gaussian"
+  - "Add a tiny variance floor — avoids division by zero"
+  - "Compute log P(c) plus the sum of per-feature log-densities — logs avoid underflow"
+  - "Subtract the max and exponentiate to normalise — a stable softmax gives probabilities"
+code: |
+  import numpy as np
+
+  def fit(X, y):
+      cs = np.unique(y)
+      prior = np.array([(y == c).mean() for c in cs])
+      mu = np.array([X[y == c].mean(0) for c in cs])
+      var = np.array([X[y == c].var(0) for c in cs])
+      return cs, prior, mu, var + 1e-9 * X.var(0).max()
+
+  def log_joint(model, X):
+      cs, prior, mu, var = model
+      d = (X[:, None, :] - mu) ** 2 / var
+      ll = -0.5 * (np.log(2 * np.pi * var) + d).sum(2)
+      return np.log(prior) + ll
+
+  def predict_proba(model, X):
+      s = log_joint(model, X)
+      p = np.exp(s - s.max(1, keepdims=True))
+      return p / p.sum(1, keepdims=True)
+key_lines: [12, 13, 14]
+time: "O(n·d) to fit, O(k·d) per prediction for k classes"
+space: "O(k·d) for the means and variances"
+hyperparameters:
+  - "var_smoothing — variance floor that stabilises tiny-variance features"
+  - "Priors — learned from data or set manually for imbalanced costs"
+  - "Variant — Gaussian, Multinomial (counts) or Bernoulli (binary)"
+pitfalls:
+  - "Probabilities are over-confident when features are correlated"
+  - "A feature with zero variance in a class needs the smoothing floor"
+  - "Multiplying raw probabilities underflows; always sum logs"
+  - "Discrete variants need Laplace smoothing so unseen values do not zero a class"
+interview_qa:
+  - q: "Why is it called naive?"
+    a: "It assumes features are conditionally independent given the class, which lets the likelihood factorise into per-feature terms."
+  - q: "Why does it work despite the false assumption?"
+    a: "Classification needs only the argmax over classes; correlated evidence distorts the probabilities more than it changes which class is largest."
+  - q: "Naive Bayes vs logistic regression?"
+    a: "Naive Bayes is generative, fits fast and does well on little data; logistic regression is discriminative, handles correlated features better and wins with more data."
+related: [logistic-regression, softmax-cross-entropy]

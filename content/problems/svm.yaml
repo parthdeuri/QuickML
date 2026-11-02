@@ -1,0 +1,82 @@
+slug: svm
+title: Support Vector Machine
+url: https://scikit-learn.org/stable/modules/svm.html#svm-mathematical-formulation
+difficulty: Medium
+area: Classical ML
+topics: [Classification, Supervised, Margin, Hinge Loss]
+summary: |
+  Find the separating hyperplane with the widest margin. The code is a
+  simplified linear soft-margin SVM trained by full-batch sub-gradient
+  descent on the hinge loss; kernels and the dual solver (SMO) are not
+  implemented.
+intuition: |
+  Many hyperplanes separate two classes, but the one farthest from both is
+  least likely to be thrown off by new points. Only the points on or
+  inside the margin matter for the solution (the support vectors), so
+  confidently classified points are simply ignored.
+why_it_works: |
+  The hinge loss max(0, 1 − y·f) is zero for points beyond the margin, so
+  they give no gradient, and the ‖w‖² term maximises the margin 2/‖w‖.
+  The objective is convex, so sub-gradient descent with a decaying step
+  converges to the global optimum, the same one the dual quadratic
+  program finds.
+when_to_use: |
+  Medium-sized, high-dimensional problems (text, genomics) with a clear
+  margin, and with a kernel when the boundary is curved.
+when_not_to_use: |
+  Skip kernel SVMs on very large datasets (training scales badly with n),
+  when you need probabilities directly, or when classes overlap heavily
+  and features are unscaled.
+math:
+  - "f(x) = wᵀx + b,  ŷ = sign f(x),  y ∈ {−1, +1}"
+  - "Margin width = 2 / ‖w‖"
+  - "min ½λ‖w‖² + (1/n) Σ max(0, 1 − yᵢ f(xᵢ))"
+  - "Violators V = {i : yᵢ f(xᵢ) < 1}"
+  - "∂w = λw − (1/n) Σ_{i∈V} yᵢ xᵢ"
+  - "∂b = −(1/n) Σ_{i∈V} yᵢ"
+  - "Step size ηₜ = 1 / (λ(t + 10))"
+  - "Equivalent to sklearn C = 1 / (λ n)"
+approach:
+  - "Encode labels as −1/+1 — so y·f > 0 means correct"
+  - "Find points with y·f(x) < 1 — only margin violators contribute to the gradient"
+  - "Sum their yx terms and add λw — hinge sub-gradient plus margin regulariser"
+  - "Take a step with size 1/(λ(t + 10)) — a decaying step gives convergence"
+  - "Repeat for many iterations — then classify with sign(wᵀx + b)"
+code: |
+  import numpy as np
+
+  def fit(X, y, lam=0.01, iters=3000):
+      # y must be in {-1, +1}
+      w, b = np.zeros(X.shape[1]), 0.0
+      for t in range(1, iters + 1):
+          bad = y * (X @ w + b) < 1
+          gw = lam * w - (y[bad, None] * X[bad]).sum(0) / len(y)
+          gb = -y[bad].sum() / len(y)
+          eta = 1 / (lam * (t + 10))
+          w -= eta * gw
+          b -= eta * gb
+      return w, b
+
+  def predict(w, b, X):
+      return np.sign(X @ w + b)
+key_lines: [7, 8, 11]
+time: "O(iters · n · d) here; kernel SVM solvers are between O(n²) and O(n³)"
+space: "O(n · d) for the data; kernel SVMs also store the support vectors"
+hyperparameters:
+  - "C (or λ = 1/(C·n)) — large C fits training data harder, small C widens the margin"
+  - "kernel — linear, RBF, polynomial"
+  - "gamma — RBF width; large values overfit"
+  - "Feature scaling — required, since the margin is distance-based"
+pitfalls:
+  - "Unscaled features let one large feature dominate the margin"
+  - "Scores are not probabilities; Platt scaling is needed"
+  - "RBF with a large gamma memorises the training set"
+  - "This card's code is linear only and uses sub-gradient descent instead of the dual solver"
+interview_qa:
+  - q: "What are support vectors?"
+    a: "The training points on or inside the margin; they alone determine the hyperplane and removing any other point leaves it unchanged."
+  - q: "What does C control?"
+    a: "The penalty on margin violations: large C tolerates few violations (narrow margin, low bias), small C allows more (wide margin, more regularisation)."
+  - q: "What is the kernel trick?"
+    a: "The dual problem uses only dot products xᵢ·xⱼ, so replacing them with a kernel k(xᵢ, xⱼ) gives a linear margin in an implicit high-dimensional space without computing it."
+related: [logistic-regression, gradient-descent, softmax-cross-entropy]

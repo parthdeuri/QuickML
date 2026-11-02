@@ -1,0 +1,71 @@
+slug: dropout
+title: Dropout
+url: https://docs.pytorch.org/docs/stable/generated/torch.nn.Dropout.html
+difficulty: Easy
+area: Deep Learning
+topics: [Regularisation, Neural Networks, Overfitting]
+summary: |
+  During training, randomly zero each activation with probability p
+  and scale the survivors by 1 / (1 − p); at inference do nothing.
+intuition: |
+  Randomly silencing units stops any neuron from relying on specific
+  partners, so the network must spread useful information across many
+  features. Scaling the survivors at training time keeps the expected
+  activation unchanged, so no adjustment is needed at inference.
+why_it_works: |
+  Each training step samples a different thinned sub-network, so the
+  full network behaves like an average over exponentially many models
+  that share weights, which reduces co-adaptation and overfitting. The
+  1 / (1 − p) factor (inverted dropout) makes the expected output equal
+  the input.
+when_to_use: |
+  Large fully connected layers or models that overfit, and inside
+  transformers on attention and feed-forward outputs.
+when_not_to_use: |
+  Skip it when the model underfits or data is plentiful, and be careful
+  alongside batch norm, where the two interact badly. Always disable it
+  at evaluation.
+math:
+  - "mᵢ ~ Bernoulli(1 − p)  (1 = keep)"
+  - "Train: y = x ⊙ m / (1 − p)"
+  - "E[y] = x  (inverted scaling)"
+  - "Eval: y = x"
+  - "Backward: ∂L/∂x = ∂L/∂y ⊙ m / (1 − p)"
+approach:
+  - "Sample a keep mask with probability 1 − p per element — decides which units survive this step"
+  - "Divide the mask by 1 − p — keeps the expected activation equal to the input"
+  - "Multiply input by the scaled mask — dropped units output zero"
+  - "Reuse the same scaled mask in the backward pass — dropped units must receive zero gradient"
+  - "Return the input unchanged in eval mode — inference is deterministic"
+code: |
+  import numpy as np
+
+  def dropout(x, p, rng, train=True):
+      if not train or p == 0:
+          return x, np.ones_like(x)
+      keep = rng.random(x.shape) >= p
+      mask = keep / (1 - p)
+      return x * mask, mask
+
+  def dropout_backward(d_out, mask):
+      return d_out * mask
+key_lines: [6, 7, 11]
+time: "O(n) for n activations"
+space: "O(n) for the stored mask"
+hyperparameters:
+  - "Drop probability p (higher means stronger regularisation)"
+  - "Where to place it (after which layers)"
+  - "Variant (element-wise dropout, spatial dropout for channels)"
+pitfalls:
+  - "Leaving dropout on at inference makes predictions random"
+  - "Mixing up p (drop probability) with keep probability gives the wrong scale"
+  - "The mask must be reused in backward, not resampled"
+  - "The mask here comes from NumPy's generator, so it cannot match torch's random mask element for element"
+interview_qa:
+  - q: "What is inverted dropout?"
+    a: "Scaling surviving activations by 1 / (1 − p) at training time so the expected output equals the input and inference needs no change."
+  - q: "Why does dropout regularise?"
+    a: "It prevents co-adaptation of units and approximates averaging over many thinned networks."
+  - q: "What happens to gradients of dropped units?"
+    a: "They are zero for that step, because the same mask multiplies the upstream gradient."
+related: [mlp-forward-pass, batch-normalization, backpropagation]

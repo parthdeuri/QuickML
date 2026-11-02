@@ -1,0 +1,72 @@
+slug: k-means
+title: K-Means Clustering
+url: https://scikit-learn.org/stable/modules/clustering.html#k-means
+difficulty: Easy
+area: Classical ML
+topics: [Clustering, Unsupervised, Centroids]
+summary: |
+  Split unlabelled points into k groups by alternating between assigning
+  each point to its nearest centre and moving each centre to the mean of
+  its points.
+intuition: |
+  Each step can only lower the total squared distance to the centres:
+  reassigning a point to a closer centre helps, and the mean is the
+  point that minimises squared distance for a group. Because the loss
+  never rises and there are finitely many partitions, the loop must
+  stop, though only at a local optimum.
+why_it_works: |
+  This is coordinate descent on the within-cluster sum of squares. With
+  centres fixed, the best assignment is nearest-centre; with assignments
+  fixed, the best centre is the mean. Neither half-step increases the
+  objective, so it converges, but the result depends on the start.
+when_to_use: |
+  Quick segmentation of numeric data into roughly round, similarly sized
+  clusters, or as vector quantisation and a cheap preprocessing step.
+when_not_to_use: |
+  Avoid it for elongated, nested or very unequal-density clusters, data
+  with many outliers, or categorical features. You must also choose k in
+  advance.
+math:
+  - "Objective: J = Σᵢ ‖xᵢ − μ_{c(i)}‖²"
+  - "Assign: c(i) = argminⱼ ‖xᵢ − μⱼ‖²"
+  - "Update: μⱼ = mean of {xᵢ : c(i) = j}"
+  - "J never increases, so the loop converges to a local minimum"
+approach:
+  - "Pick k initial centres, for example k random points — they define the starting partition"
+  - "Compute squared distances from every point to every centre — needed for the assignment"
+  - "Assign each point to its nearest centre — minimises J for fixed centres"
+  - "Move each centre to the mean of its points — minimises J for fixed assignments"
+  - "Stop when centres no longer move — the partition is stable"
+code: |
+  import numpy as np
+
+  def kmeans(X, C, iters=100):
+      for _ in range(iters):
+          d = ((X[:, None] - C[None]) ** 2).sum(-1)
+          lab = d.argmin(1)
+          new = np.array([X[lab == j].mean(0) for j in range(len(C))])
+          if np.allclose(new, C):
+              break
+          C = new
+      return C, lab
+key_lines: [5, 6, 7]
+time: "O(iters · n·k·d)"
+space: "O(n·k·d) for the broadcast difference tensor"
+hyperparameters:
+  - "Number of clusters k (choose with elbow or silhouette score)"
+  - "Initialisation (k-means++ is the default and avoids poor starts)"
+  - "Number of restarts n_init (keep the run with the lowest J)"
+  - "Max iterations and tolerance"
+pitfalls:
+  - "Different starts give different local optima; run several restarts"
+  - "Unscaled features let the largest-range feature dominate the distance"
+  - "A cluster can end up empty, making its mean undefined (NaN here)"
+  - "It assumes round clusters of similar size"
+interview_qa:
+  - q: "Does k-means always converge?"
+    a: "Yes to a local minimum, because J never increases and the number of partitions is finite. Not necessarily the global minimum."
+  - q: "How do you choose k?"
+    a: "Common choices are the elbow in J versus k, the silhouette score, or domain needs."
+  - q: "Why use k-means++ initialisation?"
+    a: "It spreads initial centres apart, which gives better and more stable results than purely random starts."
+related: [gradient-descent]

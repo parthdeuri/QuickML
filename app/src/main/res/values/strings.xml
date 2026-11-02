@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">QuickML</string>
+    <string name="widget_label">QuickML — today</string>
+    <string name="widget_description">Problems due today and a problem of the day</string>
+    <string name="widget_due_placeholder">0 due today</string>
+    <string name="widget_potd">Problem of the day</string>
+    <string name="widget_loading">Open QuickML to get started</string>
+    <string name="widget_preview_due">3 due today</string>
+    <string name="widget_preview_title">Longest Substring Without Repeating Characters</string>
+    <string name="widget_preview_difficulty">Medium</string>
+</resources>

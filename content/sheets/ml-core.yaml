@@ -1,0 +1,16 @@
+id: ml-core
+name: ML Core
+description: Core classical machine learning, evaluation and the math behind them.
+sections:
+  - name: Foundations
+    problems: [gradient-descent, bayes-theorem, maximum-likelihood, entropy-kl-divergence]
+  - name: Regression
+    problems: [linear-regression, ridge-lasso-regularization]
+  - name: Classification
+    problems: [logistic-regression, naive-bayes, knn, svm, decision-tree]
+  - name: Ensembles
+    problems: [random-forest, gradient-boosting]
+  - name: Unsupervised
+    problems: [k-means, pca]
+  - name: Evaluation and generalisation
+    problems: [bias-variance-tradeoff, cross-validation, precision-recall-f1, roc-auc, data-leakage]

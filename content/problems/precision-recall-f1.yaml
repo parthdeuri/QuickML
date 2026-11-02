@@ -1,0 +1,77 @@
+slug: precision-recall-f1
+title: Precision, Recall and F1
+url: https://scikit-learn.org/stable/modules/model_evaluation.html#precision-recall-and-f-measures
+difficulty: Easy
+area: MLOps
+topics: [Classification Metrics, Imbalanced Data, Evaluation]
+summary: |
+  Score a binary classifier by how clean its positive predictions are
+  (precision), how many real positives it finds (recall), and their
+  harmonic mean (F1).
+intuition: |
+  Accuracy hides the cost of rare positives, because predicting "negative"
+  everywhere looks great. Precision asks "when I raise an alarm, how often
+  am I right?" and recall asks "of the real events, how many did I catch?".
+  The harmonic mean punishes a lopsided pair, so F1 is high only when both
+  are.
+why_it_works: |
+  All three are ratios of counts from the confusion matrix, and none uses
+  true negatives, so a flood of easy negatives cannot inflate them. The
+  harmonic mean is dominated by the smaller of the two numbers, which is
+  why you cannot buy a good F1 by maximising just one side.
+when_to_use: |
+  Imbalanced problems such as fraud, defect or disease detection, and any
+  time false positives and false negatives have different costs.
+when_not_to_use: |
+  Avoid F1 alone when the two error types have very different costs (use
+  an F-beta or a cost-based metric), or when true negatives matter, or for
+  threshold-free comparison (use ROC-AUC or PR-AUC).
+math:
+  - "precision = TP / (TP + FP)"
+  - "recall = TP / (TP + FN)"
+  - "F1 = 2 · P · R / (P + R)"
+  - "F1 = 2·TP / (2·TP + FP + FN)"
+  - "F_β = (1 + β²) · P · R / (β² · P + R)"
+approach:
+  - "Count TP, FP and FN from predictions and labels — every metric is built from these"
+  - "Precision is TP over predicted positives — it measures false alarms"
+  - "Recall is TP over actual positives — it measures misses"
+  - "Guard zero denominators — a model with no positives would divide by zero"
+  - "F1 is the harmonic mean of the two — it needs both to be good"
+code: |
+  import numpy as np
+
+  def confusion(y, pred):
+      tp = np.sum((pred == 1) & (y == 1))
+      fp = np.sum((pred == 1) & (y == 0))
+      fn = np.sum((pred == 0) & (y == 1))
+      return tp, fp, fn
+
+  def prf1(y, pred):
+      tp, fp, fn = confusion(y, pred)
+      p = tp / (tp + fp) if tp + fp else 0.0
+      r = tp / (tp + fn) if tp + fn else 0.0
+      f1 = 2 * p * r / (p + r) if p + r else 0.0
+      return p, r, f1
+key_lines: [11, 12, 13]
+time: "O(n) to count the confusion matrix"
+space: "O(1) beyond the inputs"
+hyperparameters:
+  - "Decision threshold on the predicted probability (moves the precision-recall trade-off)"
+  - "Averaging for multiclass (macro, micro, weighted)"
+  - "β in F-beta (weights recall over precision when above one)"
+pitfalls:
+  - "Precision and recall are undefined with no predicted or no actual positives; pick an explicit convention"
+  - "Micro, macro and weighted averages tell different stories on imbalanced classes"
+  - "F1 depends on the threshold, so compare models at tuned thresholds"
+  - "Ignores true negatives, which can hide poor performance on the majority class"
+interview_qa:
+  - q: "Why the harmonic mean rather than the arithmetic mean?"
+    a: "The harmonic mean is pulled toward the smaller value, so a model cannot hide a very low recall behind a high precision."
+  - q: "How does raising the threshold move precision and recall?"
+    a: "Fewer samples are called positive, so precision usually rises and recall falls."
+  - q: "When prefer recall over precision?"
+    a: "When misses are costlier than false alarms, such as screening for a serious disease."
+  - q: "Why is accuracy misleading on imbalanced data?"
+    a: "A classifier that always predicts the majority class scores high accuracy while finding no positives."
+related: [roc-auc, logistic-regression]

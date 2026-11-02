@@ -1,0 +1,76 @@
+slug: data-leakage
+title: Data Leakage
+url: https://scikit-learn.org/stable/common_pitfalls.html#data-leakage
+difficulty: Medium
+area: MLOps
+topics: [Evaluation, Preprocessing, Pitfalls]
+summary: |
+  Information from the validation or test data leaks into training, so the
+  measured score looks better than real-world performance.
+intuition: |
+  Anything computed with the test rows, such as scaling statistics,
+  imputation values, selected features or even a duplicated row, lets the
+  model peek at the answer sheet. The rule is simple: every data-dependent
+  step is part of the model, so fit it on the training fold only and merely
+  apply it to held-out data.
+why_it_works: |
+  A fair evaluation simulates deployment, where future data and labels are
+  unseen when the model is built. Fitting a transform on the training split
+  and reusing its parameters mimics that exactly, whereas fitting on all
+  data lets validation rows influence the parameters they are scored with.
+when_to_use: |
+  Audit every pipeline before trusting a metric, especially when the score
+  looks too good, or when preprocessing and feature selection precede the
+  train-test split or cross-validation.
+when_not_to_use: |
+  Not a technique to apply but a failure to avoid. Statistics from the
+  unlabelled target domain are legitimately used in transductive or
+  domain-adaptation setups, if documented as such.
+math:
+  - "Correct: θ̂ = fit(X_train), Z = transform(X; θ̂)"
+  - "Leaky: θ̂ = fit(X_train ∪ X_test)"
+  - "Standardise: z = (x − μ̂) / σ̂, using train μ̂ and σ̂ only"
+  - "Leaky stats shrink the train/test shift, so the test set looks easier"
+approach:
+  - "Split first, before any data-dependent step — the test rows stay unseen"
+  - "Fit scaler, imputer and feature selector on the training rows only — these are part of the model"
+  - "Apply the fitted transform to validation and test rows — same parameters, no refitting"
+  - "Do all of this inside each cross-validation fold — a pipeline object enforces it"
+  - "Check for duplicates, group overlap and target-derived features — other common leaks"
+code: |
+  import numpy as np
+
+  def fit_scaler(X):
+      return X.mean(0), X.std(0)
+
+  def transform(X, stats):
+      mu, sd = stats
+      return (X - mu) / sd
+
+  def split_then_scale(X, n_train):
+      stats = fit_scaler(X[:n_train])
+      tr, te = X[:n_train], X[n_train:]
+      return transform(tr, stats), transform(te, stats)
+
+  def leaky_scale(X, n_train):
+      Z = transform(X, fit_scaler(X))
+      return Z[:n_train], Z[n_train:]
+key_lines: [11, 13, 16]
+time: "O(n·d) for the scaling; the cost is a wrong estimate, not compute"
+space: "O(d) for the fitted statistics"
+hyperparameters:
+  - "Split strategy (random, time-based or grouped) that matches deployment"
+  - "Where preprocessing is fitted (inside each fold with a pipeline)"
+pitfalls:
+  - "Selecting features with the labels on all data before cross-validation inflates scores even on pure noise"
+  - "Random splits of time series let the model train on the future"
+  - "Duplicate or near-duplicate rows (or the same user) in both train and test"
+  - "Features computed after the outcome, such as a status flag set once the event happens"
+interview_qa:
+  - q: "Your model scores very well offline but poorly in production. What do you check first?"
+    a: "Leakage: preprocessing or feature selection fit on all data, target-derived features, duplicates across splits, or a split that ignores time or groups."
+  - q: "How do you prevent preprocessing leakage in cross-validation?"
+    a: "Put the transforms and the model in one pipeline so each fold fits the transforms on its own training part only."
+  - q: "Is scaling before the split really a problem?"
+    a: "It is a mild leak since only means and variances cross over, but selection, imputation and target encoding can leak far more."
+related: [cross-validation, bias-variance-tradeoff]

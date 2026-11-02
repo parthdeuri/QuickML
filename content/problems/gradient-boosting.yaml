@@ -1,0 +1,94 @@
+slug: gradient-boosting
+title: Gradient Boosting
+url: https://scikit-learn.org/stable/modules/ensemble.html#gradient-boosting
+difficulty: Medium
+area: Classical ML
+topics: [Regression, Ensemble, Boosting, Trees]
+summary: |
+  Build a model as a sum of many weak trees, each fitted to the errors the
+  current sum still makes. The code is simplified to squared loss with
+  depth-1 trees (stumps), which is exactly what sklearn does for that
+  setting.
+intuition: |
+  Instead of one big model, keep a running prediction and repeatedly ask
+  "what is still wrong?". For squared loss the answer is just the
+  residuals, so each new small tree learns to correct the leftover error,
+  and a small learning rate makes each correction cautious.
+why_it_works: |
+  Boosting is gradient descent in function space. The residual y − F(x)
+  is the negative gradient of the squared loss with respect to the
+  prediction, so fitting a tree to it moves F downhill on the loss. Swap
+  the loss and the same loop gives classification or robust regression by
+  fitting the new negative gradients instead.
+when_to_use: |
+  Usually the most accurate choice on tabular data, for both regression
+  and classification, when you can afford some tuning.
+when_not_to_use: |
+  Skip it when training must be parallel or tiny, with very noisy labels
+  (it keeps fitting noise without early stopping), or when you need
+  extrapolation.
+math:
+  - "F₀(x) = ȳ  (best constant for squared loss)"
+  - "rᵢ = yᵢ − Fₘ₋₁(xᵢ) = −∂L/∂F  for L = ½(y − F)²"
+  - "hₘ = tree fitted to the residuals r"
+  - "Fₘ(x) = Fₘ₋₁(x) + η · hₘ(x)"
+  - "Stump: h(x) = a if xⱼ ≤ t else b"
+  - "a, b = mean residual on each side of the split"
+  - "Best split maximises (Σ_L r)²/|L| + (Σ_R r)²/|R|"
+approach:
+  - "Start from the mean of y — the best constant prediction"
+  - "Compute residuals y − F — they are the negative gradient of the loss"
+  - "Find the stump that best fits the residuals — sorted cumulative sums score every split at once"
+  - "Add η times the stump to F — a small step avoids overfitting"
+  - "Repeat for M rounds — each round removes more of the remaining error"
+code: |
+  import numpy as np
+
+  def stump(X, r):
+      best, n = (-1, 0, 0, 0, 0), np.arange(1, len(r))
+      for j in range(X.shape[1]):
+          o = np.argsort(X[:, j])
+          x, c = X[o, j], np.cumsum(r[o])
+          sl, sr = c[:-1], c[-1] - c[:-1]
+          score = sl ** 2 / n + sr ** 2 / (len(r) - n)
+          score[x[:-1] == x[1:]] = -1
+          i = score.argmax()
+          if score[i] > best[0]:
+              t, nr = (x[i] + x[i + 1]) / 2, len(r) - n[i]
+              best = (score[i], j, t, sl[i] / n[i], sr[i] / nr)
+      return best[1:]
+
+  def fit(X, y, rounds=50, lr=0.1):
+      pred, stumps = np.full(len(y), y.mean()), []
+      for _ in range(rounds):
+          j, t, a, b = stump(X, y - pred)
+          pred += lr * np.where(X[:, j] <= t, a, b)
+          stumps.append((j, t, a, b))
+      return y.mean(), lr, stumps
+
+  def predict(model, X):
+      f0, lr, stumps = model
+      return f0 + lr * sum(np.where(X[:, j] <= t, a, b)
+                           for j, t, a, b in stumps)
+key_lines: [9, 20, 21]
+time: "O(M · d · n log n) with a sort per feature per round; prediction is O(M)"
+space: "O(M) for the stumps plus O(n) for the running prediction"
+hyperparameters:
+  - "n_estimators M — more rounds fit more; use early stopping"
+  - "learning_rate η — smaller needs more rounds but generalises better"
+  - "max_depth — depth 1 gives additive models, 3-6 allows interactions"
+  - "subsample — fraction of rows per round (stochastic boosting)"
+  - "loss — squared, absolute, Huber, or log-loss for classification"
+pitfalls:
+  - "Too many rounds with a large learning rate overfits; monitor a validation set"
+  - "Boosting is sequential, so it cannot be parallelised across trees"
+  - "Outliers dominate squared-loss residuals; use Huber or absolute loss"
+  - "This card's code is squared loss with stumps only; other losses fit pseudo-residuals instead"
+interview_qa:
+  - q: "Why is it called gradient boosting?"
+    a: "Each tree fits the negative gradient of the loss with respect to the current prediction, so adding it is a gradient descent step in function space."
+  - q: "Bagging vs boosting?"
+    a: "Bagging averages independent deep trees to cut variance; boosting adds shallow trees sequentially to cut bias."
+  - q: "What is the trade-off between learning rate and number of trees?"
+    a: "A smaller rate needs more trees but usually gives better generalisation; tune them together with early stopping."
+related: [decision-tree, random-forest, gradient-descent]

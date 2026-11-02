@@ -1,0 +1,81 @@
+slug: backpropagation
+title: Backpropagation
+url: https://docs.pytorch.org/docs/stable/notes/autograd.html
+difficulty: Medium
+area: Deep Learning
+topics: [Neural Networks, Gradients, Chain Rule]
+summary: |
+  Compute the gradient of the loss with respect to every weight by
+  applying the chain rule backwards, layer by layer, reusing values
+  saved during the forward pass.
+intuition: |
+  Each layer only needs to know how the loss changes with its output;
+  it multiplies that by its own local derivative and hands the result
+  to the layer below. Because the forward activations are cached, one
+  backward sweep costs about the same as one forward pass, instead of
+  one pass per weight.
+why_it_works: |
+  The network is a composition of differentiable functions, so the
+  chain rule factors the total derivative into a product of local
+  Jacobians. Evaluating that product from the loss backwards turns
+  every step into a matrix-vector product, which is far cheaper than
+  forming full Jacobians.
+when_to_use: |
+  Training any differentiable model with gradient-based optimisers; it
+  is what autograd frameworks implement for you.
+when_not_to_use: |
+  Not for non-differentiable operations (hard thresholds, sampling)
+  without a surrogate or estimator, and not when you only need a
+  handful of derivatives of a tiny function, where finite differences
+  or forward mode can be simpler.
+math:
+  - "Forward: a = tanh(XW₁ + b₁), ŷ = aW₂ + b₂"
+  - "Loss: L = mean over all entries of (ŷ − y)²"
+  - "δ₂ = ∂L/∂ŷ = 2(ŷ − y) / (n·k)"
+  - "∂L/∂W₂ = aᵀδ₂,  ∂L/∂b₂ = Σ rows of δ₂"
+  - "δ₁ = (δ₂W₂ᵀ) ⊙ (1 − a²)   (tanh′ = 1 − tanh²)"
+  - "∂L/∂W₁ = Xᵀδ₁,  ∂L/∂b₁ = Σ rows of δ₁"
+approach:
+  - "Run the forward pass and keep the hidden activations — the backward pass needs them"
+  - "Differentiate the loss with respect to the output — this seeds the backward sweep"
+  - "Get the last layer's weight gradient as activationsᵀ times the error — each weight's blame is input times error"
+  - "Push the error through Wᵀ and multiply by the activation derivative — this is the chain rule across a layer"
+  - "Repeat down to the first layer, summing rows for biases — every parameter receives its gradient"
+code: |
+  import numpy as np
+
+  def forward(p, X):
+      h = np.tanh(X @ p["W1"] + p["b1"])
+      return h, h @ p["W2"] + p["b2"]
+
+  def loss_and_grads(p, X, y):
+      h, out = forward(p, X)
+      loss = ((out - y) ** 2).mean()
+      d_out = 2 * (out - y) / out.size
+      g = {"W2": h.T @ d_out, "b2": d_out.sum(axis=0)}
+      d_h = d_out @ p["W2"].T
+      d_pre = d_h * (1 - h ** 2)
+      g["W1"] = X.T @ d_pre
+      g["b1"] = d_pre.sum(axis=0)
+      return loss, g
+key_lines: [10, 12, 13]
+time: "O(parameters × batch size), about the cost of the forward pass"
+space: "O(activations) to cache layer outputs for the backward pass"
+hyperparameters:
+  - "Loss function (sets the starting error signal δ)"
+  - "Activation function (its derivative scales every backward step)"
+  - "Weight initialisation (controls gradient size at the start)"
+  - "Gradient clipping threshold (guards against exploding gradients)"
+pitfalls:
+  - "Saturating activations (sigmoid, tanh) shrink gradients layer by layer and cause vanishing gradients"
+  - "Forgetting to divide by batch size (or to sum bias gradients over the batch) scales updates wrongly"
+  - "Shape mistakes in transposes still run when dimensions coincide; verify against a numerical gradient check"
+  - "Gradients accumulate in frameworks unless zeroed each step"
+interview_qa:
+  - q: "Why go backwards instead of forwards?"
+    a: "Reverse mode gets the gradient of one scalar loss with respect to all parameters in one sweep; forward mode would need one sweep per parameter."
+  - q: "Why must the forward activations be stored?"
+    a: "Local derivatives such as aᵀδ and 1 − a² depend on forward values, so they are cached, trading memory for compute."
+  - q: "How do you check a backprop implementation?"
+    a: "Compare against a finite-difference gradient or an autograd framework on a small random problem."
+related: [gradient-descent, mlp-forward-pass, activation-functions]

@@ -1,0 +1,64 @@
+slug: linear-regression
+title: Linear Regression
+url: https://scikit-learn.org/stable/modules/linear_model.html#ordinary-least-squares
+difficulty: Easy
+area: Classical ML
+topics: [Regression, Supervised, Least Squares]
+summary: |
+  Fit a straight line (or hyperplane) to numeric data by choosing the
+  weights that minimise the squared prediction error.
+intuition: |
+  Every point pulls on the line, and the squared error makes far-away
+  points pull much harder. The best line is where all those pulls
+  balance, which is the same as saying the residuals are orthogonal to
+  every feature column.
+why_it_works: |
+  Squaring the errors makes the loss a smooth bowl in the weights. Setting
+  its gradient to zero gives the normal equations, which have one closed
+  form answer whenever the features are independent. Gradient descent
+  walks down the same bowl and ends at the same point.
+when_to_use: |
+  A fast, interpretable baseline for numeric targets when the relation is
+  roughly linear and features are not heavily correlated.
+when_not_to_use: |
+  Skip it when the relation is strongly non-linear, when outliers
+  dominate, or when features are nearly collinear (the weights become
+  unstable; use ridge instead).
+math:
+  - "ŷ = Xw + b"
+  - "L(w) = (1/n) · ‖y − Xw‖²"
+  - "∇L = −(2/n) · Xᵀ(y − Xw)"
+  - "Normal equation: w = (XᵀX)⁻¹ Xᵀ y"
+approach:
+  - "Add a column of ones to X — so the bias is just another weight"
+  - "Form XᵀX and Xᵀy — these summarise all the data for the fit"
+  - "Solve the linear system for w — solving is more stable than inverting"
+  - "Predict with Xw — one matrix product for all rows"
+code: |
+  import numpy as np
+
+  def fit(X, y):
+      A = np.c_[np.ones(len(X)), X]
+      return np.linalg.solve(A.T @ A, A.T @ y)
+
+  def predict(w, X):
+      return np.c_[np.ones(len(X)), X] @ w
+key_lines: [5]
+time: "O(n·d² + d³) to fit, O(d) per prediction"
+space: "O(d²) for XᵀX"
+hyperparameters:
+  - "Regularisation strength (none in plain OLS; ridge adds λ)"
+  - "Feature scaling — does not change OLS fit but matters for gradient descent"
+pitfalls:
+  - "Collinear features make XᵀX singular or ill-conditioned"
+  - "Outliers pull the fit hard because errors are squared"
+  - "A high R² on training data says nothing about generalisation"
+interview_qa:
+  - q: "Why solve the normal equations instead of inverting XᵀX?"
+    a: "Solving is faster and numerically more stable than forming the inverse."
+  - q: "What assumption makes least squares the maximum-likelihood fit?"
+    a: "Independent Gaussian noise with constant variance on the target."
+  - q: "What does ridge change and why?"
+    a: "It adds λI to XᵀX, so the system is always solvable and weights shrink."
+
+related: [gradient-descent, logistic-regression]

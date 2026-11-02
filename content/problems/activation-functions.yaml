@@ -1,0 +1,82 @@
+slug: activation-functions
+title: Activation Functions
+url: https://docs.pytorch.org/docs/stable/generated/torch.nn.GELU.html
+difficulty: Easy
+area: Deep Learning
+topics: [Neural Networks, Non-linearity, Gradients]
+summary: |
+  Element-wise non-linear functions applied between linear layers so a
+  network can represent more than a single linear map.
+intuition: |
+  Without a non-linearity, stacked linear layers collapse into one
+  linear layer, so depth buys nothing. The choice of activation also
+  decides how gradients flow: saturating curves squash them toward
+  zero, while piecewise-linear ones like ReLU pass them through
+  unchanged wherever they are active.
+why_it_works: |
+  A non-linear activation lets a sum of simple units approximate
+  complicated functions. ReLU keeps a derivative of one on its active
+  side, which avoids the repeated shrinking that sigmoid and tanh
+  cause, so deep networks train much more easily. GELU is a smooth
+  variant that weights its input by how likely it is to be positive.
+when_to_use: |
+  ReLU or GELU for hidden layers by default, sigmoid for binary outputs
+  and gates, tanh for bounded zero-centred values, softmax for
+  multi-class outputs.
+when_not_to_use: |
+  Avoid sigmoid or tanh deep in a stack because they saturate. Avoid
+  plain ReLU if many units die (use a leaky variant), and do not put
+  an activation on a regression output that must be unbounded.
+math:
+  - "ReLU(x) = max(0, x),  ReLU′(x) = 1[x > 0]"
+  - "σ(x) = 1 / (1 + e⁻ˣ),  σ′(x) = σ(x)(1 − σ(x))"
+  - "tanh′(x) = 1 − tanh²(x)"
+  - "GELU(x) = x·Φ(x) with Φ the standard normal CDF"
+  - "Tanh approx: 0.5x(1 + tanh(√(2/π)(x + 0.044715x³)))"
+approach:
+  - "Pick the function by role — hidden layers want cheap non-saturating curves, outputs want a specific range"
+  - "Apply it element-wise to the pre-activation z — it adds the non-linearity without mixing units"
+  - "Keep its derivative for backprop — the gradient is the upstream error times f′(z)"
+  - "Check the saturation regions — tiny derivatives there are what stall learning"
+code: |
+  import numpy as np
+
+  def relu(x):
+      return np.maximum(0, x)
+
+  def sigmoid(x):
+      return 1 / (1 + np.exp(-x))
+
+  def gelu(x):
+      c = np.sqrt(2 / np.pi)
+      return 0.5 * x * (1 + np.tanh(c * (x + 0.044715 * x**3)))
+
+  def d_relu(x):
+      return (x > 0).astype(float)
+
+  def d_sigmoid(x):
+      s = sigmoid(x)
+      return s * (1 - s)
+
+  def d_tanh(x):
+      return 1 - np.tanh(x) ** 2
+key_lines: [4, 11, 18]
+time: "O(n) for n elements, forward and backward"
+space: "O(n) to keep the input or output for the derivative"
+hyperparameters:
+  - "Choice of function (ReLU, GELU, tanh, sigmoid, ...)"
+  - "Leaky slope (negative-side slope of LeakyReLU, so units cannot die)"
+  - "Approximation mode for GELU (exact erf or the tanh form)"
+pitfalls:
+  - "Dying ReLU: a unit that always sees negative input gets zero gradient forever"
+  - "Plain exp in sigmoid overflows for large negative inputs; use a stable form in production"
+  - "Do not apply softmax before a loss that already applies it"
+  - "ReLU is not differentiable at 0; frameworks pick a convention for that single point"
+interview_qa:
+  - q: "Why do we need non-linear activations?"
+    a: "Composing linear maps gives another linear map, so without them extra layers add no expressive power."
+  - q: "Why did ReLU replace sigmoid in hidden layers?"
+    a: "Its gradient does not shrink on the active side, it is cheap, and it yields sparse activations, which eases training of deep networks."
+  - q: "What is the dying ReLU problem?"
+    a: "If a unit's input stays negative its output and gradient are zero, so its weights never update; leaky variants keep a small slope."
+related: [backpropagation, mlp-forward-pass, softmax-cross-entropy]

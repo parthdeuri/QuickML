@@ -1,0 +1,105 @@
+slug: random-forest
+title: Random Forest
+url: https://scikit-learn.org/stable/modules/ensemble.html#random-forests
+difficulty: Medium
+area: Classical ML
+topics: [Classification, Ensemble, Bagging, Trees]
+summary: |
+  Train many decision trees on bootstrap resamples, letting each split see
+  only a random subset of features, then average their votes. The code is
+  a simplified binary-class version, with no out-of-bag scoring or
+  parallelism.
+intuition: |
+  One deep tree has low bias but high variance, so its errors are largely
+  random noise. Averaging many trees cancels that noise, but only if the
+  trees disagree, which is why each gets a different bootstrap sample and
+  a different random feature subset at every split.
+why_it_works: |
+  The variance of an average of B models with variance σ² and pairwise
+  correlation ρ is ρσ² + (1 − ρ)σ²/B. More trees kill the second term,
+  and random feature subsets shrink ρ, the part more trees cannot fix.
+  Bias stays about that of one deep tree, so the average is better.
+when_to_use: |
+  A strong default for tabular data: little tuning, handles non-linear
+  interactions, mixed scales and noisy features, and gives feature
+  importances.
+when_not_to_use: |
+  Skip it when you need a tiny fast model, extrapolation beyond the
+  training range, or the last bit of accuracy (boosting usually wins), or
+  with very sparse high-dimensional text.
+math:
+  - "Tree b trained on bootstrap sample Dᵦ (n draws with replacement)"
+  - "Each split searches m random features, typically m ≈ √d"
+  - "Classification: ŷ = majority vote of the B trees"
+  - "Regression: ŷ = (1/B) Σᵦ fᵦ(x)"
+  - "Var(ŷ) = ρσ² + (1 − ρ)σ² / B"
+  - "Rows left out of a bootstrap: (1 − 1/n)ⁿ → 1/e (out-of-bag)"
+approach:
+  - "Draw n rows with replacement — each tree sees a different dataset"
+  - "At each node pick m random features — decorrelates the trees"
+  - "Grow a tree to the depth limit using Gini — low-bias, high-variance learner"
+  - "Repeat for B trees — more trees only reduce variance, never overfit"
+  - "Average the votes (probabilities) — cancels the trees' independent errors"
+code: |
+  import numpy as np
+
+  def gini(y):
+      p = np.bincount(y, minlength=2) / len(y)
+      return 1 - p @ p
+
+  def grow(X, y, depth, m, rng):
+      leaf = np.bincount(y, minlength=2).argmax()
+      if depth == 0 or gini(y) == 0:
+          return leaf
+      best = (gini(y), None, None)
+      for j in rng.choice(X.shape[1], m, replace=False):
+          for t in np.unique(X[:, j])[:-1]:
+              k = X[:, j] <= t
+              s = k.mean() * gini(y[k]) + (1 - k.mean()) * gini(y[~k])
+              if s < best[0]:
+                  best = (s, j, t)
+      if best[1] is None:
+          return leaf
+      _, j, t = best
+      k = X[:, j] <= t
+      l = grow(X[k], y[k], depth - 1, m, rng)
+      return (j, t, l, grow(X[~k], y[~k], depth - 1, m, rng))
+
+  def fit(X, y, B=25, depth=6, seed=0):
+      rng = np.random.default_rng(seed)
+      m = max(1, int(np.sqrt(X.shape[1])))
+      trees = []
+      for _ in range(B):
+          i = rng.integers(0, len(X), len(X))
+          trees.append(grow(X[i], y[i], depth, m, rng))
+      return trees
+
+  def predict_one(trees, x):
+      votes = []
+      for tree in trees:
+          while isinstance(tree, tuple):
+              j, t, l, r = tree
+              tree = l if x[j] <= t else r
+          votes.append(tree)
+      return int(np.mean(votes) > 0.5)
+key_lines: [12, 15, 30]
+time: "O(B · m · n² ) as written (naive scan); O(B · m · n log n · depth) with sorted splits; trees are independent so training parallelises"
+space: "O(B · nodes) for the stored trees"
+hyperparameters:
+  - "n_estimators B — more is better, with diminishing returns"
+  - "max_features m — smaller means more diverse trees but weaker ones"
+  - "max_depth / min_samples_leaf — control each tree's variance"
+  - "bootstrap — sample with replacement (default) or use all rows"
+pitfalls:
+  - "Highly correlated trees give little gain, so keep m below d"
+  - "Impurity-based feature importance favours high-cardinality features; use permutation importance"
+  - "Trees cannot extrapolate outside the training range"
+  - "This card's code simplifies sklearn: no out-of-bag scoring, binary labels only"
+interview_qa:
+  - q: "Why does bagging help but not hurt by adding more trees?"
+    a: "Averaging reduces variance and leaves bias unchanged; extra trees only shrink the (1 − ρ)σ²/B term, so the error plateaus rather than rises."
+  - q: "What is the role of max_features?"
+    a: "Fewer candidate features per split decorrelates trees, which lowers ensemble variance at the cost of weaker individual trees."
+  - q: "What is out-of-bag error?"
+    a: "Each tree misses about a third of the rows, so scoring each row only with trees that did not see it gives a free validation estimate."
+related: [decision-tree, gradient-boosting]

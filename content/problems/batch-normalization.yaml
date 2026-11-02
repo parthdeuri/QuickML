@@ -1,0 +1,77 @@
+slug: batch-normalization
+title: Batch Normalization
+url: https://docs.pytorch.org/docs/stable/generated/torch.nn.BatchNorm1d.html
+difficulty: Medium
+area: Deep Learning
+topics: [Normalization, Training Stability, Neural Networks]
+summary: |
+  Normalise each feature to zero mean and unit variance across the
+  mini-batch, then let the network rescale and shift it with learned
+  parameters.
+intuition: |
+  Layers keep seeing inputs whose scale drifts as earlier weights
+  change, which forces small learning rates. Re-centering and
+  re-scaling every feature per batch keeps those inputs in a steady
+  range, and the learned γ and β let the layer undo the normalisation
+  if that is what helps.
+why_it_works: |
+  Stable input statistics make the loss surface better behaved, so
+  larger learning rates train reliably, and the noise from batch
+  statistics acts as a mild regulariser. At inference the batch is not
+  available, so running averages collected during training replace the
+  batch mean and variance.
+when_to_use: |
+  Deep feed-forward and convolutional networks with reasonably large
+  batches, where it speeds up and stabilises training.
+when_not_to_use: |
+  Avoid with very small batches (noisy statistics) and for sequence
+  models with variable lengths, where layer normalisation is the
+  usual choice.
+math:
+  - "μ = mean over batch,  σ² = variance over batch (biased)"
+  - "x̂ = (x − μ) / √(σ² + ε)"
+  - "y = γ·x̂ + β   (γ, β learned per feature)"
+  - "Running mean ← (1 − m)·running + m·μ"
+  - "Running var uses the unbiased variance σ²·n/(n − 1)"
+  - "Inference: x̂ = (x − running mean) / √(running var + ε)"
+approach:
+  - "Compute the per-feature mean and variance over the batch axis — these are the statistics to remove"
+  - "Divide the centred input by √(var + ε) — ε avoids division by zero"
+  - "Apply γ and β — restores representational freedom"
+  - "Update running mean and variance with momentum — they will be used at inference"
+  - "In eval mode use the running statistics instead — outputs must not depend on other samples"
+code: |
+  import numpy as np
+
+  def bn_train(x, gamma, beta, run, mom=0.1, eps=1e-5):
+      mu, var = x.mean(axis=0), x.var(axis=0)
+      xhat = (x - mu) / np.sqrt(var + eps)
+      n = len(x)
+      run["mean"] = (1 - mom) * run["mean"] + mom * mu
+      unbiased = var * n / (n - 1)
+      run["var"] = (1 - mom) * run["var"] + mom * unbiased
+      return gamma * xhat + beta
+
+  def bn_eval(x, gamma, beta, run, eps=1e-5):
+      xhat = (x - run["mean"]) / np.sqrt(run["var"] + eps)
+      return gamma * xhat + beta
+key_lines: [5, 9, 13]
+time: "O(n·d) for n samples and d features"
+space: "O(d) for γ, β and the running statistics"
+hyperparameters:
+  - "Momentum of the running averages"
+  - "ε (numerical floor added to the variance)"
+  - "Batch size (small batches give noisy statistics)"
+pitfalls:
+  - "Forgetting model.eval() at inference uses batch statistics and makes predictions depend on the batch"
+  - "Tiny batches make the statistics unreliable"
+  - "Normalisation uses the biased variance but the running variance stores the unbiased one"
+  - "Placing it relative to the activation (before or after) changes behaviour; be consistent"
+interview_qa:
+  - q: "How does batch norm behave differently in training and inference?"
+    a: "Training uses statistics of the current batch and updates running averages; inference uses those running averages so each sample is processed independently."
+  - q: "Why learn γ and β?"
+    a: "Forcing zero mean and unit variance would limit what a layer can represent; γ and β let the network restore any scale and shift."
+  - q: "When is layer norm preferred?"
+    a: "When batch statistics are unreliable or undefined, as in small batches or variable-length sequences, since layer norm normalises per sample."
+related: [mlp-forward-pass, backpropagation, dropout]

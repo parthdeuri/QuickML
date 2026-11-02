@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Light theme (default). Dark counterparts live in values-night/colors.xml. -->
+<resources>
+    <color name="background">#FFF2F4F7</color>
+    <color name="accent">#FF00796B</color>
+    <color name="widget_background">#FFFFFFFF</color>
+    <color name="widget_stroke">#FFD8DEE4</color>
+    <color name="widget_pill">#1F00796B</color>
+    <color name="widget_accent">#FF00695C</color>
+    <color name="widget_text">#FF1F2328</color>
+    <color name="widget_muted">#FF59636E</color>
+    <color name="widget_easy">#FF1A7F37</color>
+    <color name="widget_medium">#FF9A6700</color>
+    <color name="widget_hard">#FFCF222E</color>
+</resources>

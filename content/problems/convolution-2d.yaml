@@ -1,0 +1,77 @@
+slug: convolution-2d
+title: 2D Convolution
+url: https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.conv2d.html
+difficulty: Medium
+area: Vision
+topics: [Convolutional Networks, Images, Weight Sharing]
+summary: |
+  Slide a small learned filter across an image and take a dot product
+  with each local patch, producing a feature map per filter.
+intuition: |
+  A filter is a tiny pattern detector reused at every location, so the
+  network looks for the same edge or texture wherever it appears and
+  needs far fewer weights than a dense layer. Stacking layers grows the
+  receptive field, so later filters respond to larger shapes built
+  from earlier ones.
+why_it_works: |
+  Images have local structure and the same features matter at any
+  position, so sharing weights across positions (translation
+  equivariance) is a strong, correct prior. Local connectivity cuts
+  parameters and computation, which lets models learn from limited
+  data.
+when_to_use: |
+  Images, spectrograms and other grid data where nearby values are
+  related and patterns repeat across positions.
+when_not_to_use: |
+  Not when long-range or global relations dominate and there is little
+  locality (consider attention), or for unordered tabular features.
+math:
+  - "Input x: (N, C, H, W); filters w: (F, C, kH, kW); bias b: (F)"
+  - "out[n,f,i,j] = b[f] + Σ_c Σ_u Σ_v w[f,c,u,v] · x[n,c,si+u,sj+v]"
+  - "Output size: ⌊(H + 2p − kH) / s⌋ + 1 (same for width)"
+  - "Cross-correlation: the filter is not flipped"
+  - "Parameters: F·C·kH·kW + F"
+approach:
+  - "Zero-pad the input by p on each side — controls the output size and keeps border pixels in play"
+  - "Compute output height and width from kernel, stride and padding — fixes the loop bounds"
+  - "For each output position take the matching input patch across all channels — that is the filter's receptive field"
+  - "Multiply the patch with every filter and sum over channels and kernel — one dot product per filter"
+  - "Add the bias and write the result at that position — builds the feature maps"
+code: |
+  import numpy as np
+
+  def conv2d(x, w, b, stride=1, pad=0):
+      x = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)))
+      n, c, h, wd = x.shape
+      f, _, kh, kw = w.shape
+      oh = (h - kh) // stride + 1
+      ow = (wd - kw) // stride + 1
+      out = np.zeros((n, f, oh, ow))
+      for i in range(oh):
+          for j in range(ow):
+              r, s = i * stride, j * stride
+              patch = x[:, :, r:r + kh, s:s + kw]
+              axes = ([1, 2, 3], [1, 2, 3])
+              out[:, :, i, j] = np.tensordot(patch, w, axes) + b
+      return out
+key_lines: [7, 13, 15]
+time: "O(N·F·C·kH·kW·oH·oW)"
+space: "O(N·F·oH·oW) for the output; the filters hold F·C·kH·kW"
+hyperparameters:
+  - "Kernel size (receptive field of one layer)"
+  - "Stride (step between positions; larger downsamples)"
+  - "Padding (zero border; same-size output needs p = (k − 1)/2 at stride 1)"
+  - "Number of filters (output channels)"
+pitfalls:
+  - "Deep learning libraries compute cross-correlation, not flipped convolution"
+  - "Wrong padding or stride arithmetic gives off-by-one output sizes"
+  - "Channel order (NCHW versus NHWC) differs between frameworks"
+  - "Loops like this are slow; real implementations use im2col or FFT-style kernels"
+interview_qa:
+  - q: "Why use convolution instead of a dense layer on images?"
+    a: "Local connectivity and shared weights cut parameters sharply and build in translation equivariance."
+  - q: "How is the output size computed?"
+    a: "⌊(H + 2p − k) / s⌋ + 1 along each spatial dimension, for padding p, kernel k and stride s."
+  - q: "What is the receptive field?"
+    a: "The region of the input that influences one output value; it grows with kernel size, stride and depth."
+related: [mlp-forward-pass, backpropagation, activation-functions]

@@ -1,0 +1,78 @@
+slug: softmax-cross-entropy
+title: Softmax and Cross-Entropy
+url: https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
+difficulty: Medium
+area: Deep Learning
+topics: [Classification, Loss Functions, Probability]
+summary: |
+  Turn a vector of raw class scores (logits) into probabilities with
+  softmax, then score them with the negative log-probability of the
+  true class.
+intuition: |
+  Softmax makes the classes compete: raising one logit steals
+  probability from all the others. Cross-entropy then only looks at the
+  probability given to the correct class, and its gradient with respect
+  to the logits collapses to the simple form p − y, so wrong and
+  confident predictions get the strongest push.
+why_it_works: |
+  Cross-entropy is the negative log-likelihood of a categorical
+  distribution, so minimising it is maximum-likelihood training. The log
+  cancels the exponential in softmax, leaving the clean gradient
+  p − onehot(y) that does not vanish when the model is wrong, unlike
+  squared error.
+when_to_use: |
+  The default output layer and loss for single-label multi-class
+  classification in neural networks and for multinomial logistic
+  regression.
+when_not_to_use: |
+  Not for multi-label tasks where several classes can be true at once
+  (use per-class sigmoids with binary cross-entropy), nor for regression
+  targets.
+math:
+  - "softmax(z)ᵢ = exp(zᵢ) / Σⱼ exp(zⱼ)"
+  - "Stable form: subtract max(z) from z before exp (result unchanged)"
+  - "CE = −log p_y = −z_y + log Σⱼ exp(zⱼ)"
+  - "∂CE/∂zᵢ = pᵢ − 1[i = y]"
+  - "Batch loss: mean over rows; gradient divided by batch size n"
+approach:
+  - "Subtract each row's max from its logits — stops exp from overflowing"
+  - "Exponentiate and normalise by the row sum — gives a probability per class"
+  - "Compute log Σ exp(z) − z_y per row and average — the loss, via log-sum-exp so no log(0)"
+  - "For the gradient, subtract 1 at the true class from p and divide by n — it is the exact derivative w.r.t. logits"
+code: |
+  import numpy as np
+
+  def softmax(z):
+      z = z - z.max(axis=1, keepdims=True)
+      e = np.exp(z)
+      return e / e.sum(axis=1, keepdims=True)
+
+  def cross_entropy(z, y):
+      z = z - z.max(axis=1, keepdims=True)
+      lse = np.log(np.exp(z).sum(axis=1))
+      return (lse - z[np.arange(len(y)), y]).mean()
+
+  def grad_logits(z, y):
+      p = softmax(z)
+      p[np.arange(len(y)), y] -= 1
+      return p / len(y)
+key_lines: [4, 11, 15]
+time: "O(n·k) for n samples and k classes"
+space: "O(n·k) for the probability matrix"
+hyperparameters:
+  - "Label smoothing (softens the one-hot target to reduce overconfidence)"
+  - "Temperature (divides logits; higher is flatter, lower is sharper)"
+  - "Class weights (rescale the loss for imbalanced classes)"
+pitfalls:
+  - "Naive exp overflows for large logits; always subtract the row max"
+  - "Taking log of softmax in two steps loses precision; use log-sum-exp"
+  - "Applying softmax then a framework CrossEntropyLoss applies it twice"
+  - "Outputs are confident but not necessarily calibrated"
+interview_qa:
+  - q: "Why is the softmax and cross-entropy gradient just p − y?"
+    a: "The log in cross-entropy cancels the exponential in softmax, leaving the predicted probabilities minus the one-hot target."
+  - q: "Why subtract the max before exp?"
+    a: "Softmax is shift-invariant, so it changes nothing mathematically but prevents overflow."
+  - q: "Should a PyTorch model end in softmax before CrossEntropyLoss?"
+    a: "No. CrossEntropyLoss takes raw logits and applies log-softmax internally."
+related: [logistic-regression, gradient-descent]

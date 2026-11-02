@@ -1,0 +1,71 @@
+slug: maximum-likelihood
+title: Maximum Likelihood Estimation
+url: https://en.wikipedia.org/wiki/Maximum_likelihood_estimation
+difficulty: Medium
+area: Math
+topics: [Estimation, Probability, Loss Functions]
+summary: |
+  Choose the parameters under which the observed data would have been most
+  probable, usually by minimising the negative log-likelihood.
+intuition: |
+  Instead of asking how likely a parameter is, ask how likely the data are
+  under each parameter and pick the winner. Taking logs turns the product
+  over independent samples into a sum, which is why familiar losses fall
+  out: Gaussian noise gives squared error and Bernoulli labels give
+  cross-entropy.
+why_it_works: |
+  Under regularity conditions the MLE is consistent (it converges to the
+  true parameter) and asymptotically efficient. Setting the derivative of
+  the log-likelihood to zero gives closed forms for simple families; for
+  the Gaussian they are the sample mean and the biased, divide-by-n sample
+  variance.
+when_to_use: |
+  Fitting any probabilistic model with a tractable likelihood: regression
+  noise models, classifiers, language models and mixture models.
+when_not_to_use: |
+  With very little data it overfits (the Gaussian variance estimate is
+  biased low), and with a strong prior you should use MAP or full Bayesian
+  inference instead.
+math:
+  - "L(θ) = Π p(xᵢ | θ)"
+  - "ℓ(θ) = Σ log p(xᵢ | θ)"
+  - "θ̂ = argmax ℓ(θ) = argmin NLL(θ)"
+  - "Gaussian: μ̂ = (1/n) Σ xᵢ"
+  - "Gaussian: σ̂² = (1/n) Σ (xᵢ − μ̂)²"
+  - "NLL = (n/2) log(2πσ²) + Σ (xᵢ − μ)² / (2σ²)"
+approach:
+  - "Write the likelihood of independent samples — a product of densities"
+  - "Take the log — turns the product into a sum and is monotonic"
+  - "Differentiate with respect to each parameter — stationary points are candidates"
+  - "Set to zero and solve — closed form for the Gaussian mean and variance"
+  - "Check the NLL at the solution against nearby values — confirms a minimum"
+code: |
+  import numpy as np
+
+  def gaussian_mle(x):
+      mu = x.mean()
+      var = ((x - mu) ** 2).mean()
+      return mu, var
+
+  def nll(x, mu, var):
+      sq = ((x - mu) ** 2).sum()
+      return 0.5 * (len(x) * np.log(2 * np.pi * var) + sq / var)
+key_lines: [4, 5, 10]
+time: "O(n) for the closed form; iterative solvers cost O(n) per step"
+space: "O(1) beyond the data"
+hyperparameters:
+  - "Choice of distribution family (Gaussian, Bernoulli, Poisson)"
+  - "Optimiser and tolerance when no closed form exists"
+  - "Regularisation or prior, which turns MLE into MAP"
+pitfalls:
+  - "The Gaussian MLE variance divides by n and is biased low; the unbiased version divides by n − 1"
+  - "Multiplying many small probabilities underflows, so always work with log-likelihood"
+  - "Likelihood can be unbounded (a mixture component collapsing on one point)"
+interview_qa:
+  - q: "Why maximise the log-likelihood instead of the likelihood?"
+    a: "The log is monotonic so the argmax is the same, and it turns products into sums, which is numerically stable and easy to differentiate."
+  - q: "Which losses are MLE in disguise?"
+    a: "Squared error is Gaussian MLE, binary cross-entropy is Bernoulli MLE and categorical cross-entropy is multinomial MLE."
+  - q: "How does MAP differ from MLE?"
+    a: "MAP maximises likelihood times a prior, which adds a regulariser; with a flat prior they coincide."
+related: [bayes-theorem, logistic-regression, entropy-kl-divergence]

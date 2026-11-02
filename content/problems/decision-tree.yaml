@@ -1,0 +1,93 @@
+slug: decision-tree
+title: Decision Tree
+url: https://scikit-learn.org/stable/modules/tree.html
+difficulty: Easy
+area: Classical ML
+topics: [Classification, Supervised, Trees, Impurity]
+summary: |
+  Predict by asking a chain of yes/no questions on single features. The
+  tree is grown greedily, choosing at each node the split that makes the
+  two child groups as pure as possible.
+intuition: |
+  A tree carves feature space into axis-aligned boxes and predicts the
+  majority class of each box. Growing it is just a repeated search: try
+  every threshold on every feature and keep the one that most reduces
+  impurity, then recurse on each side as if it were a new problem.
+why_it_works: |
+  Each split can never increase the weighted impurity, because the parent
+  is a mix of its children. So deeper trees fit the training data ever
+  better, which is also the danger: with no depth limit the tree
+  memorises noise. The greedy choice is not globally optimal, but it is
+  cheap and works well in practice.
+when_to_use: |
+  Interpretable models on tabular data with mixed scales and non-linear
+  interactions, and as the base learner for forests and boosting.
+when_not_to_use: |
+  Skip a single deep tree when you need stable predictions or smooth
+  boundaries: small data changes flip splits, and axis-aligned cuts
+  approximate diagonal boundaries badly.
+math:
+  - "Gini(S) = 1 − Σₖ pₖ²,  pₖ = share of class k in S"
+  - "Entropy(S) = −Σₖ pₖ · log₂ pₖ"
+  - "Split cost = (|L|/|S|)·Gini(L) + (|R|/|S|)·Gini(R)"
+  - "L = {x : xⱼ ≤ t},  R = {x : xⱼ > t}"
+  - "Gain = Gini(S) − Split cost"
+  - "Leaf prediction = argmaxₖ pₖ"
+approach:
+  - "Compute the Gini impurity of the node — it measures how mixed the classes are"
+  - "Stop if depth is used up or the node is pure — this limits overfitting"
+  - "Try midpoints between sorted values of each feature — these are all distinct splits"
+  - "Score each split by weighted child impurity — pick the lowest cost"
+  - "Recurse on left and right subsets — each child is a smaller copy of the problem"
+  - "Predict by walking from the root to a leaf — each test sends the sample left or right"
+code: |
+  import numpy as np
+
+  def gini(y):
+      p = np.bincount(y) / len(y)
+      return 1 - p @ p
+
+  def grow(X, y, depth):
+      best, leaf = (gini(y), None, None), np.bincount(y).argmax()
+      if depth == 0 or best[0] == 0:
+          return leaf
+      for j in range(X.shape[1]):
+          v = np.unique(X[:, j])
+          for t in (v[:-1] + v[1:]) / 2:
+              m = X[:, j] <= t
+              s = m.mean() * gini(y[m]) + (1 - m.mean()) * gini(y[~m])
+              if s < best[0] - 1e-12:
+                  best = (s, j, t)
+      if best[1] is None:
+          return leaf
+      _, j, t = best
+      m = X[:, j] <= t
+      left = grow(X[m], y[m], depth - 1)
+      return (j, t, left, grow(X[~m], y[~m], depth - 1))
+
+  def predict_one(tree, x):
+      while isinstance(tree, tuple):
+          j, t, left, right = tree
+          tree = left if x[j] <= t else right
+      return tree
+key_lines: [14, 15, 16]
+time: "O(d · n² ) naive per node as written; O(d · n log n) per level with sorting and running counts"
+space: "O(n) for the data plus O(nodes) for the tree"
+hyperparameters:
+  - "max_depth — main control of over/underfitting"
+  - "min_samples_leaf — forbids tiny, noisy leaves"
+  - "criterion — Gini or entropy, rarely matters"
+  - "ccp_alpha — cost-complexity pruning strength"
+pitfalls:
+  - "Unlimited depth reaches 100% training accuracy and overfits"
+  - "Split search favours features with many distinct values"
+  - "Class imbalance makes majority-class leaves dominate; use class weights"
+  - "Predictions are piecewise constant, so a tree cannot extrapolate"
+interview_qa:
+  - q: "Gini or entropy?"
+    a: "Both measure impurity and usually pick near-identical splits; Gini avoids the logarithm so it is slightly faster."
+  - q: "How do you stop a tree from overfitting?"
+    a: "Limit depth, require a minimum leaf size, or grow fully and prune with cost-complexity; or average many trees in a forest."
+  - q: "Do trees need feature scaling?"
+    a: "No. Splits compare a feature to a threshold, so any monotonic rescaling gives the same tree."
+related: [random-forest, gradient-boosting, logistic-regression]

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark theme: every colour of values/colors.xml, so the launch window and widget follow the system. -->
+<resources>
+    <color name="background">#FF0D1117</color>
+    <color name="accent">#FF1DE9B6</color>
+    <color name="widget_background">#FF161B22</color>
+    <color name="widget_stroke">#FF30363D</color>
+    <color name="widget_pill">#291DE9B6</color>
+    <color name="widget_accent">#FF1DE9B6</color>
+    <color name="widget_text">#FFE6EDF3</color>
+    <color name="widget_muted">#FF9DA7B3</color>
+    <color name="widget_easy">#FF4ADE80</color>
+    <color name="widget_medium">#FFFBBF24</color>
+    <color name="widget_hard">#FFF87171</color>
+</resources>

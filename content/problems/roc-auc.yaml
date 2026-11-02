@@ -1,0 +1,72 @@
+slug: roc-auc
+title: ROC Curve and AUC
+url: https://scikit-learn.org/stable/modules/model_evaluation.html#roc-metrics
+difficulty: Medium
+area: MLOps
+topics: [Classification Metrics, Ranking, Threshold-free Evaluation]
+summary: |
+  Sweep the decision threshold, plot true-positive rate against
+  false-positive rate, and summarise the curve by its area (AUC).
+intuition: |
+  AUC is the probability that a randomly chosen positive gets a higher
+  score than a randomly chosen negative, so it measures ranking quality
+  and ignores calibration and the chosen threshold. A curve hugging the
+  top-left corner means positives are almost always ranked above negatives.
+why_it_works: |
+  Sorting by score and walking down the list, each positive moves the
+  curve up and each negative moves it right. The area under that staircase
+  counts, for every positive, the negatives ranked below it, which is the
+  Mann-Whitney U statistic divided by the number of positive-negative pairs.
+when_to_use: |
+  Comparing classifiers independent of threshold, or when the operating
+  point is not yet known, and when classes are not extremely imbalanced.
+when_not_to_use: |
+  With heavy imbalance the false-positive rate hides many false alarms, so
+  prefer a precision-recall curve. It also says nothing about calibration.
+math:
+  - "TPR = TP / (TP + FN),  FPR = FP / (FP + TN)"
+  - "AUC = ∫ TPR d(FPR)"
+  - "AUC = P(s⁺ > s⁻) + ½·P(s⁺ = s⁻)"
+  - "AUC = U / (n₊ · n₋)"
+  - "Trapezoid rule: Σ (Δfpr) · (tpr_i + tpr_{i−1}) / 2"
+approach:
+  - "Sort samples by score, highest first — each prefix is one threshold"
+  - "Cumulative sums of positives and negatives — give TP and FP at every cut"
+  - "Keep only the last index of each tied score — tied samples cross the threshold together"
+  - "Normalise by total positives and negatives — turns counts into TPR and FPR"
+  - "Prepend the origin and integrate with trapezoids — the area is the AUC"
+code: |
+  import numpy as np
+
+  def roc_curve(y, score):
+      order = np.argsort(-score, kind="stable")
+      y, s = y[order], score[order]
+      tps = np.cumsum(y)
+      fps = np.cumsum(1 - y)
+      last = np.r_[np.where(np.diff(s))[0], len(s) - 1]
+      tpr = np.r_[0, tps[last] / tps[-1]]
+      fpr = np.r_[0, fps[last] / fps[-1]]
+      return fpr, tpr
+
+  def auc(fpr, tpr):
+      return np.sum(np.diff(fpr) * (tpr[1:] + tpr[:-1]) / 2)
+key_lines: [6, 8, 14]
+time: "O(n log n) for the sort, O(n) for the sweep"
+space: "O(n)"
+hyperparameters:
+  - "Positive class label (which class counts as positive)"
+  - "Tie handling (tied scores are one threshold step)"
+  - "Averaging for multiclass (one-vs-rest or one-vs-one, macro or weighted)"
+pitfalls:
+  - "Needs both classes present, otherwise TPR or FPR is undefined"
+  - "Treating tied scores as ordered inflates or deflates AUC"
+  - "Optimistic on highly imbalanced data; check PR-AUC too"
+  - "Using hard 0/1 predictions instead of scores collapses the curve to one point"
+interview_qa:
+  - q: "What is the probabilistic meaning of AUC?"
+    a: "The chance that a random positive scores higher than a random negative, with ties counting half."
+  - q: "Does AUC depend on calibration?"
+    a: "No. Any monotonic transform of the scores leaves the ranking, and so the AUC, unchanged."
+  - q: "When is PR-AUC better than ROC-AUC?"
+    a: "When positives are rare: FPR stays small even with many false positives, while precision exposes them."
+related: [precision-recall-f1, logistic-regression]

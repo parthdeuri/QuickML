@@ -1,0 +1,84 @@
+slug: pca
+title: Principal Component Analysis
+url: https://scikit-learn.org/stable/modules/decomposition.html#pca
+difficulty: Medium
+area: Classical ML
+topics: [Dimensionality Reduction, Unsupervised, Linear Algebra, SVD]
+summary: |
+  Rotate centred data onto orthogonal directions ordered by how much
+  variance they capture, then keep only the first k. It is computed
+  directly from the SVD of the centred data matrix.
+intuition: |
+  Real data often lives near a low-dimensional slab inside a high
+  dimensional space. The direction along which the points spread most is
+  the first component, the next most-spread direction at right angles is
+  the second, and dropping the low-spread directions loses the least
+  information.
+why_it_works: |
+  The variance along a unit direction v is vᵀΣv, which is maximised by
+  the top eigenvector of the covariance Σ, and the next one under the
+  orthogonality constraint, and so on. The SVD of the centred data gives
+  those eigenvectors directly, without forming Σ, and the discarded
+  variance is exactly the squared reconstruction error.
+when_to_use: |
+  Compressing correlated features, denoising, visualising in 2-D or 3-D,
+  and decorrelating inputs before a model that dislikes collinearity.
+when_not_to_use: |
+  Skip it when features have very different scales and you have not
+  standardised, when the structure is non-linear (use kernel PCA or
+  t-SNE/UMAP), or when high-variance directions are noise rather than
+  signal.
+math:
+  - "Xc = X − μ  (centre each column)"
+  - "Xc = U S Vᵀ  (SVD)"
+  - "Σ = Xcᵀ Xc / (n − 1) = V (S² / (n − 1)) Vᵀ"
+  - "Component j = row j of Vᵀ, variance λⱼ = sⱼ² / (n − 1)"
+  - "Scores Z = Xc V[:, :k]"
+  - "Explained ratio = λⱼ / Σᵢ λᵢ"
+  - "Reconstruction X̂ = Z V[:, :k]ᵀ + μ"
+approach:
+  - "Subtract the column means — PCA is about spread around the mean"
+  - "Take the SVD of the centred matrix — its right vectors are the principal axes"
+  - "Square the singular values and divide by n − 1 — these are the variances per axis"
+  - "Keep the top k rows of Vᵀ — the k directions with most variance"
+  - "Project centred data onto them — gives the k-dimensional representation"
+code: |
+  import numpy as np
+
+  def fit(X, k):
+      mu = X.mean(0)
+      _, S, Vt = np.linalg.svd(X - mu, full_matrices=False)
+      var = S ** 2 / (len(X) - 1)
+      return mu, Vt[:k], var
+
+  def transform(model, X):
+      mu, comps, var = model
+      return (X - mu) @ comps.T
+
+  def inverse(model, Z):
+      mu, comps, var = model
+      return Z @ comps + mu
+
+  def explained_ratio(model):
+      var = model[2]
+      return var / var.sum()
+key_lines: [4, 5, 6]
+time: "O(n·d·min(n, d)) for a full SVD; randomised SVD gives O(n·d·k)"
+space: "O(n·d) for the data, O(d·k) for the components"
+hyperparameters:
+  - "n_components k — chosen by explained-variance ratio or a scree plot"
+  - "whiten — rescale components to unit variance"
+  - "svd_solver — full, randomized or arpack for large data"
+pitfalls:
+  - "Unscaled features: PCA follows the feature with the largest units"
+  - "Components are only defined up to sign, so compare projections carefully"
+  - "High variance does not mean predictive; the label may live in a low-variance direction"
+  - "Fit PCA on training data only, then reuse it on validation/test data"
+interview_qa:
+  - q: "How does PCA relate to SVD?"
+    a: "The right singular vectors of the centred data are the eigenvectors of the covariance, and the squared singular values divided by n − 1 are its eigenvalues."
+  - q: "How many components do I keep?"
+    a: "Enough to reach a target share of explained variance, or at the elbow of the scree plot; validate against the downstream task."
+  - q: "Why centre the data?"
+    a: "Without centring, the first component mostly points at the mean instead of the direction of maximum spread."
+related: [k-means, linear-regression, ridge-lasso-regularization]

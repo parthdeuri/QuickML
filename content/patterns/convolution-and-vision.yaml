@@ -33,5 +33,8 @@ problems:
 - depthwise-separable-convolution
 - transposed-convolution
 - data-augmentation
+- resnet-basic-block
+- vision-transformer-patch-embed
+- mean-average-precision
 aliases:
 - Convolution and vision

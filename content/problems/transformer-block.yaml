@@ -85,4 +85,17 @@ pitfalls:
   - "It uses exact erf GELU; some libraries use the tanh approximation, which differs slightly"
   - "A final LayerNorm after the last block is still needed in pre-norm models"
 related: [multi-head-attention, layer-normalization, residual-connections]
+diagram:
+- x ────────────┐
+- │             │
+- LayerNorm     │
+- Self-attention│
+- │             │
+- (+) ◄─────────┘  = x1
+- x1 ───────────┐
+- │             │
+- LayerNorm     │
+- MLP (GELU)    │
+- │             │
+- (+) ◄─────────┘  = out
 patterns: ["Attention and sequences"]

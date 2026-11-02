@@ -5,9 +5,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.parthdeuri.quickml.AppContainer
 import com.parthdeuri.quickml.data.repo.FeedData
-import com.parthdeuri.quickml.data.repo.ProblemRepository
+import com.parthdeuri.quickml.data.repo.ConceptRepository
 import com.parthdeuri.quickml.data.repo.SheetInfo
-import com.parthdeuri.quickml.data.repo.UserProblemDraft
+import com.parthdeuri.quickml.data.repo.UserConceptDraft
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -153,22 +153,22 @@ class SheetViewModel(container: AppContainer) : ViewModel() {
     }
 
     /** The edit form of an own problem (null when it isn't one). */
-    suspend fun loadDraft(slug: String): UserProblemDraft? = repository.loadUserProblemDraft(slug)
+    suspend fun loadDraft(slug: String): UserConceptDraft? = repository.loadUserConceptDraft(slug)
 
     /**
      * Adds ([slug] null) or updates an own problem. A new problem switches to "My problems" so
      * it shows up right away; [onDone] gets whether it was new.
      */
-    fun saveProblem(slug: String?, draft: UserProblemDraft, onDone: (Boolean) -> Unit) {
+    fun saveConcept(slug: String?, draft: UserConceptDraft, onDone: (Boolean) -> Unit) {
         viewModelScope.launch {
-            repository.saveUserProblem(slug, draft)
-            if (slug == null) settings.selectSheet(ProblemRepository.MINE_SHEET_ID)
+            repository.saveUserConcept(slug, draft)
+            if (slug == null) settings.selectSheet(ConceptRepository.MINE_SHEET_ID)
             onDone(slug == null)
         }
     }
 
-    fun deleteProblem(slug: String) {
-        viewModelScope.launch { repository.deleteUserProblem(slug) }
+    fun deleteConcept(slug: String) {
+        viewModelScope.launch { repository.deleteUserConcept(slug) }
     }
 }
 

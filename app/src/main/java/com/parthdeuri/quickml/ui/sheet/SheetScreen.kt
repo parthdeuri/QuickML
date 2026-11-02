@@ -63,9 +63,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.parthdeuri.quickml.data.repo.ProblemRepository
-import com.parthdeuri.quickml.data.repo.UserProblemDraft
-import com.parthdeuri.quickml.ui.common.UserProblemDialog
+import com.parthdeuri.quickml.data.repo.ConceptRepository
+import com.parthdeuri.quickml.data.repo.UserConceptDraft
+import com.parthdeuri.quickml.ui.common.UserConceptDialog
 import com.parthdeuri.quickml.ui.theme.QuickMLTheme
 import kotlinx.coroutines.launch
 
@@ -73,18 +73,18 @@ import kotlinx.coroutines.launch
 private data class BulkAction(val section: String, val solved: Boolean, val count: Int)
 
 /** The own-problem form: [slug] null = add. */
-private data class ProblemEditor(val slug: String?, val draft: UserProblemDraft?)
+private data class ConceptEditor(val slug: String?, val draft: UserConceptDraft?)
 
 @Composable
 fun SheetScreen(
     viewModel: SheetViewModel,
-    onOpenProblem: (String) -> Unit,
+    onOpenConcept: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
     var pending by remember { mutableStateOf<BulkAction?>(null) }
-    var editor by remember { mutableStateOf<ProblemEditor?>(null) }
+    var editor by remember { mutableStateOf<ConceptEditor?>(null) }
     var deleting by remember { mutableStateOf<SheetRow?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -145,7 +145,7 @@ fun SheetScreen(
                     Text(
                         text = when {
                             query.isNotBlank() -> "No cards match your search."
-                            state.sheetId == ProblemRepository.MINE_SHEET_ID ->
+                            state.sheetId == ConceptRepository.MINE_SHEET_ID ->
                                 "No cards of your own yet.\nTap + to add one."
                             else -> "No cards in this sheet."
                         },
@@ -178,14 +178,14 @@ fun SheetScreen(
                                 key = { row -> row.slug },
                                 contentType = { "row" }
                             ) { row ->
-                                ProblemRow(
+                                ConceptRow(
                                     row = row,
                                     onToggleSolved = viewModel::toggleSolved,
-                                    onOpen = onOpenProblem,
+                                    onOpen = onOpenConcept,
                                     onEdit = { slug ->
                                         scope.launch {
                                             val draft = viewModel.loadDraft(slug)
-                                            if (draft != null) editor = ProblemEditor(slug, draft)
+                                            if (draft != null) editor = ConceptEditor(slug, draft)
                                         }
                                     },
                                     onDelete = { deleting = it }
@@ -199,7 +199,7 @@ fun SheetScreen(
     }
         if (!state.loading) {
             FloatingActionButton(
-                onClick = { editor = ProblemEditor(slug = null, draft = null) },
+                onClick = { editor = ConceptEditor(slug = null, draft = null) },
                 containerColor = QuickMLTheme.colors.accent,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 modifier = Modifier
@@ -213,11 +213,11 @@ fun SheetScreen(
 
     val edit = editor
     if (edit != null) {
-        UserProblemDialog(
+        UserConceptDialog(
             initial = edit.draft,
             onSave = { draft ->
                 editor = null
-                viewModel.saveProblem(edit.slug, draft) { added ->
+                viewModel.saveConcept(edit.slug, draft) { added ->
                     if (added) {
                         Toast.makeText(context, "Added to My cards", Toast.LENGTH_SHORT).show()
                     }
@@ -236,7 +236,7 @@ fun SheetScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.deleteProblem(toDelete.slug)
+                        viewModel.deleteConcept(toDelete.slug)
                         deleting = null
                     }
                 ) { Text("Delete") }
@@ -367,7 +367,7 @@ private fun SectionHeader(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ProblemRow(
+private fun ConceptRow(
     row: SheetRow,
     onToggleSolved: (String) -> Unit,
     onOpen: (String) -> Unit,

@@ -75,4 +75,13 @@ interview_qa:
   - q: "What is the receptive field?"
     a: "The region of the input that influences one output value; it grows with kernel size, stride and depth."
 related: [mlp-forward-pass, backpropagation, activation-functions]
+diagram:
+- input (5×5)         kernel (3×3)
+- ' ■ ■ ■ · ·            a b c'
+- ' ■ ■ ■ · ·      ∗     d e f'
+- ' ■ ■ ■ · ·            g h i'
+- ' · · · · ·'
+- ' · · · · ·'
+- 'slide the kernel: each stop gives one output'
+- out size = (n − k + 2p) / s + 1
 patterns: ["Convolution and vision"]

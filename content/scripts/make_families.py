@@ -408,6 +408,111 @@ EXTRA = {
 for _k, _v in EXTRA.items():
     MEMBERS[_k] = MEMBERS[_k] + [x for x in _v if x not in MEMBERS[_k]]
 
+F += [
+ dict(id="time-series", name="Time series",
+  summary="Forecast ordered data by smoothing the past, measuring how it correlates with itself, and modelling it autoregressively.",
+  when_to_use=["Observations are ordered in time and neighbours are related.",
+               "You need a quick baseline forecast before anything complex.",
+               "You want to know how many past steps still carry information."],
+  key_idea="Time series break the independence assumption, so we model the memory directly. Exponential smoothing keeps a decaying average, autocorrelation measures how far back the memory reaches, and ARIMA turns that memory into a regression on past values after differencing away trends.",
+  template="""import numpy as np
+
+def ses(x, alpha):
+    level, out = x[0], []
+    for v in x:
+        out.append(level)             # forecast before seeing v
+        level = alpha * v + (1 - alpha) * level
+    return np.array(out), level
+
+def acf(x, k):
+    x = x - x.mean()
+    return (x[:-k] * x[k:]).sum() / (x * x).sum()
+""",
+  complexity="O(n) per pass for smoothing and per lag for autocorrelation.",
+  pitfalls=["Shuffled train and test splits leak the future; split by time.", "Trends and seasonality must be removed or modelled before assuming stationarity."],
+  aliases=["Time series"]),
+ dict(id="graph-neural-networks", name="Graph neural networks",
+  summary="Learn on graphs by letting every node repeatedly combine its neighbours' features.",
+  when_to_use=["Data is a graph such as molecules, social networks or citations.",
+               "A node's label depends on its neighbourhood.",
+               "The number of neighbours varies from node to node."],
+  key_idea="One layer aggregates each node's neighbours (a normalised sum, or an attention-weighted sum) and then transforms the result with shared weights. Stacking k layers lets information travel k hops, but too many layers blur all nodes together.",
+  template="""import numpy as np
+
+def gcn_layer(A, X, W):
+    A = A + np.eye(len(A))               # add self-loops
+    d = A.sum(1) ** -0.5
+    A_hat = d[:, None] * A * d[None]       # D^-1/2 A D^-1/2
+    return np.maximum(A_hat @ X @ W, 0)    # aggregate, then transform
+""",
+  complexity="O(edges·d) with a sparse adjacency; the dense version here is O(n²·d).",
+  pitfalls=["Deep stacks over-smooth: node features become nearly identical.", "A dense adjacency does not scale to large graphs."],
+  aliases=["Graph neural networks"]),
+ dict(id="preference-alignment", name="Preference alignment and policy gradients",
+  summary="Steer a model with comparisons or rewards: learn a reward from preferences, or optimise the policy directly.",
+  when_to_use=["Quality is easier to compare than to label.",
+               "You fine-tune a language model toward human preferences.",
+               "An agent must improve a stochastic policy from rewards."],
+  key_idea="A pairwise Bradley-Terry loss turns preferences into a reward score. DPO folds that reward into the policy's own log-ratios, so no separate reward model or sampling loop is needed. PPO and advantage estimation do the reinforcement-learning version, clipping how far each update can move the policy.",
+  template="""import numpy as np
+
+def log_sigmoid(z):
+    return -np.logaddexp(0, -z)
+
+def bradley_terry_loss(r_chosen, r_rejected):
+    return -log_sigmoid(r_chosen - r_rejected).mean()
+
+def dpo_loss(pc, pr, rc, rr, beta=0.1):
+    margin = (pc - rc) - (pr - rr)      # vs reference
+    return -log_sigmoid(beta * margin).mean()
+""",
+  complexity="O(batch) once log-probabilities are computed; the cost is in running the language model.",
+  pitfalls=["Preference data is noisy and can encode annotator bias.", "Pushing the policy far from the reference can hurt fluency."],
+  aliases=["Preference alignment and policy gradients"]),
+ dict(id="text-evaluation-retrieval", name="Text evaluation and retrieval",
+  summary="Score generated text against references and measure how well search puts relevant documents first.",
+  when_to_use=["You compare machine translation or summaries with references.",
+               "You build search or retrieval-augmented generation.",
+               "You need to rank documents and report a single quality number."],
+  key_idea="Overlap metrics such as BLEU and ROUGE count shared n-grams, so they are cheap but blind to meaning. Retrieval metrics judge the ranked list: recall at k asks whether the answer was found, MRR rewards finding it early, and nDCG also values graded relevance.",
+  template="""import numpy as np
+
+def recall_at_k(ranked, relevant, k):
+    return len(set(ranked[:k]) & set(relevant)) / len(relevant)
+
+def mrr(ranked, relevant):
+    for i, d in enumerate(ranked, 1):
+        if d in relevant:
+            return 1 / i
+    return 0.0
+""",
+  complexity="O(k) per query for recall and O(n) for MRR.",
+  pitfalls=["High n-gram overlap does not guarantee a correct or fluent answer.", "Retrieval scores depend on the quality of the relevance labels."],
+  aliases=["Text evaluation and retrieval"]),
+]
+MEMBERS.update({
+ "time-series": ["exponential-smoothing", "autocorrelation-acf-pacf", "arima-model"],
+ "graph-neural-networks": ["gnn-message-passing", "graph-attention-layer"],
+ "preference-alignment": ["dpo-loss", "reward-model-bradley-terry", "ppo-clipped-objective", "gae-advantage"],
+ "text-evaluation-retrieval": ["bleu-score", "rouge-score", "retrieval-metrics-recall-at-k", "rag-dense-retrieval"],
+})
+EXTRA2 = {
+ "text-processing": ["bert-masked-lm"],
+ "attention-and-sequences": ["bahdanau-additive-attention", "cross-attention-encoder-decoder", "gru-cell", "bidirectional-rnn"],
+ "convolution-and-vision": ["resnet-basic-block", "vision-transformer-patch-embed", "mean-average-precision"],
+ "gradient-optimisation": ["rmsprop-adagrad"],
+ "information-theoretic-losses": ["clip-contrastive-loss"],
+ "distance-and-clustering": ["hierarchical-clustering", "local-outlier-factor", "silhouette-clustering-metrics"],
+ "dimensionality-reduction": ["nmf-multiplicative-updates"],
+ "linear-models": ["elastic-net-coordinate-descent"],
+ "regularisation": ["elastic-net-coordinate-descent"],
+ "probabilistic-models": ["gaussian-process-regression"],
+ "classification-metrics": ["isotonic-regression-pava"],
+ "reinforcement-learning": ["ppo-clipped-objective", "gae-advantage"],
+}
+for _k, _v in EXTRA2.items():
+    MEMBERS[_k] = MEMBERS[_k] + [x for x in _v if x not in MEMBERS[_k]]
+
 KEYS = ["id", "name", "order", "summary", "when_to_use", "key_idea",
         "template", "complexity", "pitfalls", "problems", "aliases"]
 

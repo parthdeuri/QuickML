@@ -1,7 +1,7 @@
 package com.parthdeuri.quickml.data.settings
 
 import android.content.SharedPreferences
-import com.parthdeuri.quickml.data.repo.ProblemRepository
+import com.parthdeuri.quickml.data.repo.ConceptRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,7 +12,7 @@ data class CardPrefs(
     val quizBeforeReveal: Boolean = true,
     /** Code tab masks the solution's key lines. */
     val practiceMode: Boolean = false,
-    /** Think timer on the Problem tab in Revise / Quiz modes; 0 = off. */
+    /** Think timer on the Concept tab in Revise / Quiz modes; 0 = off. */
     val thinkTimerMinutes: Int = 0
 )
 
@@ -42,7 +42,7 @@ enum class AccentChoice(val label: String, val dark: Long, val light: Long) {
  */
 class StudySettings(private val prefs: SharedPreferences) {
     private val selectedSheet = MutableStateFlow(
-        prefs.getString(KEY_SHEET, null) ?: ProblemRepository.DEFAULT_SHEET_ID
+        prefs.getString(KEY_SHEET, null) ?: ConceptRepository.DEFAULT_SHEET_ID
     )
     val selectedSheetId: StateFlow<String> = selectedSheet.asStateFlow()
 

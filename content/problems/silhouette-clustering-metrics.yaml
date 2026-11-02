@@ -1,0 +1,105 @@
+slug: silhouette-clustering-metrics
+title: Silhouette, ARI and NMI
+url: https://scikit-learn.org/stable/modules/clustering.html#clustering-performance-evaluation
+difficulty: Medium
+area: Classical ML
+topics: [Clustering, Evaluation, Unsupervised, Information Theory]
+summary: |
+  Three ways to score a clustering. The silhouette needs only the data and
+  the labels and measures cohesion against separation; the adjusted Rand
+  index and normalised mutual information compare two labelings, for
+  example clusters against ground truth.
+intuition: |
+  Cluster labels are arbitrary names, so a good score must not depend on
+  which number is called which. The silhouette asks whether each point is
+  closer to its own cluster than to the next one; ARI and NMI ask whether
+  two labelings group the same pairs together, after subtracting what
+  random labelings would score by chance (ARI) or normalising the shared
+  information (NMI).
+why_it_works: |
+  Both external scores are computed from the contingency table of label
+  pairs, which is invariant to renaming clusters. ARI corrects the pair
+  counting for chance agreement so random labelings score near zero, and
+  NMI divides the mutual information by the entropies so the scale is
+  fixed between 0 and 1.
+when_to_use: |
+  Silhouette to compare values of k or algorithms without labels, ARI and
+  NMI when reference classes exist, and benchmarking clustering methods
+  on labelled datasets.
+when_not_to_use: |
+  Skip silhouette for non-convex clusters such as rings, where it favours
+  convex shapes; NMI is biased toward many clusters unless adjusted, and
+  none of these show whether clusters are useful for your task.
+math:
+  - "aᵢ = mean distance to the other points in i's cluster"
+  - "bᵢ = smallest mean distance from i to another cluster"
+  - "sᵢ = (bᵢ − aᵢ) / max(aᵢ, bᵢ),  score = mean of sᵢ"
+  - "Contingency nᵢⱼ = #points in cluster i of U and j of V"
+  - "ARI = (Σ C(nᵢⱼ,2) − E) / (½[ΣC(aᵢ,2) + ΣC(bⱼ,2)] − E)"
+  - "E = ΣC(aᵢ,2) · ΣC(bⱼ,2) / C(n,2)"
+  - "MI = Σ pᵢⱼ log(pᵢⱼ / (pᵢ pⱼ)),  NMI = MI / ((H(U) + H(V)) / 2)"
+approach:
+  - "Silhouette: take all pairwise distances — every score is built from them"
+  - "For each point average the distance to its own cluster and to each other cluster — cohesion a and separation b"
+  - "Combine as (b − a) / max(a, b) and average — near 1 well separated, near 0 on a boundary, negative misassigned"
+  - "ARI and NMI: build the contingency table of the two labelings — the only thing both scores depend on"
+  - "ARI counts agreeing pairs and subtracts the chance expectation — chance labelings score about zero"
+  - "NMI computes mutual information and divides by the average entropy — a bounded, label-name-free score"
+code: |
+  import numpy as np
+
+  def silhouette(X, y):
+      D = np.sqrt(((X[:, None] - X[None]) ** 2).sum(-1))
+      s = []
+      for i in range(len(X)):
+          own = y == y[i]
+          if own.sum() == 1:
+              s.append(0.0)
+              continue
+          a = D[i, own].sum() / (own.sum() - 1)
+          b = min(D[i, y == c].mean() for c in set(y) - {y[i]})
+          s.append((b - a) / max(a, b))
+      return np.mean(s)
+
+  def table(u, v):
+      iu = np.unique(u, return_inverse=True)[1]
+      iv = np.unique(v, return_inverse=True)[1]
+      C = np.zeros((iu.max() + 1, iv.max() + 1))
+      np.add.at(C, (iu, iv), 1)
+      return C
+
+  def ari(u, v):
+      C, n = table(u, v), len(u)
+      c2 = lambda x: (x * (x - 1) / 2).sum()
+      s, sa, sb = c2(C), c2(C.sum(1)), c2(C.sum(0))
+      e = sa * sb / c2(np.array(n))
+      return (s - e) / ((sa + sb) / 2 - e)
+
+  def nmi(u, v):
+      P = table(u, v) / len(u)
+      pa, pb = P.sum(1), P.sum(0)
+      nz = P > 0
+      mi = (P[nz] * np.log(P[nz] / np.outer(pa, pb)[nz])).sum()
+      h = lambda p: -(p[p > 0] * np.log(p[p > 0])).sum()
+      return mi / ((h(pa) + h(pb)) / 2)
+key_lines: [12, 28, 34]
+time: "O(n²·d) for the silhouette, O(n + kᵤ·kᵥ) for ARI and NMI once the table is built"
+space: "O(n²) for the distance matrix, O(kᵤ·kᵥ) for the contingency table"
+hyperparameters:
+  - "Distance metric for the silhouette — Euclidean by default, must match the clustering"
+  - "NMI normaliser — arithmetic, geometric, min or max of the two entropies"
+  - "Sampling — compute the silhouette on a subsample for large n"
+pitfalls:
+  - "Silhouette is undefined for a single cluster and this code assumes at least two"
+  - "Silhouette prefers convex, evenly dense clusters and can rank a poor k-means above a correct density clustering"
+  - "NMI (unadjusted) tends to rise as the number of clusters grows"
+  - "ARI and NMI assume the ground-truth classes are the right notion of cluster"
+interview_qa:
+  - q: "How do you read a silhouette value?"
+    a: "Near +1 the point is far from other clusters and close to its own, near 0 it sits between two clusters, and negative values suggest it was assigned to the wrong cluster."
+  - q: "Why use ARI instead of the plain Rand index?"
+    a: "The Rand index is high even for random labelings when there are many clusters; ARI subtracts the expected chance agreement so random labelings score near zero."
+  - q: "How is NMI different from accuracy for clustering?"
+    a: "NMI does not need cluster ids to match class ids; it measures shared information between the two partitions, so permuting cluster names leaves it unchanged."
+related: [k-means, dbscan, entropy-kl-divergence]
+patterns: ["Distance and clustering"]

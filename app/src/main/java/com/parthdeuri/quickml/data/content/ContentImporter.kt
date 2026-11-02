@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.room.withTransaction
 import com.parthdeuri.quickml.data.db.PatternEntity
-import com.parthdeuri.quickml.data.db.ProblemEntity
+import com.parthdeuri.quickml.data.db.ConceptEntity
 import com.parthdeuri.quickml.data.db.QuickMLDatabase
 import com.parthdeuri.quickml.data.db.SheetEntity
 import com.parthdeuri.quickml.data.db.SheetEntryEntity
@@ -35,14 +35,14 @@ class ContentImporter(
             val stored = prefs.getInt(KEY_VERSION, 0)
             val contentDao = db.contentDao()
             if (stored >= file.contentVersion &&
-                contentDao.countContentProblems() > 0 &&
+                contentDao.countContentConcepts() > 0 &&
                 (patterns.isEmpty() || contentDao.countPatterns() > 0)
             ) {
                 return@withContext
             }
 
             val problems = file.problems.map { p ->
-                ProblemEntity(
+                ConceptEntity(
                     slug = p.slug,
                     title = p.title,
                     platform = p.platform,
@@ -64,7 +64,8 @@ class ContentImporter(
                     bruteForce = p.bruteForce,
                     whyItWorks = p.whyItWorks,
                     dryRunJson = ContentJson.encodeStrings(p.dryRun),
-                    keyLinesJson = ContentJson.encodeInts(p.keyLines)
+                    keyLinesJson = ContentJson.encodeInts(p.keyLines),
+                    diagramJson = ContentJson.encodeStrings(p.diagram)
                 )
             }
             val sheets = file.sheets.map { SheetEntity(it.id, it.name, it.description) }
@@ -76,9 +77,9 @@ class ContentImporter(
                 contentDao.clearEntries()
                 contentDao.clearSheets()
                 // The user's own problems (userAdded = 1) survive content updates.
-                contentDao.clearContentProblems()
+                contentDao.clearContentConcepts()
                 contentDao.clearPatterns()
-                contentDao.insertProblems(problems)
+                contentDao.insertConcepts(problems)
                 contentDao.insertSheets(sheets)
                 contentDao.insertEntries(entries)
                 contentDao.insertPatterns(patterns)

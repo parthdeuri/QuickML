@@ -1,0 +1,80 @@
+slug: clip-contrastive-loss
+title: CLIP Contrastive Loss
+url: https://arxiv.org/abs/2103.00020
+difficulty: Hard
+area: Deep Learning
+topics: [Contrastive Learning, Multimodal Models, Embeddings]
+summary: |
+  Embed a batch of images and their captions, score every image against
+  every caption, and train each image to pick its own caption and each
+  caption to pick its own image.
+intuition: |
+  Within a batch the true pair sits on the diagonal of a similarity
+  matrix and every other entry is a free negative. Treating each row as
+  a classification over captions, and each column as a classification
+  over images, pulls matching pairs together and pushes the rest apart
+  without any labels beyond the pairing. The temperature controls how
+  sharply the softmax separates near and far, so it matters a lot.
+approach:
+  - "L2-normalise image and text embeddings — dot products become cosine similarities"
+  - "Form logits = I Tᵀ / τ, an N × N matrix — every image against every caption, τ sharpens the softmax"
+  - "Use labels 0 … N−1 as targets — the matching pair is the diagonal entry"
+  - "Cross-entropy along rows — image-to-text, each image must pick its caption"
+  - "Cross-entropy along columns (logits transposed) and average both — text-to-image, symmetric training"
+code: |
+  import numpy as np
+
+  def log_softmax(z):
+      z = z - z.max(axis=1, keepdims=True)
+      return z - np.log(np.exp(z).sum(axis=1, keepdims=True))
+
+  def clip_loss(img, txt, tau=0.07):
+      img = img / np.linalg.norm(img, axis=1, keepdims=True)
+      txt = txt / np.linalg.norm(txt, axis=1, keepdims=True)
+      logits = img @ txt.T / tau
+      idx = np.arange(len(logits))
+      loss_i = -log_softmax(logits)[idx, idx].mean()     # image -> text
+      loss_t = -log_softmax(logits.T)[idx, idx].mean()   # text -> image
+      return (loss_i + loss_t) / 2
+key_lines: [10, 12, 13]
+time: "O(N²·D) for the N × N similarity matrix"
+space: "O(N²) for the logits"
+when_to_use: |
+  Learning aligned image-text (or audio-text, video-text) embeddings from
+  paired data, enabling zero-shot classification and retrieval.
+when_not_to_use: |
+  Small batches, where there are too few negatives, or data with many
+  near-duplicate captions in a batch, which creates false negatives.
+why_it_works: |
+  The loss is an InfoNCE bound on the mutual information between the two
+  modalities: it rewards scoring the true partner above all N − 1 other
+  candidates. Larger batches provide more negatives and a tighter bound.
+  Normalising and using a temperature keeps the similarities bounded
+  while still letting the softmax become sharp.
+math:
+  - "I, T ∈ ℝ^(N×D) rows unit-normalised;  S = I Tᵀ / τ"
+  - "L_i→t = −(1/N) Σᵢ log softmax(Sᵢ,:)ᵢ   (rows)"
+  - "L_t→i = −(1/N) Σⱼ log softmax(S:,ⱼ)ⱼ   (columns)"
+  - "L = (L_i→t + L_t→i) / 2"
+  - "Original CLIP learns τ as exp(−logit_scale), a trained scalar"
+interview_qa:
+  - q: "Why is the loss symmetric?"
+    a: "Each direction is a separate N-way classification, image to text and text to image; averaging trains both encoders to retrieve in both directions."
+  - q: "What does the temperature do?"
+    a: "It scales the cosine similarities before the softmax; small τ makes the distribution sharper and weights hard negatives more."
+  - q: "Where do the negatives come from?"
+    a: "Every other pair in the batch, so batch size directly sets the number of negatives."
+  - q: "How is zero-shot classification done with CLIP?"
+    a: "Embed a text prompt per class, embed the image, and pick the class whose text embedding has the highest cosine similarity."
+hyperparameters:
+  - "Temperature τ (fixed or learned)"
+  - "Batch size N (number of negatives)"
+  - "Embedding dimension D"
+  - "Encoder architectures and projection heads"
+pitfalls:
+  - "Forgetting to normalise embeddings changes the loss and can make training unstable"
+  - "Duplicate or very similar captions in one batch act as false negatives"
+  - "Here τ is a constant; CLIP learns it and clamps it to a maximum scale"
+  - "Distributed training needs gathered embeddings from all devices to get the full negative set"
+related: [cosine-similarity-embeddings, softmax-cross-entropy, multi-head-attention]
+patterns: ["Information-theoretic losses"]

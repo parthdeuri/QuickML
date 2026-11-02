@@ -1,0 +1,36 @@
+id: time-series
+name: Time series
+order: 19
+summary: Forecast ordered data by smoothing the past, measuring how it correlates
+  with itself, and modelling it autoregressively.
+when_to_use:
+- Observations are ordered in time and neighbours are related.
+- You need a quick baseline forecast before anything complex.
+- You want to know how many past steps still carry information.
+key_idea: Time series break the independence assumption, so we model the memory
+  directly. Exponential smoothing keeps a decaying average, autocorrelation measures
+  how far back the memory reaches, and ARIMA turns that memory into a regression
+  on past values after differencing away trends.
+template: |
+  import numpy as np
+
+  def ses(x, alpha):
+      level, out = x[0], []
+      for v in x:
+          out.append(level)             # forecast before seeing v
+          level = alpha * v + (1 - alpha) * level
+      return np.array(out), level
+
+  def acf(x, k):
+      x = x - x.mean()
+      return (x[:-k] * x[k:]).sum() / (x * x).sum()
+complexity: O(n) per pass for smoothing and per lag for autocorrelation.
+pitfalls:
+- Shuffled train and test splits leak the future; split by time.
+- Trends and seasonality must be removed or modelled before assuming stationarity.
+problems:
+- exponential-smoothing
+- autocorrelation-acf-pacf
+- arima-model
+aliases:
+- Time series

@@ -9,16 +9,16 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ContentDao {
     @Query("SELECT * FROM problems")
-    fun observeProblems(): Flow<List<ProblemEntity>>
+    fun observeConcepts(): Flow<List<ConceptEntity>>
 
     @Query("SELECT * FROM problems")
-    suspend fun getProblems(): List<ProblemEntity>
+    suspend fun getConcepts(): List<ConceptEntity>
 
     @Query("SELECT * FROM problems WHERE slug = :slug")
-    suspend fun getProblem(slug: String): ProblemEntity?
+    suspend fun getConcept(slug: String): ConceptEntity?
 
     @Query("SELECT * FROM problems WHERE userAdded = 1")
-    suspend fun getUserProblems(): List<ProblemEntity>
+    suspend fun getUserConcepts(): List<ConceptEntity>
 
     @Query("SELECT * FROM sheets ORDER BY name")
     fun observeSheets(): Flow<List<SheetEntity>>
@@ -34,16 +34,16 @@ interface ContentDao {
 
     /** Bundled problems only (the user's own problems don't count as imported content). */
     @Query("SELECT COUNT(*) FROM problems WHERE userAdded IS NULL OR userAdded = 0")
-    suspend fun countContentProblems(): Int
+    suspend fun countContentConcepts(): Int
 
     @Query("SELECT COUNT(*) FROM patterns")
     suspend fun countPatterns(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertProblems(items: List<ProblemEntity>)
+    suspend fun insertConcepts(items: List<ConceptEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertProblem(item: ProblemEntity)
+    suspend fun insertConcept(item: ConceptEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSheets(items: List<SheetEntity>)
@@ -56,10 +56,10 @@ interface ContentDao {
 
     /** Deletes bundled problems only: the user's own problems survive content updates. */
     @Query("DELETE FROM problems WHERE userAdded IS NULL OR userAdded = 0")
-    suspend fun clearContentProblems()
+    suspend fun clearContentConcepts()
 
     @Query("DELETE FROM problems WHERE slug = :slug AND userAdded = 1")
-    suspend fun deleteUserProblem(slug: String)
+    suspend fun deleteUserConcept(slug: String)
 
     @Query("DELETE FROM sheets")
     suspend fun clearSheets()

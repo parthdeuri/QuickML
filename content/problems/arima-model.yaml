@@ -1,0 +1,90 @@
+slug: arima-model
+title: ARIMA Forecasting
+url: https://otexts.com/fpp3/arima.html
+difficulty: Hard
+area: Classical ML
+topics: [Time Series, Forecasting, Autoregression, Differencing]
+summary: |
+  Difference the series until it is roughly stationary, regress it on its
+  own recent values, forecast the differenced series forward, and sum the
+  forecasts back to the original scale. This card implements the AR part
+  with d differences, ARIMA(p, d, 0).
+intuition: |
+  Many series wander, so their level is unpredictable, but the changes
+  between steps are stable and depend on recent changes. Differencing
+  turns the wandering series into a steadier one that a plain regression
+  on lagged values can model, and summing the predicted changes brings
+  the forecast back to the original level.
+why_it_works: |
+  Stationarity makes the dependence on lags constant over time, so
+  coefficients estimated on the past still apply to the future. Fitting
+  an AR(p) by least squares is conditional maximum likelihood under
+  Gaussian noise, and integrating the differenced forecast is exact
+  because differencing is an invertible linear operation given the
+  starting values.
+when_to_use: |
+  Univariate forecasting of autocorrelated series with trend that
+  differencing removes, a transparent baseline to beat with machine
+  learning models, and when ACF and PACF plots suggest low orders.
+when_not_to_use: |
+  Skip it for series with strong seasonality unless you add seasonal
+  terms, for many exogenous drivers, for nonlinear dynamics, and for
+  long horizons where forecasts collapse to a constant or a line.
+math:
+  - "Difference: ∇yₜ = yₜ − yₜ₋₁, apply d times to get zₜ"
+  - "AR(p): zₜ = c + φ₁ zₜ₋₁ + … + φₚ zₜ₋ₚ + εₜ"
+  - "Least squares: β̂ = argmin Σₜ (zₜ − Xₜ β)², β = (c, φ₁..φₚ)"
+  - "Forecast: ẑₜ₊₁ = c + Σᵢ φᵢ ẑₜ₊₁₋ᵢ (use forecasts once data ends)"
+  - "Integrate (d = 1): ŷₜ₊ₕ = yₜ + Σⱼ ẑₜ₊ⱼ"
+  - "Full ARIMA adds MA terms: zₜ = … + θ₁ εₜ₋₁ + … + θ_q εₜ₋_q"
+approach:
+  - "Difference the series d times — removes stochastic trend so the dependence structure is stable"
+  - "Build a lag matrix of the last p values plus a constant column — each row predicts the next difference"
+  - "Solve least squares for the constant and AR coefficients — conditional maximum likelihood for Gaussian noise"
+  - "Forecast the differenced series recursively, feeding each forecast back in — future lags are not yet observed"
+  - "Undo differencing by cumulative sums from the last observed values — returns forecasts to the original scale"
+code: |
+  import numpy as np
+
+  def fit_ar(z, p):
+      n = len(z)
+      cols = [z[p - j - 1:n - j - 1] for j in range(p)]
+      X = np.column_stack([np.ones(n - p)] + cols)
+      return np.linalg.lstsq(X, z[p:], rcond=None)[0]
+
+  def forecast(y, p, d, h):
+      z = y
+      for _ in range(d):
+          z = np.diff(z)
+      beta = fit_ar(z, p)
+      hist = list(z[-p:])
+      for _ in range(h):
+          lags = hist[::-1][:p]
+          hist.append(beta[0] + beta[1:] @ lags)
+      dz = np.array(hist[p:])
+      for lvl in reversed(range(d)):
+          last = np.diff(y, n=lvl)[-1]
+          dz = last + np.cumsum(dz)
+      return dz, beta
+key_lines: [7, 17, 21]
+time: "O(n·p²) for least squares plus O(h·p) for forecasting"
+space: "O(n·p) for the lag matrix"
+hyperparameters:
+  - "p autoregressive order — read from the PACF or chosen by AIC"
+  - "d differencing order — usually 0, 1 or 2, enough to look stationary"
+  - "q moving-average order — not in this code, which fits ARIMA(p, d, 0)"
+  - "Constant — include for a drift after differencing, drop it if the series has none"
+pitfalls:
+  - "Over-differencing adds negative autocorrelation and inflates forecast variance"
+  - "This is conditional least squares; libraries that fit exact likelihood or MA terms give slightly different estimates"
+  - "Point forecasts of a stationary part revert to the mean, so long horizons look flat"
+  - "Judge models on a rolling-origin hold-out, never on in-sample fit"
+interview_qa:
+  - q: "What do p, d and q stand for?"
+    a: "p is the number of lagged values in the autoregression, d the number of differences to make the series stationary, q the number of lagged forecast errors in the moving-average part."
+  - q: "How do you choose d?"
+    a: "Difference until a plot and the ACF look stationary, typically once or twice; stationarity tests such as ADF help, but over-differencing hurts."
+  - q: "Why do ARIMA forecasts get flat at long horizons?"
+    a: "Future values are fed back as inputs, so shocks average out and the forecast converges to the mean of the differenced series, which becomes a straight drift line once integrated."
+related: [autocorrelation-acf-pacf, exponential-smoothing, linear-regression]
+patterns: ["Time series"]

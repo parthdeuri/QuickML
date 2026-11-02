@@ -29,5 +29,6 @@ problems:
 - svm
 - ridge-lasso-regularization
 - kernel-trick-rbf
+- elastic-net-coordinate-descent
 aliases:
 - Linear models

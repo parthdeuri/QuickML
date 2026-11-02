@@ -1,0 +1,37 @@
+id: preference-alignment
+name: Preference alignment and policy gradients
+order: 21
+summary: 'Steer a model with comparisons or rewards: learn a reward from preferences,
+  or optimise the policy directly.'
+when_to_use:
+- Quality is easier to compare than to label.
+- You fine-tune a language model toward human preferences.
+- An agent must improve a stochastic policy from rewards.
+key_idea: A pairwise Bradley-Terry loss turns preferences into a reward score. DPO
+  folds that reward into the policy's own log-ratios, so no separate reward model
+  or sampling loop is needed. PPO and advantage estimation do the reinforcement-learning
+  version, clipping how far each update can move the policy.
+template: |
+  import numpy as np
+
+  def log_sigmoid(z):
+      return -np.logaddexp(0, -z)
+
+  def bradley_terry_loss(r_chosen, r_rejected):
+      return -log_sigmoid(r_chosen - r_rejected).mean()
+
+  def dpo_loss(pc, pr, rc, rr, beta=0.1):
+      margin = (pc - rc) - (pr - rr)      # vs reference
+      return -log_sigmoid(beta * margin).mean()
+complexity: O(batch) once log-probabilities are computed; the cost is in running
+  the language model.
+pitfalls:
+- Preference data is noisy and can encode annotator bias.
+- Pushing the policy far from the reference can hurt fluency.
+problems:
+- dpo-loss
+- reward-model-bradley-terry
+- ppo-clipped-objective
+- gae-advantage
+aliases:
+- Preference alignment and policy gradients

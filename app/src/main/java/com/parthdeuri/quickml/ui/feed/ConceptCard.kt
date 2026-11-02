@@ -112,7 +112,7 @@ private enum class CardSection(val label: String) {
 private const val NOTE_SAVE_DELAY_MS = 600L
 
 /**
- * Tabs shown for [item], driven by its content: Problem always; Intuition / Approach / Code
+ * Tabs shown for [item], driven by its content: Concept always; Intuition / Approach / Code
  * when they have something to show; Edge cases when there are edge cases, or the problem is
  * solved / has a note (so "My notes" is reachable), or the user asked for the notes. Ask comes
  * last, on full problems, and only while the AI toggle is on.
@@ -140,7 +140,7 @@ private fun cardSections(
 }
 
 @Composable
-fun ProblemCard(
+fun ConceptCard(
     item: FeedItem,
     titles: Map<String, String>,
     /** Ask "Which pattern fits?" before showing topics and patterns (Quiz / Revise modes). */
@@ -157,7 +157,7 @@ fun ProblemCard(
     onRelatedClick: (String) -> Unit,
     /** True while this card is the pager's current page (starts the think timer). */
     isCurrent: Boolean,
-    /** Think timer on the Problem tab, in minutes; 0 = off. */
+    /** Think timer on the Concept tab, in minutes; 0 = off. */
     thinkTimerMinutes: Int,
     /** Pattern string (lowercase) -> pattern of the library. */
     patternIndex: Map<String, PatternRef>,
@@ -165,8 +165,8 @@ fun ProblemCard(
     onSaveNote: (String) -> Unit,
     onSaveMySolution: (String) -> Unit,
     /** Own problems only. */
-    onEditProblem: () -> Unit,
-    onDeleteProblem: () -> Unit,
+    onEditConcept: () -> Unit,
+    onDeleteConcept: () -> Unit,
     /** AI master toggle: adds the Ask tab to full problems. */
     aiEnabled: Boolean = false,
     /** Ask tab without a key: opens Settings. */
@@ -185,7 +185,7 @@ fun ProblemCard(
     val currentOnQuizAnswered by rememberUpdatedState(onQuizAnswered)
     val currentOnSaveNote by rememberUpdatedState(onSaveNote)
 
-    // Pattern quiz state lives here (not in the Problem tab) so it survives tab swipes.
+    // Pattern quiz state lives here (not in the Concept tab) so it survives tab swipes.
     val patterns = item.problem.patterns
     val quizOptions = remember(slug, patterns, patternPool) {
         patternQuizOptions(slug, patterns, patternPool)
@@ -337,8 +337,8 @@ fun ProblemCard(
                     userAdded = item.userAdded,
                     onNotes = { openNotes() },
                     onMySolution = { editingSolution = true },
-                    onEditProblem = onEditProblem,
-                    onDeleteProblem = onDeleteProblem
+                    onEditConcept = onEditConcept,
+                    onDeleteConcept = onDeleteConcept
                 )
             }
 
@@ -352,7 +352,7 @@ fun ProblemCard(
                 // getOrNull: the tab list can shrink (e.g. unsolve) while a page is composed.
                 when (sections.getOrNull(index)) {
                     null -> Unit
-                    CardSection.PROBLEM -> ProblemSection(
+                    CardSection.PROBLEM -> ConceptSection(
                         item = item,
                         onToggleSolved = onToggleSolved,
                         quiz = if (showQuiz) {
@@ -385,6 +385,7 @@ fun ProblemCard(
                     CardSection.APPROACH -> ApproachSection(
                         slug = problem.slug,
                         steps = problem.approach,
+                        diagram = item.diagram,
                         dryRun = item.dryRun,
                         time = problem.time,
                         space = problem.space
@@ -412,7 +413,7 @@ fun ProblemCard(
             }
 
             // Rating / "mark solved" prompt: Code / Edge cases tabs, the last tab, or the only
-            // tab of a notes-less card (whose Problem tab already has "Mark solved").
+            // tab of a notes-less card (whose Concept tab already has "Mark solved").
             val currentIndex = pagerState.currentPage.coerceIn(0, sections.size - 1)
             val currentSection = sections[currentIndex]
             // The Ask tab (chat) never shows the row and does not count as the last tab.
@@ -475,8 +476,8 @@ private fun CardMenu(
     userAdded: Boolean,
     onNotes: () -> Unit,
     onMySolution: () -> Unit,
-    onEditProblem: () -> Unit,
-    onDeleteProblem: () -> Unit
+    onEditConcept: () -> Unit,
+    onDeleteConcept: () -> Unit
 ) {
     var open by remember { mutableStateOf(false) }
     Box {
@@ -507,14 +508,14 @@ private fun CardMenu(
                     text = { Text("Edit card") },
                     onClick = {
                         open = false
-                        onEditProblem()
+                        onEditConcept()
                     }
                 )
                 DropdownMenuItem(
                     text = { Text("Delete card", color = QuickMLTheme.colors.danger) },
                     onClick = {
                         open = false
-                        onDeleteProblem()
+                        onDeleteConcept()
                     }
                 )
             }
@@ -634,7 +635,7 @@ private fun openUrl(context: Context, url: String) {
     }
 }
 
-/** Pattern quiz shown on the Problem tab; [pick] is null until answered. */
+/** Pattern quiz shown on the Concept tab; [pick] is null until answered. */
 private class QuizUi(
     val options: List<String>,
     val answer: String,
@@ -756,7 +757,7 @@ private fun ThinkTimerChip(secondsLeft: Int) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ProblemSection(
+private fun ConceptSection(
     item: FeedItem,
     onToggleSolved: () -> Unit,
     quiz: QuizUi?,
@@ -1108,6 +1109,34 @@ private fun ExplanationBlock(title: String, body: String, titleColor: Color, bac
 }
 
 /** Formula lines, one per row. */
+/** Monospace box-art picture (architecture, data flow); scrolls sideways when wide. */
+@Composable
+private fun DiagramBox(lines: List<String>) {
+    val code = QuickMLTheme.colors.code
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionHeading("Diagram")
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(code.background)
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            Text(
+                text = lines.joinToString("\n"),
+                style = TextStyle(
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
+                ),
+                softWrap = false,
+                color = code.text
+            )
+        }
+    }
+}
+
 @Composable
 private fun DryRunBox(lines: List<String>) {
     val code = QuickMLTheme.colors.code
@@ -1140,6 +1169,7 @@ private fun DryRunBox(lines: List<String>) {
 private fun ApproachSection(
     slug: String,
     steps: List<String>,
+    diagram: List<String>,
     dryRun: List<String>,
     time: String?,
     space: String?
@@ -1179,6 +1209,9 @@ private fun ApproachSection(
                 )
             }
         }
+        if (diagram.isNotEmpty()) {
+            DiagramBox(diagram)
+        }
         if (dryRun.isNotEmpty()) {
             DryRunBox(dryRun)
         }
@@ -1186,8 +1219,8 @@ private fun ApproachSection(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            ComplexityBox("Time", time ?: "-", Modifier.weight(1f))
-            ComplexityBox("Space", space ?: "-", Modifier.weight(1f))
+            ComplexityBox("Compute", time ?: "-", Modifier.weight(1f))
+            ComplexityBox("Memory", space ?: "-", Modifier.weight(1f))
         }
     }
 }

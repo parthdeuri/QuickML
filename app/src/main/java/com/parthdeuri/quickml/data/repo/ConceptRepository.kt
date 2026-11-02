@@ -5,7 +5,7 @@ import com.parthdeuri.quickml.data.content.ContentJson
 import com.parthdeuri.quickml.data.content.ExampleJson
 import com.parthdeuri.quickml.data.db.ActivityLogEntity
 import com.parthdeuri.quickml.data.db.PatternEntity
-import com.parthdeuri.quickml.data.db.ProblemEntity
+import com.parthdeuri.quickml.data.db.ConceptEntity
 import com.parthdeuri.quickml.data.db.ReviewStateEntity
 import com.parthdeuri.quickml.data.db.QuickMLDatabase
 import com.parthdeuri.quickml.data.db.SheetEntity
@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.map
 import java.time.LocalDate
 
 data class FeedItem(
-    val problem: ProblemEntity,
+    val problem: ConceptEntity,
     val section: String,
     val order: Int,
     val status: String,
@@ -33,7 +33,7 @@ data class FeedItem(
     val mySolution: String? = null
 ) {
     val solved: Boolean
-        get() = status == ProblemRepository.STATUS_SOLVED
+        get() = status == ConceptRepository.STATUS_SOLVED
 
     /** One of the user's own problems ("My problems"). */
     val userAdded: Boolean
@@ -65,6 +65,9 @@ data class FeedItem(
     }
     val keyLines: List<Int> by lazy(LazyThreadSafetyMode.NONE) {
         ContentJson.decodeInts(problem.keyLinesJson)
+    }
+    val diagram: List<String> by lazy(LazyThreadSafetyMode.NONE) {
+        ContentJson.decodeStrings(problem.diagramJson)
     }
 
     /** A problem is full when intuition, approach and solution are all present. */
@@ -131,7 +134,7 @@ data class FeedData(
 internal class FeedSnapshot(
     val sheets: List<SheetEntity>,
     val entries: List<SheetEntryEntity>,
-    val problems: List<ProblemEntity>,
+    val problems: List<ConceptEntity>,
     val progress: List<UserProgressEntity>,
     val reviews: List<ReviewStateEntity>
 )
@@ -158,7 +161,7 @@ fun ReviewState.toEntity(): ReviewStateEntity = ReviewStateEntity(
     lastReviewedAt = lastReviewedAt
 )
 
-class ProblemRepository(
+class ConceptRepository(
     private val db: QuickMLDatabase,
     private val scheduler: ReviewScheduler,
     /** Called after solve / rate / import / own-problem changes (refreshes the widget). */
@@ -177,7 +180,7 @@ class ProblemRepository(
         combine(
             contentDao.observeSheets(),
             contentDao.observeEntries(),
-            contentDao.observeProblems(),
+            contentDao.observeConcepts(),
             progressDao.observeAll(),
             reviewDao.observeAll()
         ) { sheets, entries, problems, progress, reviews ->
@@ -214,7 +217,7 @@ class ProblemRepository(
             .groupBy { it.sheetId }
             .mapValues { (_, list) -> list.sortedBy { it.order } }
 
-        fun itemFor(problem: ProblemEntity, section: String, order: Int): FeedItem {
+        fun itemFor(problem: ConceptEntity, section: String, order: Int): FeedItem {
             val p = progressBySlug[problem.slug]
             return FeedItem(
                 problem = problem,
@@ -228,21 +231,21 @@ class ProblemRepository(
             )
         }
 
-        fun itemForEntry(problem: ProblemEntity, entry: SheetEntryEntity?): FeedItem = itemFor(
+        fun itemForEntry(problem: ConceptEntity, entry: SheetEntryEntity?): FeedItem = itemFor(
             problem = problem,
             section = entry?.section ?: if (problem.userAdded == true) MINE_SHEET_NAME else "",
             order = entry?.order ?: 0
         )
 
         // "My problems": the user's own problems, newest first (a virtual sheet).
-        val mineProblems = snapshot.problems
+        val mineConcepts = snapshot.problems
             .filter { it.userAdded == true }
-            .sortedByDescending { userProblemTime(it.slug) }
+            .sortedByDescending { userConceptTime(it.slug) }
 
         // Selected sheet, in its order ("All problems" is filled in below from allItems).
         val baseItems = when {
             allSelected -> emptyList()
-            mineSelected -> mineProblems.mapIndexed { index, problem ->
+            mineSelected -> mineConcepts.mapIndexed { index, problem ->
                 itemFor(problem, MINE_SHEET_NAME, index + 1)
             }
             sheet == null -> emptyList()
@@ -263,7 +266,7 @@ class ProblemRepository(
         }
         val allItems = snapshot.problems
             .sortedWith(
-                compareBy<ProblemEntity>(
+                compareBy<ConceptEntity>(
                     { firstEntry[it.slug]?.let { e -> sheetIndex[e.sheetId] } ?: Int.MAX_VALUE },
                     { firstEntry[it.slug]?.order ?: 0 },
                     { it.title }
@@ -307,8 +310,8 @@ class ProblemRepository(
         val mineInfo = SheetInfo(
             id = MINE_SHEET_ID,
             name = MINE_SHEET_NAME,
-            solved = mineProblems.count { progressBySlug[it.slug]?.status == STATUS_SOLVED },
-            total = mineProblems.size
+            solved = mineConcepts.count { progressBySlug[it.slug]?.status == STATUS_SOLVED },
+            total = mineConcepts.size
         )
         val allInfo = SheetInfo(
             id = ALL_SHEET_ID,
@@ -345,7 +348,7 @@ class ProblemRepository(
      * first sheet (display order) that does; "mine" for own problems; null when none does.
      */
     suspend fun sheetFor(slug: String, currentSheetId: String): String? {
-        val problem = contentDao.getProblem(slug) ?: return null
+        val problem = contentDao.getConcept(slug) ?: return null
         if (currentSheetId == ALL_SHEET_ID) return ALL_SHEET_ID
         if (problem.userAdded == true) return MINE_SHEET_ID
         val ids = contentDao.sheetIdsFor(slug)
@@ -397,13 +400,13 @@ class ProblemRepository(
      * Creates ([existingSlug] null) or updates an own problem; the draft's notes go to the
      * progress row. Returns the problem's slug.
      */
-    suspend fun saveUserProblem(existingSlug: String?, draft: UserProblemDraft): String {
+    suspend fun saveUserConcept(existingSlug: String?, draft: UserConceptDraft): String {
         val slug = existingSlug ?: (USER_SLUG_PREFIX + System.currentTimeMillis())
         db.withTransaction {
             // Never overwrite bundled content through the own-problem form.
-            val existing = if (existingSlug != null) contentDao.getProblem(existingSlug) else null
+            val existing = if (existingSlug != null) contentDao.getConcept(existingSlug) else null
             if (existing == null || existing.userAdded == true) {
-                contentDao.insertProblem(draft.toEntity(slug))
+                contentDao.insertConcept(draft.toEntity(slug))
                 val current = progressDao.get(slug) ?: UserProgressEntity(slug = slug)
                 progressDao.upsert(
                     current.copy(
@@ -419,11 +422,11 @@ class ProblemRepository(
     }
 
     /** Deletes an own problem with its progress and review state (bundled problems: no-op). */
-    suspend fun deleteUserProblem(slug: String) {
+    suspend fun deleteUserConcept(slug: String) {
         db.withTransaction {
-            val problem = contentDao.getProblem(slug)
+            val problem = contentDao.getConcept(slug)
             if (problem != null && problem.userAdded == true) {
-                contentDao.deleteUserProblem(slug)
+                contentDao.deleteUserConcept(slug)
                 progressDao.delete(slug)
                 reviewDao.delete(slug)
             }
@@ -433,8 +436,8 @@ class ProblemRepository(
     }
 
     /** The edit form of an own problem, or null when [slug] isn't one. */
-    suspend fun loadUserProblemDraft(slug: String): UserProblemDraft? {
-        val problem = contentDao.getProblem(slug) ?: return null
+    suspend fun loadUserConceptDraft(slug: String): UserConceptDraft? {
+        val problem = contentDao.getConcept(slug) ?: return null
         if (problem.userAdded != true) return null
         return problem.toDraft(progressDao.get(slug)?.note)
     }
@@ -512,7 +515,7 @@ class ProblemRepository(
 
     /** Matches pasted URLs / slugs / titles against every problem (nothing is changed). */
     suspend fun previewImport(text: String): ImportPreview {
-        val problems = contentDao.getProblems()
+        val problems = contentDao.getConcepts()
         val solved = progressDao.getAll()
             .filter { it.status == STATUS_SOLVED }
             .map { it.slug }

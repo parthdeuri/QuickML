@@ -25,5 +25,7 @@ problems:
 - q-learning
 - reinforce-policy-gradient
 - value-iteration
+- ppo-clipped-objective
+- gae-advantage
 aliases:
 - Reinforcement learning

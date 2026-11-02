@@ -1,0 +1,96 @@
+slug: rouge-score
+title: ROUGE-N and ROUGE-L
+url: https://aclanthology.org/W04-1013/
+difficulty: Medium
+area: NLP
+topics: [Evaluation, Summarisation, Text Generation]
+summary: |
+  Score a generated summary against a reference by n-gram overlap
+  (ROUGE-N) or by the longest common subsequence of words (ROUGE-L),
+  reported as precision, recall and F1.
+intuition: |
+  ROUGE asks how much of the reference the candidate recovered, which is
+  recall, and the F1 version also asks how much of the candidate was
+  actually in the reference. ROUGE-N counts exact n-gram matches and is
+  strict about local phrasing; ROUGE-L only needs the shared words to
+  appear in the same order, with gaps allowed, so it rewards keeping
+  the reference's sequence without demanding adjacency.
+why_it_works: |
+  Summaries should contain the reference's key content, and overlap of
+  words and phrases is a cheap proxy for that. Clipped counts (the
+  multiset intersection) stop repeated words from inflating the score.
+  The longest common subsequence is found by dynamic programming over
+  prefixes, because the best match of two prefixes extends the best match
+  of shorter prefixes.
+when_to_use: |
+  Comparing summarisation or headline-generation systems when a
+  reference is available, using a standard package so tokenisation and
+  stemming match published numbers.
+when_not_to_use: |
+  Abstractive outputs that paraphrase the reference, where overlap
+  understates quality, and tasks where factual correctness matters
+  more than wording. It cannot detect hallucinations that reuse the
+  reference's words.
+math:
+  - "overlap = Σ_g min(count_cand(g), count_ref(g))  over n-grams g"
+  - "P = overlap / (n-grams in candidate)"
+  - "R = overlap / (n-grams in reference)"
+  - "F₁ = 2PR / (P + R)"
+  - "LCS DP: L[i,j] = L[i−1,j−1] + 1 if aᵢ = bⱼ"
+  - "        else max(L[i−1,j], L[i,j−1])"
+  - "ROUGE-L: overlap = L[|cand|, |ref|], then P, R, F₁ as above"
+approach:
+  - "Tokenise candidate and reference the same way — scores are only comparable under one tokenisation"
+  - "ROUGE-N: count n-grams in each and intersect the counts — clipped overlap, so repeats do not inflate the score"
+  - "ROUGE-L: fill the LCS table over word prefixes — finds the longest in-order, gap-tolerant match"
+  - "Divide the overlap by candidate length for precision and by reference length for recall — ROUGE is usually quoted as recall, F1 balances both"
+  - "Combine into F1 — a single number that penalises both padding and omission"
+code: |
+  import numpy as np
+  from collections import Counter
+
+  def ngrams(t, n):
+      return Counter(zip(*[t[i:] for i in range(n)]))
+
+  def prf(ov, n_hyp, n_ref):
+      p = ov / n_hyp if n_hyp else 0.0
+      r = ov / n_ref if n_ref else 0.0
+      return p, r, 2 * p * r / (p + r) if p + r else 0.0
+
+  def rouge_n(hyp, ref, n=1):
+      h, r = ngrams(hyp, n), ngrams(ref, n)
+      ov = sum((h & r).values())
+      return prf(ov, sum(h.values()), sum(r.values()))
+
+  def lcs_len(a, b):
+      L = np.zeros((len(a) + 1, len(b) + 1), dtype=int)
+      for i, x in enumerate(a, 1):
+          for j, y in enumerate(b, 1):
+              L[i, j] = (L[i-1, j-1] + 1 if x == y
+                         else max(L[i-1, j], L[i, j-1]))
+      return L[-1, -1]
+
+  def rouge_l(hyp, ref):
+      return prf(lcs_len(hyp, ref), len(hyp), len(ref))
+key_lines: [14, 21, 22]
+time: "ROUGE-N O(m + n); ROUGE-L O(m·n) for candidate length m and reference length n"
+space: "O(m·n) for the LCS table (O(min(m, n)) with a rolling row)"
+hyperparameters:
+  - "N-gram order N (ROUGE-1 and ROUGE-2 are most common)"
+  - "Variant (ROUGE-N, ROUGE-L sentence level, ROUGE-Lsum summary level)"
+  - "Stemming and stop-word handling"
+  - "Which statistic to report: precision, recall or F1"
+pitfalls:
+  - "Tokenisation and stemming change the score; use one package for all systems"
+  - "This ROUGE-L is sentence level; the summary-level ROUGE-Lsum splits sentences and unions LCS matches"
+  - "This code takes one reference and tokens already split, lower-cased and unstemmed"
+  - "High overlap does not imply factual correctness or fluency"
+interview_qa:
+  - q: "Why is ROUGE recall-oriented while BLEU is precision-oriented?"
+    a: "Summarisation asks whether the key reference content was captured, which is recall. Translation asks whether what was produced is correct, which is precision, with a brevity penalty. Modern ROUGE reports all three."
+  - q: "How does ROUGE-L differ from ROUGE-2?"
+    a: "ROUGE-2 needs adjacent word pairs to match exactly. ROUGE-L uses the longest common subsequence, so matched words must be in the same order but may have other words between them."
+  - q: "How is the longest common subsequence computed?"
+    a: "Dynamic programming over prefixes: if the last words match, extend the diagonal cell by one; otherwise take the larger of dropping the last word of either sequence."
+related: [bleu-score, precision-recall-f1, tf-idf]
+patterns: ["Text evaluation and retrieval"]

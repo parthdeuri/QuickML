@@ -1,0 +1,90 @@
+slug: bert-masked-lm
+title: BERT Masked Language Modelling
+url: https://arxiv.org/abs/1810.04805
+difficulty: Medium
+area: NLP
+topics: [Pre-training, Transformers, Language Modelling]
+summary: |
+  Pre-train a bidirectional encoder by hiding a random subset of input
+  tokens and training it to predict the originals from the surrounding
+  context on both sides.
+intuition: |
+  A left-to-right language model cannot see the future, but an encoder
+  that sees the whole sentence would trivially copy its input. Masking
+  breaks the copy: the model must reconstruct hidden words from context
+  on both sides. Not every selected token becomes a mask symbol, though.
+  Since the mask never appears at fine-tuning time, some selected tokens
+  are swapped for random words or left unchanged, so the model cannot
+  assume that only masked-looking positions need attention.
+why_it_works: |
+  Predicting a missing token from both directions forces the encoder to
+  build contextual representations that capture syntax and meaning. The
+  loss is computed only on the selected positions, so the learning signal
+  is a clean cross-entropy over the vocabulary where the targets are
+  unambiguous. Random and unchanged replacements reduce the mismatch
+  between pre-training inputs, which contain mask symbols, and downstream
+  inputs, which do not.
+when_to_use: |
+  Pre-training encoder models for classification, tagging, retrieval
+  and other tasks that need rich bidirectional context rather than text
+  generation.
+when_not_to_use: |
+  Open-ended text generation, where a left-to-right decoder is the
+  natural fit. Masked models also learn from only a fraction of positions
+  per pass, so they are less sample-efficient per token than causal
+  models.
+math:
+  - "Select each token independently with probability p = 0.15"
+  - "Of selected tokens: 80% → [MASK], 10% → random token, 10% → unchanged"
+  - "Labels: original id at selected positions, −100 elsewhere"
+  - "M = set of selected positions"
+  - "L = −(1/|M|) · Σ_{i∈M} log softmax(zᵢ)[yᵢ]"
+  - "zᵢ: logits at position i;  yᵢ: original token id"
+approach:
+  - "Draw a uniform number per token and select those below 0.15 — random positions to hide"
+  - "Set labels to the original id at selected positions and −100 elsewhere — only selected positions contribute to the loss"
+  - "Draw a second uniform number for the selected tokens: below 0.8 become [MASK] — the main corruption"
+  - "Replace the next tenth with a random vocabulary token and leave the last tenth as is — reduces the pre-train/fine-tune mismatch"
+  - "Run the encoder, take the logits at selected positions and average the cross-entropy — predict the originals"
+code: |
+  import numpy as np
+
+  def mask_tokens(ids, vocab, mask_id, rng, p=0.15):
+      ids = ids.copy()
+      labels = np.full(ids.shape, -100)
+      sel = rng.random(ids.shape) < p
+      labels[sel] = ids[sel]
+      u = rng.random(ids.shape)
+      ids[sel & (u < 0.8)] = mask_id
+      rand = sel & (u >= 0.8) & (u < 0.9)
+      ids[rand] = rng.integers(0, vocab, rand.sum())
+      return ids, labels      # last 10% of selected stay unchanged
+
+  def mlm_loss(logits, labels):
+      m = labels != -100
+      z = logits[m]
+      z = z - z.max(axis=1, keepdims=True)
+      logp = z - np.log(np.exp(z).sum(axis=1, keepdims=True))
+      return -logp[np.arange(len(z)), labels[m]].mean()
+key_lines: [6, 9, 15]
+time: "O(T) for masking; the loss is O(M·V) for M masked positions and vocabulary V, plus the encoder cost"
+space: "O(M·V) for the logits at masked positions (a full-sequence output layer would be O(T·V))"
+hyperparameters:
+  - "Masking probability (0.15 in the original paper)"
+  - "Split between mask, random and unchanged (80/10/10)"
+  - "Dynamic masking (new mask each epoch) versus static"
+  - "Vocabulary and sequence length"
+pitfalls:
+  - "This code treats every token as maskable; real pipelines never select special tokens such as [CLS], [SEP] and padding"
+  - "Random replacement here may draw any vocabulary id, including the mask id or the original token"
+  - "Averaging over masked positions means batches with few masks give noisy loss; an empty selection gives NaN here"
+  - "WordPiece pieces of one word are masked independently here; whole-word masking is a common variant"
+interview_qa:
+  - q: "Why not replace every selected token with [MASK]?"
+    a: "The mask symbol never appears at fine-tuning time, creating a train-test mismatch. Leaving some selected tokens unchanged or random forces the model to produce good representations for all tokens."
+  - q: "Why does the loss ignore unmasked positions?"
+    a: "At unmasked positions the input equals the target, so predicting it is trivial and would dilute the signal. Labels of −100 are skipped by the cross-entropy so only hidden tokens train the model."
+  - q: "What is the downside of masked language modelling compared with causal modelling?"
+    a: "Only the selected fraction of tokens gives a training signal per sequence, and the model is not a natural generator, since it predicts tokens independently given the corrupted context."
+related: [softmax-cross-entropy, self-attention, transformer-block]
+patterns: ["Text processing"]

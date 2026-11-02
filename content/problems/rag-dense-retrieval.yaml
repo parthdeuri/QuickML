@@ -1,0 +1,89 @@
+slug: rag-dense-retrieval
+title: RAG Retrieval (Chunk, Embed, Top-k)
+url: https://arxiv.org/abs/2005.11401
+difficulty: Medium
+area: NLP
+topics: [Retrieval-Augmented Generation, Embeddings, Vector Search]
+summary: |
+  Split documents into overlapping chunks, embed each chunk and the
+  query as vectors, and return the k chunks whose vectors are most
+  similar to the query to put in the language model's prompt.
+intuition: |
+  A language model cannot read a whole corpus, so retrieval chooses the
+  few passages worth reading. Chunking sets the unit of retrieval: too
+  large and the relevant sentence is diluted, too small and it loses its
+  context, and overlap keeps a sentence that straddles a boundary from
+  being cut in half. Normalising embeddings turns cosine similarity into
+  a plain dot product, so search is one matrix-vector product.
+why_it_works: |
+  If the embedding places related texts near each other, nearest
+  neighbours of the query vector are likely relevant passages, and the
+  generator can then ground its answer in text it was never trained on.
+  With unit-length vectors, ranking by dot product is identical to
+  ranking by cosine similarity, which is why indexes normalise once at
+  build time and search with a single product.
+when_to_use: |
+  Question answering over private or fresh documents, where the model
+  needs facts that are not in its weights and answers should cite
+  sources.
+when_not_to_use: |
+  When the whole corpus fits in the prompt, when queries need exact
+  keyword or ID matching that embeddings blur, or when the answer
+  requires reasoning across many scattered passages that top-k cannot
+  gather.
+math:
+  - "Chunks: words[i : i + size] for i = 0, step, 2·step, ...,"
+  - "step = size − overlap"
+  - "Embedding: e(x) = v(x) / ‖v(x)‖₂   (unit length)"
+  - "cos(q, c) = e(q)·e(c)   for unit vectors"
+  - "Top-k: indices of the k largest cos(q, cᵢ)"
+approach:
+  - "Split each document into word chunks of fixed size with overlap — sets the unit of retrieval and protects boundary sentences"
+  - "Embed every chunk once and normalise to unit length — an offline index; unit length makes dot product equal cosine"
+  - "Embed the query the same way — query and chunks must live in the same space"
+  - "Score all chunks with one matrix-vector product — cosine similarity for every chunk"
+  - "Take the k highest scores — the passages to place in the prompt"
+code: |
+  import numpy as np, zlib
+
+  def chunk(words, size=8, overlap=2):
+      step = size - overlap
+      stop = max(len(words) - overlap, 1)
+      return [words[i:i + size] for i in range(0, stop, step)]
+
+  def embed(words, dim=256):
+      v = np.zeros(dim)
+      for w in words:
+          h = zlib.crc32(w.encode())
+          v[h % dim] += 1 if (h >> 16) & 1 else -1
+      n = np.linalg.norm(v)
+      return v / n if n else v
+
+  def retrieve(query, chunks, k=3):
+      E = np.stack([embed(c) for c in chunks])
+      sims = E @ embed(query)
+      top = np.argsort(-sims)[:k]
+      return top, sims[top]
+key_lines: [6, 12, 18]
+time: "O(N·d) to score N chunks of dimension d by brute force; approximate indexes reduce this at some recall cost"
+space: "O(N·d) for the chunk embedding matrix"
+hyperparameters:
+  - "Chunk size and overlap"
+  - "Number of retrieved chunks k"
+  - "Embedding model and dimension (a hashing stand-in here)"
+  - "Similarity (cosine on normalised vectors, or dot product)"
+  - "Exact versus approximate nearest-neighbour index"
+pitfalls:
+  - "The embedding here is a signed hashing bag of words, so it only matches shared words; it has no semantic understanding, unlike a trained embedding model"
+  - "Embedding the chunks inside retrieve is for brevity; real systems embed once and store the matrix"
+  - "Chunk by words here for simplicity; production systems chunk by tokens or sentences and keep metadata"
+  - "Query and chunks must use the same embedding model and normalisation"
+interview_qa:
+  - q: "Why use overlapping chunks?"
+    a: "Information near a chunk boundary would be split across two chunks and could be missed by both. Overlap repeats boundary text so at least one chunk contains the whole passage, at the cost of a larger index."
+  - q: "Why normalise embeddings before search?"
+    a: "For unit vectors the dot product equals cosine similarity, so exact search is a single matrix product and magnitude differences cannot affect the ranking."
+  - q: "What are the trade-offs of exact versus approximate nearest-neighbour search?"
+    a: "Exact search is simple and gives the true top-k but scales linearly with corpus size. Approximate indexes such as graph or clustering based ones are much faster on large corpora but can miss true neighbours."
+related: [cosine-similarity-embeddings, knn, retrieval-metrics-recall-at-k]
+patterns: ["Text evaluation and retrieval"]

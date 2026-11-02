@@ -1,0 +1,77 @@
+slug: nmf-multiplicative-updates
+title: Non-negative Matrix Factorisation
+url: https://scikit-learn.org/stable/modules/decomposition.html#non-negative-matrix-factorization-nmf-or-nnmf
+difficulty: Medium
+area: Classical ML
+topics: [Matrix Factorization, Dimensionality Reduction, Unsupervised, Topic Modeling]
+summary: |
+  Factor a non-negative matrix X into W H with both factors non-negative
+  and a small inner rank. Multiplicative updates rescale each entry by a
+  ratio of positive terms, so non-negativity is kept without any
+  projection step.
+intuition: |
+  Forbidding negative entries means each row of X can only be built by
+  adding parts, never subtracting them, so the learned factors tend to be
+  parts such as topics, strokes or sources. The update multiplies each
+  entry by how much the data wants it, over how much the model already
+  uses it, which grows an entry when it is too small and shrinks it when
+  too large.
+why_it_works: |
+  The Frobenius error is not jointly convex, but it is convex in W for a
+  fixed H and the other way round. The multiplicative step is a
+  majorise-minimise update, built from an auxiliary function that touches
+  the loss at the current point, so each update cannot increase the loss.
+  It converges to a stationary point, not necessarily the best one.
+when_to_use: |
+  Parts-based features from non-negative data such as word counts, images
+  and spectra, topic modelling, and interpretable low-rank structure
+  where signs would be confusing.
+when_not_to_use: |
+  Skip it when data has negative values, when you need a unique answer
+  (the factorisation is not unique and depends on initialisation), or
+  when plain SVD's optimality and speed are enough.
+math:
+  - "min over W, H ≥ 0 of  ½ ‖X − W H‖²_F"
+  - "W ← W ⊙ (X Hᵀ) / (W H Hᵀ)"
+  - "H ← H ⊙ (Wᵀ X) / (Wᵀ W H)"
+  - "⊙ and the fraction are elementwise"
+  - "Gradient wrt W: ∇ = W H Hᵀ − X Hᵀ  (positive part − negative part)"
+  - "Loss is non-increasing under the updates"
+approach:
+  - "Start from non-negative W and H — updates only rescale, so a zero entry stays zero and a positive one stays positive"
+  - "Multiply W by the data-to-model ratio computed with H fixed — the W step cannot raise the loss"
+  - "Multiply H by the same kind of ratio using the new W — the H step cannot raise it either"
+  - "Floor the denominator with a tiny constant — avoids dividing by zero for entries that become zero"
+  - "Track the loss each sweep and stop when it stops falling — it is monotone, so flatness means a stationary point"
+code: |
+  import numpy as np
+
+  def nmf(X, W, H, iters=200, eps=1e-10):
+      loss = []
+      for _ in range(iters):
+          W = W * (X @ H.T) / np.maximum(W @ H @ H.T, eps)
+          H = H * (W.T @ X) / np.maximum(W.T @ W @ H, eps)
+          loss.append(0.5 * ((X - W @ H) ** 2).sum())
+      return W, H, loss
+key_lines: [6, 7]
+time: "O(iters·n·m·r) for an n×m matrix with rank r"
+space: "O((n + m)·r) for factors plus the n×m data"
+hyperparameters:
+  - "Rank r — number of parts; chosen by reconstruction error or interpretability"
+  - "Initialisation — random or SVD-based (NNDSVD) and it changes the result"
+  - "Loss — Frobenius here; KL divergence suits counts, with different updates"
+  - "Regularisation — L1 or L2 on W and H for sparser or smaller factors"
+pitfalls:
+  - "Entries that reach exactly zero can never recover under multiplicative updates"
+  - "Different initialisations converge to different local solutions, so use restarts"
+  - "Convergence is slow compared with alternating least squares or coordinate descent"
+  - "Scale ambiguity: W and H can trade a scale factor, so normalise before comparing factors"
+interview_qa:
+  - q: "How is NMF different from PCA or SVD?"
+    a: "NMF forces non-negative factors and gives additive, parts-based components that are not orthogonal and not unique; SVD allows signs, is orthogonal and gives the best rank-r approximation."
+  - q: "Why do multiplicative updates preserve non-negativity?"
+    a: "Each update multiplies an entry by a ratio of non-negative quantities, so entries stay non-negative if they start that way."
+  - q: "Does NMF find the global optimum?"
+    a: "No. The problem is non-convex in W and H jointly, so the updates reach a stationary point that depends on initialisation."
+related: [svd, pca, matrix-factorization-recommender]
+patterns: ["Dimensionality reduction"]

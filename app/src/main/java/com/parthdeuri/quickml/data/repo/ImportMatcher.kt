@@ -1,6 +1,6 @@
 package com.parthdeuri.quickml.data.repo
 
-import com.parthdeuri.quickml.data.db.ProblemEntity
+import com.parthdeuri.quickml.data.db.ConceptEntity
 
 /** Result of matching pasted lines against the problems ("Import solved problems"). */
 data class ImportPreview(
@@ -20,7 +20,7 @@ object ImportMatcher {
     private val nonAlnum = Regex("[^a-z0-9]+")
     private val numberPrefix = Regex("^\\d+\\s*[.)]\\s*")
 
-    fun match(text: String, problems: List<ProblemEntity>, solved: Set<String>): ImportPreview {
+    fun match(text: String, problems: List<ConceptEntity>, solved: Set<String>): ImportPreview {
         val index = buildIndex(problems)
         val matched = LinkedHashSet<String>()
         val notFound = ArrayList<String>()
@@ -49,7 +49,7 @@ object ImportMatcher {
         )
     }
 
-    private fun buildIndex(problems: List<ProblemEntity>): Map<String, String> {
+    private fun buildIndex(problems: List<ConceptEntity>): Map<String, String> {
         val index = HashMap<String, String>()
         fun put(key: String, slug: String) {
             if (key.isNotEmpty() && key !in index) index[key] = slug

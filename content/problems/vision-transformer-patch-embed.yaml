@@ -1,0 +1,79 @@
+slug: vision-transformer-patch-embed
+title: ViT Patch Embedding and CLS Token
+url: https://d2l.ai/chapter_attention-mechanisms-and-transformers/vision-transformer.html
+difficulty: Medium
+area: Vision
+topics: [Vision Transformers, Patch Embedding, Positional Embedding]
+summary: |
+  Cut an image into non-overlapping patches, project each flattened patch
+  to a token, prepend a learnable CLS token and add position embeddings.
+intuition: |
+  A transformer expects a sequence of vectors, so ViT turns the image into
+  one by treating every P×P patch as a "word". The patch projection is
+  exactly a convolution whose stride equals its kernel size. Because
+  attention ignores order, learned position embeddings tell the model
+  where each patch came from, and the CLS token is an extra slot that
+  can gather a global summary for classification.
+approach:
+  - "Split the image into a grid of P×P patches — turns H×W pixels into N = HW/P² tokens"
+  - "Flatten each patch to a vector of length C·P² — makes every patch a plain feature vector"
+  - "Multiply by a shared matrix W and add a bias — linear projection to model width D"
+  - "Prepend a learnable CLS vector — an extra token whose final state represents the whole image"
+  - "Add a learned position embedding to every token — restores the spatial order attention cannot see"
+code: |
+  import numpy as np
+
+  def patchify(img, P):
+      C, H, W = img.shape
+      x = img.reshape(C, H // P, P, W // P, P)
+      x = x.transpose(1, 3, 0, 2, 4)      # (gh, gw, C, P, P)
+      return x.reshape(-1, C * P * P)     # (N, C*P*P)
+
+  def patch_embed(img, P, W, b, cls, pos):
+      tokens = patchify(img, P) @ W + b   # (N, D)
+      return np.vstack([cls, tokens]) + pos
+key_lines: [6, 10, 11]
+time: "O(N·C·P²·D) for the projection, N = HW/P²"
+space: "O((N + 1)·D) for the token sequence plus C·P²·D weights"
+when_to_use: |
+  The input stage of vision transformers (ViT, DeiT, CLIP image
+  encoders) and any model that turns a grid of pixels or a spectrogram
+  into a token sequence.
+when_not_to_use: |
+  Small datasets where a convolutional prior helps more, or tasks needing
+  fine detail at pixel level, where large patches lose information
+  before attention starts.
+why_it_works: |
+  Non-overlapping patches keep local pixel structure inside each token
+  while shrinking the sequence from H·W to HW/P², which makes global
+  self-attention affordable. A shared linear projection is a
+  convolution with kernel and stride P, so the same filters are applied
+  at every location. Position embeddings put back the order that
+  attention itself discards.
+math:
+  - "N = (H/P)(W/P);  patch xₚ ∈ ℝ^(C·P²)  (flattened C, P, P)"
+  - "zᵢ = xₚ⁽ⁱ⁾ W + b,   W ∈ ℝ^(C·P² × D)"
+  - "z₀ = [x_cls; z₁; …; z_N] + E_pos,   E_pos ∈ ℝ^((N+1) × D)"
+  - "Equivalent: Conv2d(C, D, kernel = P, stride = P)"
+  - "Classification head reads the final CLS token: ŷ = softmax(W_h z_L⁰)"
+interview_qa:
+  - q: "Why is patch embedding the same as a strided convolution?"
+    a: "Each output token is a dot product of one P×P×C block with the same filters, with the stride P making blocks non-overlapping, which is exactly what flatten-and-project does."
+  - q: "What does the CLS token do?"
+    a: "It is a learned extra token that attends to all patches through the layers, so its final state is used as the image representation for the classifier."
+  - q: "Why does ViT need position embeddings?"
+    a: "Self-attention is permutation-equivariant, so without them the model would not know which patch is where."
+  - q: "What happens to compute when the patch size is halved?"
+    a: "The token count N grows 4×, and attention cost grows roughly 16×."
+hyperparameters:
+  - "Patch size P"
+  - "Embedding width D"
+  - "Position embedding type (learned, sinusoidal, 2D-aware)"
+  - "Use of a CLS token versus average pooling"
+pitfalls:
+  - "H and W must be divisible by P here; real code pads or resizes"
+  - "Flatten order must match the weights you load (C, P, P versus P, P, C)"
+  - "Learned position embeddings are tied to one grid size; other resolutions need interpolation"
+  - "This sketch has no dropout, layer norm or transformer blocks after the embedding"
+related: [self-attention, positional-encoding, convolution-2d]
+patterns: ["Convolution and vision"]

@@ -83,4 +83,12 @@ pitfalls:
   - "D should be updated with fake samples detached from G's graph"
   - "A very strong D starves G of gradient; balance the two networks"
 related: [vae-reparameterization, softmax-cross-entropy, logistic-regression]
+diagram:
+- noise z ─► Generator ─► fake ─┐
+- real data ────────────────────┤
+- '                              ▼'
+- '                       Discriminator'
+- '                              │'
+- '                       real or fake?'
+- D tells them apart; G tries to fool D
 patterns: ["Generative models"]

@@ -35,5 +35,9 @@ problems:
 - rotary-position-embedding
 - kv-cache
 - hidden-markov-forward
+- bahdanau-additive-attention
+- cross-attention-encoder-decoder
+- gru-cell
+- bidirectional-rnn
 aliases:
 - Attention and sequences

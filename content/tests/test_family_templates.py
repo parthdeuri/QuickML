@@ -98,4 +98,25 @@ ns = load("generative-models")
 z = ns["reparameterise"](np.zeros((2, 3)), np.zeros((2, 3)), np.random.default_rng(1))
 assert z.shape == (2, 3)
 
+ns = load("time-series")
+x = np.arange(10.0)
+fc, lvl = ns["ses"](x, 1.0)
+assert np.allclose(fc[1:], x[:-1]) and lvl == 9.0     # alpha=1 repeats the last value
+assert np.isclose(ns["acf"](np.tile([1.0, -1.0], 20), 1), -39 / 40)
+
+ns = load("graph-neural-networks")
+A = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]], dtype=float)
+out = ns["gcn_layer"](A, np.ones((3, 2)), np.eye(2))
+assert out.shape == (3, 2) and np.all(out >= 0)
+
+ns = load("preference-alignment")
+rc, rr = np.array([2.0, 1.0]), np.array([0.0, 1.0])
+assert np.isclose(ns["bradley_terry_loss"](rc, rr), np.mean([np.log1p(np.exp(-2.0)), np.log(2)]))
+z = np.zeros(3)
+assert np.isclose(ns["dpo_loss"](z, z, z, z), np.log(2))   # policy == reference
+
+ns = load("text-evaluation-retrieval")
+assert ns["recall_at_k"]([3, 1, 2], [1, 2], 2) == 0.5
+assert ns["mrr"]([3, 1, 2], [2]) == 1 / 3
+
 print("family templates OK:", len(ids), "files")

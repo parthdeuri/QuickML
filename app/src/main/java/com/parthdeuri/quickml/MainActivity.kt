@@ -69,7 +69,7 @@ class MainActivity : ComponentActivity() {
     /** Read-aloud helper; the TTS engine inside is created on first use. */
     private lateinit var speaker: Speaker
 
-    /** Problem to open from a widget tap (consumed by the composition). */
+    /** Concept to open from a widget tap (consumed by the composition). */
     private val pendingOpenSlug = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -122,7 +122,7 @@ class MainActivity : ComponentActivity() {
                         LaunchedEffect(openSlug) {
                             if (openSlug != null) {
                                 pendingOpenSlug.value = null
-                                feedViewModel.openProblemAnywhere(openSlug)
+                                feedViewModel.openConceptAnywhere(openSlug)
                                 showSettings = false
                                 tab = TAB_FEED
                             }
@@ -187,9 +187,9 @@ class MainActivity : ComponentActivity() {
                                             viewModel(factory = SheetViewModelFactory(container))
                                         SheetScreen(
                                             viewModel = sheetViewModel,
-                                            onOpenProblem = { slug ->
+                                            onOpenConcept = { slug ->
                                                 // Learn mode, filters cleared, scrolled to the problem.
-                                                feedViewModel.openProblem(slug)
+                                                feedViewModel.openConcept(slug)
                                                 tab = TAB_FEED
                                             }
                                         )

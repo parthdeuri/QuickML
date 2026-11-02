@@ -85,4 +85,10 @@ interview_qa:
   - q: "What is a denoising autoencoder?"
     a: "It corrupts the input with noise and trains to reconstruct the clean version, which prevents the identity solution and learns robust features."
 related: [pca, backpropagation, vae-reparameterization]
+diagram:
+- x ─► [encoder] ─► z (small) ─► [decoder] ─► x̂
+- ''
+- loss = ‖x − x̂‖²
+- 'z is the bottleneck: it must keep what the'
+- decoder needs to rebuild x
 patterns: ["Dimensionality reduction", "Generative models"]

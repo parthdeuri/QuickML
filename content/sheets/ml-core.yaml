@@ -13,6 +13,8 @@ sections:
   problems:
   - linear-regression
   - ridge-lasso-regularization
+  - gaussian-process-regression
+  - elastic-net-coordinate-descent
 - name: Classification
   problems:
   - logistic-regression
@@ -37,6 +39,9 @@ sections:
   - gaussian-mixture-em
   - dbscan
   - pca
+  - hierarchical-clustering
+  - local-outlier-factor
+  - nmf-multiplicative-updates
 - name: Preprocessing and linear algebra
   problems:
   - feature-scaling
@@ -54,6 +59,13 @@ sections:
   - multiclass-metrics
   - stratified-split
   - ab-test-significance
+  - silhouette-clustering-metrics
+  - isotonic-regression-pava
 - name: Production monitoring
   problems:
   - concept-drift
+- name: Time series
+  problems:
+  - exponential-smoothing
+  - autocorrelation-acf-pacf
+  - arima-model

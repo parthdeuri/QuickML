@@ -7,9 +7,9 @@ import com.parthdeuri.quickml.AppContainer
 import com.parthdeuri.quickml.data.repo.FeedData
 import com.parthdeuri.quickml.data.repo.FeedItem
 import com.parthdeuri.quickml.data.repo.PatternInfo
-import com.parthdeuri.quickml.data.repo.ProblemRepository
+import com.parthdeuri.quickml.data.repo.ConceptRepository
 import com.parthdeuri.quickml.data.repo.SheetInfo
-import com.parthdeuri.quickml.data.repo.UserProblemDraft
+import com.parthdeuri.quickml.data.repo.UserConceptDraft
 import com.parthdeuri.quickml.data.settings.CardPrefs
 import com.parthdeuri.quickml.domain.srs.Rating
 import kotlinx.coroutines.CancellationException
@@ -37,8 +37,8 @@ enum class FeedMode { LEARN, SHUFFLE, REVISE, QUIZ, PATTERNS, BOOKMARKS }
 /** A pattern reachable from a problem's pattern string (alias lookup). */
 data class PatternRef(val id: String, val name: String)
 
-/** A problem linked from a pattern card (Problems tab). */
-data class PatternProblemRow(
+/** A problem linked from a pattern card (Concepts tab). */
+data class PatternConceptRow(
     val slug: String,
     val title: String,
     val difficulty: String,
@@ -49,7 +49,7 @@ data class PatternProblemRow(
 data class PatternCardUi(
     val pattern: PatternInfo,
     /** Linked problems that exist in the content, best first. */
-    val problems: List<PatternProblemRow>
+    val problems: List<PatternConceptRow>
 )
 
 data class Filters(
@@ -84,7 +84,7 @@ data class FeedUiState(
     val patternPool: List<String> = emptyList(),
     val quizBeforeReveal: Boolean = true,
     val practiceMode: Boolean = false,
-    /** Think timer (minutes) for the Problem tab in Revise / Quiz modes; 0 = off. */
+    /** Think timer (minutes) for the Concept tab in Revise / Quiz modes; 0 = off. */
     val thinkTimerMinutes: Int = 0,
     /** Pattern string / name / id (lowercase) -> pattern; empty when the content has none. */
     val patternIndex: Map<String, PatternRef> = emptyMap(),
@@ -265,7 +265,7 @@ class FeedViewModel(private val container: AppContainer) : ViewModel() {
                 pattern = pattern,
                 problems = pattern.problems.distinct().mapNotNull { slug ->
                     bySlug[slug]?.let { item ->
-                        PatternProblemRow(
+                        PatternConceptRow(
                             slug = slug,
                             title = item.problem.title,
                             difficulty = item.problem.difficulty,
@@ -366,7 +366,7 @@ class FeedViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /** Sheet tab -> Feed tab: Learn mode, no filters, scrolled to [slug]. */
-    fun openProblem(slug: String) {
+    fun openConcept(slug: String) {
         pendingOpenSlug = slug
         pendingPatternId = null
         filteredPage = 0
@@ -380,7 +380,7 @@ class FeedViewModel(private val container: AppContainer) : ViewModel() {
      * Widget / pattern card -> [slug] in Learn mode; switches to a sheet that contains it when
      * the selected one doesn't ("My problems" for own problems).
      */
-    fun openProblemAnywhere(slug: String) {
+    fun openConceptAnywhere(slug: String) {
         viewModelScope.launch {
             val target = try {
                 repository.sheetFor(slug, settings.selectedSheetId.value)
@@ -390,7 +390,7 @@ class FeedViewModel(private val container: AppContainer) : ViewModel() {
                 null
             }
             if (target != null) settings.selectSheet(target)
-            openProblem(slug)
+            openConcept(slug)
         }
     }
 
@@ -495,12 +495,12 @@ class FeedViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /** Edit of an own problem from its card. */
-    fun saveUserProblem(slug: String, draft: UserProblemDraft) {
-        viewModelScope.launch { repository.saveUserProblem(slug, draft) }
+    fun saveUserConcept(slug: String, draft: UserConceptDraft) {
+        viewModelScope.launch { repository.saveUserConcept(slug, draft) }
     }
 
-    fun deleteUserProblem(slug: String) {
-        viewModelScope.launch { repository.deleteUserProblem(slug) }
+    fun deleteUserConcept(slug: String) {
+        viewModelScope.launch { repository.deleteUserConcept(slug) }
     }
 
     private fun readSavedMode(): FeedMode {
@@ -516,7 +516,7 @@ class FeedViewModel(private val container: AppContainer) : ViewModel() {
      */
     private fun pageKey(m: FeedMode, sheetId: String): String = when {
         m != FeedMode.LEARN -> "last_page_" + m.name
-        sheetId.isEmpty() || sheetId == ProblemRepository.DEFAULT_SHEET_ID -> "last_page_ALL"
+        sheetId.isEmpty() || sheetId == ConceptRepository.DEFAULT_SHEET_ID -> "last_page_ALL"
         else -> "last_page_LEARN_" + sheetId
     }
 

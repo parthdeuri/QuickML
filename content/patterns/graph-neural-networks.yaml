@@ -1,0 +1,29 @@
+id: graph-neural-networks
+name: Graph neural networks
+order: 20
+summary: Learn on graphs by letting every node repeatedly combine its neighbours'
+  features.
+when_to_use:
+- Data is a graph such as molecules, social networks or citations.
+- A node's label depends on its neighbourhood.
+- The number of neighbours varies from node to node.
+key_idea: One layer aggregates each node's neighbours (a normalised sum, or an attention-weighted
+  sum) and then transforms the result with shared weights. Stacking k layers lets
+  information travel k hops, but too many layers blur all nodes together.
+template: |
+  import numpy as np
+
+  def gcn_layer(A, X, W):
+      A = A + np.eye(len(A))               # add self-loops
+      d = A.sum(1) ** -0.5
+      A_hat = d[:, None] * A * d[None]       # D^-1/2 A D^-1/2
+      return np.maximum(A_hat @ X @ W, 0)    # aggregate, then transform
+complexity: O(edges·d) with a sparse adjacency; the dense version here is O(n²·d).
+pitfalls:
+- 'Deep stacks over-smooth: node features become nearly identical.'
+- A dense adjacency does not scale to large graphs.
+problems:
+- gnn-message-passing
+- graph-attention-layer
+aliases:
+- Graph neural networks

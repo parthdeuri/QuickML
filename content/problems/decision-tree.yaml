@@ -81,7 +81,7 @@ hyperparameters:
 pitfalls:
   - "Unlimited depth reaches 100% training accuracy and overfits"
   - "Split search favours features with many distinct values"
-  - "Class imbalance makes majority-class leaves dominate; use class weights"
+  - "Equal-gain splits are tied: sklearn breaks ties by a random feature order, so deep trees can differ from this code"
   - "Predictions are piecewise constant, so a tree cannot extrapolate"
 interview_qa:
   - q: "Gini or entropy?"

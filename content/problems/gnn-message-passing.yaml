@@ -1,0 +1,80 @@
+slug: gnn-message-passing
+title: GNN Message Passing (GCN Layer)
+url: https://pytorch-geometric.readthedocs.io/en/latest/generated/torch_geometric.nn.conv.GCNConv.html
+difficulty: Hard
+area: Deep Learning
+topics: [Graph Neural Networks, Message Passing, Graph Convolution]
+summary: |
+  Update each node by averaging its own and its neighbours' features with
+  symmetric degree normalisation, then applying a shared linear map and
+  nonlinearity.
+intuition: |
+  A node cannot see the whole graph, so it learns from its neighbourhood:
+  each layer collects messages from adjacent nodes and mixes them with
+  its own state. Stacking k layers lets information travel k hops. The
+  normalisation by degrees stops high-degree nodes from dominating, and
+  the added self-loop keeps a node's own features in the mix.
+approach:
+  - "Add self-loops, Â = A + I — each node keeps its own features in the sum"
+  - "Compute degrees d̃ of Â — needed for normalisation"
+  - "Scale to Â_norm = D̃^(−1/2) Â D̃^(−1/2) — symmetric weights stop hubs from blowing up the scale"
+  - "Aggregate neighbour features with Â_norm X — the message-passing step"
+  - "Apply the shared weight W and ReLU — transforms the aggregated features like a dense layer"
+code: |
+  import numpy as np
+
+  def gcn_layer(A, X, W):
+      A_hat = A + np.eye(len(A))
+      deg = A_hat.sum(axis=1)
+      d = 1 / np.sqrt(deg)
+      A_norm = d[:, None] * A_hat * d[None, :]
+      H = A_norm @ X @ W
+      return np.maximum(0, H)
+
+  def gcn_two_layers(A, X, W1, W2):
+      return gcn_layer(A, gcn_layer(A, X, W1), W2)
+key_lines: [4, 7, 8]
+time: "O(N²·F + N·F·F') dense; O(E·F + N·F·F') with sparse edges"
+space: "O(N²) dense adjacency; O(E) sparse"
+when_to_use: |
+  Node classification and link prediction on citation, social or
+  molecular graphs where neighbours carry signal, and with moderate
+  graph sizes.
+when_not_to_use: |
+  Very deep stacks, because repeated averaging over-smooths node
+  features until they look alike, or tasks needing edge features or
+  anisotropic neighbour weights, where GAT or message-passing variants
+  fit better.
+why_it_works: |
+  Each layer is a first-order approximation of a spectral graph filter,
+  so it low-pass filters node signals over the graph, which suits tasks
+  where connected nodes tend to share labels. Symmetric normalisation
+  keeps the eigenvalues of the propagation matrix in a stable range, so
+  repeated application does not blow up or collapse the scale.
+math:
+  - "Â = A + I,   D̃ᵢᵢ = Σⱼ Âᵢⱼ"
+  - "H' = σ( D̃^(−1/2) Â D̃^(−1/2) · H · W )"
+  - "Per node: hᵢ' = σ( Σⱼ∈N(i)∪{i} (1/√(d̃ᵢ d̃ⱼ)) · W hⱼ )"
+  - "H ∈ ℝ^(N×F), W ∈ ℝ^(F×F'), A ∈ {0,1}^(N×N) symmetric"
+  - "k layers aggregate information from k-hop neighbourhoods"
+interview_qa:
+  - q: "Why add self-loops?"
+    a: "Without Â = A + I a node would ignore its own features after aggregation and nodes with no neighbours would receive nothing."
+  - q: "Why symmetric normalisation instead of dividing by degree?"
+    a: "D^(−1/2) A D^(−1/2) treats both endpoints' degrees, keeping the operator symmetric with stable eigenvalues, while row normalisation only averages."
+  - q: "What is over-smoothing?"
+    a: "Repeated neighbourhood averaging pushes node representations toward each other, so deep GCNs lose the ability to tell nodes apart."
+  - q: "What is the receptive field after k layers?"
+    a: "Nodes within k hops of the target."
+hyperparameters:
+  - "Number of layers (hops)"
+  - "Hidden width F'"
+  - "Dropout rate on features and edges"
+  - "Normalisation scheme (symmetric, row, none)"
+pitfalls:
+  - "Assumes an undirected graph with a symmetric 0/1 adjacency; directed graphs need care"
+  - "A dense N×N adjacency does not scale; real code uses sparse edge lists"
+  - "Stacking many layers over-smooths"
+  - "No bias, dropout or edge weights in this sketch"
+related: [mlp-forward-pass, activation-functions, self-attention]
+patterns: ["Graph neural networks"]

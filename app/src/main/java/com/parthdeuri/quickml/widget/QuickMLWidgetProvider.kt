@@ -87,7 +87,7 @@ class QuickMLWidgetProvider : AppWidgetProvider() {
         }
 
         /**
-         * Problem of the day, deterministic by epoch day: among the problems due today; else the
+         * Concept of the day, deterministic by epoch day: among the problems due today; else the
          * unsolved full problems of the selected sheet; else any full problem.
          */
         private suspend fun loadData(context: Context): WidgetData {

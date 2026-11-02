@@ -25,5 +25,6 @@ problems:
 - svd
 - autoencoder
 - matrix-factorization-recommender
+- nmf-multiplicative-updates
 aliases:
 - Dimensionality reduction

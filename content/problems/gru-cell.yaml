@@ -1,0 +1,80 @@
+slug: gru-cell
+title: GRU Cell
+url: https://docs.pytorch.org/docs/stable/generated/torch.nn.GRUCell.html
+difficulty: Medium
+area: Deep Learning
+topics: [Recurrent Networks, Gating, Sequence Models]
+summary: |
+  A recurrent cell with an update gate and a reset gate that blends the
+  old hidden state with a new candidate, using no separate cell state.
+intuition: |
+  The update gate z decides, per unit, how much of the old state to keep
+  and how much to overwrite, so information can pass through many steps
+  almost unchanged when z stays near one. The reset gate r decides how
+  much of the old state feeds the new candidate. A GRU gets most of an
+  LSTM's benefit with one state vector and fewer parameters.
+approach:
+  - "Compute input and hidden projections once for all three gates — one matmul each, split into r, z, n"
+  - "Reset gate r = σ(·) — chooses how much past state the candidate may see"
+  - "Update gate z = σ(·) — chooses how much old state to keep"
+  - "Candidate n = tanh(input part + r ⊙ hidden part) — proposes new content from the input and reset-filtered past"
+  - "Blend h' = (1 − z) ⊙ n + z ⊙ h — interpolation gives a gradient path along h"
+code: |
+  import numpy as np
+
+  def sigmoid(a):
+      return 1 / (1 + np.exp(-a))
+
+  def gru_cell(x, h, Wx, Wh, bx, bh):
+      H = h.shape[-1]
+      gx = x @ Wx + bx          # input part, columns [r | z | n]
+      gh = h @ Wh + bh          # hidden part, same layout
+      r = sigmoid(gx[..., :H] + gh[..., :H])
+      z = sigmoid(gx[..., H:2 * H] + gh[..., H:2 * H])
+      n = np.tanh(gx[..., 2 * H:] + r * gh[..., 2 * H:])
+      return (1 - z) * n + z * h
+key_lines: [10, 12, 13]
+time: "O(B·(I + H)·3H) per step for batch B"
+space: "O(B·H) for the state; 3H·(I + H + 2) parameters"
+when_to_use: |
+  Sequence tasks where an LSTM is a good fit but you want fewer
+  parameters and faster steps, such as small speech, text or time-series
+  models.
+when_not_to_use: |
+  Long-range dependencies where attention or a transformer works better,
+  or when you need to parallelise over time, since the recurrence is
+  sequential.
+why_it_works: |
+  The blend h' = (1 − z) ⊙ n + z ⊙ h is a convex combination of the old
+  state and a candidate. When z is near one the state is copied and the
+  gradient through that path is multiplied by z rather than by a
+  squashing Jacobian, which reduces vanishing gradients compared with a
+  plain RNN. The reset gate lets the cell ignore stale history when
+  forming new content.
+math:
+  - "r = σ(W_ir x + b_ir + W_hr h + b_hr)"
+  - "z = σ(W_iz x + b_iz + W_hz h + b_hz)"
+  - "n = tanh(W_in x + b_in + r ⊙ (W_hn h + b_hn))"
+  - "h' = (1 − z) ⊙ n + z ⊙ h"
+  - "Parameters: 3H(I + H) + 6H with both bias vectors"
+interview_qa:
+  - q: "How does a GRU differ from an LSTM?"
+    a: "It merges the cell and hidden states and uses two gates (reset, update) instead of three, so it has fewer parameters and no separate memory cell."
+  - q: "What does the update gate do?"
+    a: "It sets the mix between the old hidden state and the new candidate; near one the unit simply remembers."
+  - q: "Why does the GRU ease vanishing gradients?"
+    a: "The additive-style blend gives a path from h' to h scaled by z, so gradients can flow across many steps without repeated squashing."
+  - q: "Do all libraries compute the candidate the same way?"
+    a: "No. PyTorch applies the reset gate after the hidden matmul, r ⊙ (W h + b); the original paper applies it to h before the matmul."
+hyperparameters:
+  - "Hidden size H"
+  - "Number of stacked layers"
+  - "Dropout between layers"
+  - "Initial hidden state (zeros or learned)"
+pitfalls:
+  - "Which of z or 1 − z multiplies the old state differs between papers and libraries"
+  - "The reset gate position (before or after the hidden matmul) changes the function"
+  - "Gate column order r, z, n must match the weights you load"
+  - "Long sequences still need gradient clipping"
+related: [lstm-cell, rnn-cell, gradient-clipping]
+patterns: ["Attention and sequences"]

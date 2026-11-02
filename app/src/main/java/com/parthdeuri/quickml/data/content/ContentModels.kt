@@ -12,7 +12,7 @@ import kotlinx.serialization.json.JsonPrimitive
 @Serializable
 data class ContentFile(
     val contentVersion: Int,
-    val problems: List<ProblemJson> = emptyList(),
+    val problems: List<ConceptJson> = emptyList(),
     val sheets: List<SheetJson> = emptyList(),
     /**
      * The pattern library (List<PatternJson>), kept raw so that a missing or malformed list
@@ -48,7 +48,7 @@ data class PatternJson(
 }
 
 @Serializable
-data class ProblemJson(
+data class ConceptJson(
     val slug: String,
     val title: String,
     val platform: String = "leetcode",
@@ -71,7 +71,9 @@ data class ProblemJson(
     val whyItWorks: String? = null,
     val dryRun: List<String> = emptyList(),
     /** 1-based line numbers in [solution] that hold the core idea (empty for metadata-only). */
-    val keyLines: List<Int> = emptyList()
+    val keyLines: List<Int> = emptyList(),
+    /** Optional monospace box-art diagram, one string per line. */
+    val diagram: List<String> = emptyList()
 )
 
 @Serializable
@@ -81,7 +83,7 @@ data class ExampleJson(
     val explanation: String = ""
 )
 
-/** Encodes/decodes the JSON strings stored in ProblemEntity. Decoding never throws. */
+/** Encodes/decodes the JSON strings stored in ConceptEntity. Decoding never throws. */
 object ContentJson {
     private val json = Json {
         ignoreUnknownKeys = true

@@ -1,0 +1,80 @@
+slug: bidirectional-rnn
+title: Bidirectional RNN
+url: https://d2l.ai/chapter_recurrent-modern/bi-rnn.html
+difficulty: Medium
+area: Deep Learning
+topics: [Recurrent Networks, Sequence Models, Context]
+summary: |
+  Run one recurrent network left to right and another right to left over
+  the same sequence, then concatenate their states at every position.
+intuition: |
+  A forward RNN at position t has only seen the past, but many tasks such
+  as tagging or reading comprehension also need the words that come
+  later. Running a second RNN backwards gives each position a summary of
+  its future, and concatenating both gives full-sentence context at
+  every step. The price is that it cannot be used when the future is not
+  available, such as in autoregressive generation.
+approach:
+  - "Run the forward RNN from t = 1 to T — each state summarises the prefix up to t"
+  - "Reverse the sequence and run a separate backward RNN — each state summarises the suffix from t onward"
+  - "Reverse the backward outputs back into time order — so both states line up at position t"
+  - "Concatenate forward and backward states on the feature axis — output width becomes 2H"
+code: |
+  import numpy as np
+
+  def rnn_pass(X, Wx, Wh, b):
+      h = np.zeros(Wh.shape[0])
+      states = []
+      for x in X:
+          h = np.tanh(x @ Wx + h @ Wh + b)
+          states.append(h)
+      return np.array(states)
+
+  def bi_rnn(X, fwd, bwd):
+      hf = rnn_pass(X, *fwd)
+      hb = rnn_pass(X[::-1], *bwd)[::-1]
+      return np.concatenate([hf, hb], axis=1)
+key_lines: [7, 13, 14]
+time: "O(T·(I·H + H²)) per direction, so about twice a unidirectional RNN"
+space: "O(T·2H) for the concatenated states"
+when_to_use: |
+  Tasks where the whole input is available at once: tagging, named entity
+  recognition, speech recognition with offline audio, and encoders in
+  sequence-to-sequence models.
+when_not_to_use: |
+  Autoregressive language modelling, streaming or real-time prediction,
+  where future tokens do not exist at prediction time. Use causal models
+  there.
+why_it_works: |
+  The two directions have separate weights and each one is a valid
+  summary of one side of the position. Concatenating them gives the
+  downstream layer both left and right context without any change to the
+  recurrent cell itself, so it works with plain RNN, GRU or LSTM cells
+  alike.
+math:
+  - "hₜ→ = tanh(W_x→ xₜ + W_h→ hₜ₋₁→ + b→)"
+  - "hₜ← = tanh(W_x← xₜ + W_h← hₜ₊₁← + b←)"
+  - "hₜ = [hₜ→ ; hₜ←] ∈ ℝ^(2H)"
+  - "Forward starts at h₀→ = 0; backward starts at h_{T+1}← = 0"
+  - "Summary vector often = [h_T→ ; h₁←]"
+interview_qa:
+  - q: "Why can't a bidirectional RNN do language generation?"
+    a: "The backward pass needs future tokens, which do not exist while generating, so generation must use a causal (unidirectional) model."
+  - q: "What are the output and final-state shapes?"
+    a: "Per-step outputs have width 2H (forward and backward concatenated); the final states are the forward state at T and the backward state at the first position."
+  - q: "Do the two directions share weights?"
+    a: "No, each direction has its own parameters, so the parameter count doubles."
+  - q: "How do you use it for sentence classification?"
+    a: "Concatenate the last forward state and the first backward state, since each has read the entire sentence, then feed that to a classifier."
+hyperparameters:
+  - "Hidden size H per direction"
+  - "Cell type (RNN, GRU, LSTM)"
+  - "Number of stacked layers"
+  - "How to merge directions (concatenate, sum, average)"
+pitfalls:
+  - "The backward outputs must be flipped back, otherwise states are misaligned in time"
+  - "Padded batches need packing or masks, or the backward pass starts on padding"
+  - "Not usable for causal or streaming prediction"
+  - "This sketch is a plain tanh RNN for one sequence; real models use GRU or LSTM cells"
+related: [rnn-cell, lstm-cell, self-attention]
+patterns: ["Attention and sequences"]

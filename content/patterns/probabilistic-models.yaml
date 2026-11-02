@@ -32,5 +32,6 @@ problems:
 - linear-discriminant-analysis
 - hidden-markov-forward
 - metropolis-hastings
+- gaussian-process-regression
 aliases:
 - Probabilistic models

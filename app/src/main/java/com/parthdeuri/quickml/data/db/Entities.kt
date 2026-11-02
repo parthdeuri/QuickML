@@ -10,7 +10,7 @@ import androidx.room.PrimaryKey
  * ([userAdded] = true), which content imports never delete.
  */
 @Entity(tableName = "problems")
-data class ProblemEntity(
+data class ConceptEntity(
     @PrimaryKey val slug: String,
     val title: String,
     val platform: String,
@@ -39,7 +39,9 @@ data class ProblemEntity(
     /** Raw JSON (List<Int>): 1-based key line numbers in [solution]; null when empty. */
     val keyLinesJson: String? = null,
     /** True for problems the user added ("My problems"); null / false for bundled content. */
-    val userAdded: Boolean? = null
+    val userAdded: Boolean? = null,
+    /** Raw JSON (List<String>): box-art diagram lines; null when the card has none. */
+    val diagramJson: String? = null
 )
 
 /** Content table: the pattern library (replaced on import like the other content tables). */

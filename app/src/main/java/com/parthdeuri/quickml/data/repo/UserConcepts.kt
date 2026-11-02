@@ -1,9 +1,9 @@
 package com.parthdeuri.quickml.data.repo
 
-import com.parthdeuri.quickml.data.db.ProblemEntity
+import com.parthdeuri.quickml.data.db.ConceptEntity
 
 /** The add / edit form of an own problem; every field is plain text as typed. */
-data class UserProblemDraft(
+data class UserConceptDraft(
     val title: String = "",
     val link: String = "",
     val difficulty: String = "Medium",
@@ -50,9 +50,9 @@ fun normalizeLink(link: String): String {
 
 private fun String.orNullIfBlank(): String? = trim().takeIf { it.isNotEmpty() }
 
-fun UserProblemDraft.toEntity(slug: String): ProblemEntity {
+fun UserConceptDraft.toEntity(slug: String): ConceptEntity {
     val url = normalizeLink(link)
-    return ProblemEntity(
+    return ConceptEntity(
         slug = slug,
         title = title.trim(),
         platform = detectPlatform(url),
@@ -73,7 +73,7 @@ fun UserProblemDraft.toEntity(slug: String): ProblemEntity {
     )
 }
 
-fun ProblemEntity.toDraft(note: String?): UserProblemDraft = UserProblemDraft(
+fun ConceptEntity.toDraft(note: String?): UserConceptDraft = UserConceptDraft(
     title = title,
     link = url,
     difficulty = difficulty,
@@ -88,5 +88,5 @@ fun ProblemEntity.toDraft(note: String?): UserProblemDraft = UserProblemDraft(
 )
 
 /** Creation time encoded in an own problem's slug ("user-<epochMillis>"), for newest-first. */
-fun userProblemTime(slug: String): Long =
-    slug.removePrefix(ProblemRepository.USER_SLUG_PREFIX).toLongOrNull() ?: 0L
+fun userConceptTime(slug: String): Long =
+    slug.removePrefix(ConceptRepository.USER_SLUG_PREFIX).toLongOrNull() ?: 0L

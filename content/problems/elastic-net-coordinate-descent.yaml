@@ -1,0 +1,88 @@
+slug: elastic-net-coordinate-descent
+title: Elastic Net via Coordinate Descent
+url: https://scikit-learn.org/stable/modules/linear_model.html#elastic-net
+difficulty: Medium
+area: Classical ML
+topics: [Regression, Regularization, Optimization, Sparsity]
+summary: |
+  Linear regression with a mix of L1 and L2 penalties, solved by cycling
+  through coordinates and updating one weight at a time with a
+  soft-threshold. The L1 part zeroes weights; the L2 part stabilises
+  groups of correlated features.
+intuition: |
+  With all other weights held fixed, the objective in one weight is a
+  one-dimensional problem whose answer is closed form: take the plain
+  least-squares fit to the current residual, shrink it toward zero by the
+  L1 amount (stopping at exactly zero) and divide by a factor that includes
+  the L2 penalty. Cycling over coordinates repeats this until nothing
+  moves.
+why_it_works: |
+  The squared loss is smooth and convex and the penalty is convex and
+  separable across coordinates, which is the case where coordinate descent
+  provably converges to the global minimum. Each one-dimensional
+  subproblem is solved exactly by soft-thresholding, so the objective never
+  increases.
+when_to_use: |
+  Many correlated features where lasso picks one arbitrarily, p larger than
+  n, automatic feature selection with stable grouping, and large sparse
+  problems where coordinate descent is fast.
+when_not_to_use: |
+  Skip it when you want unbiased estimates of the large coefficients (the
+  penalty shrinks them), when features are unscaled, or when you need
+  coefficient standard errors and p-values.
+math:
+  - "min over w of (1/2n)‖y − Xw‖² + αρ‖w‖₁ + ½α(1−ρ)‖w‖²"
+  - "rⱼ = y − Σₖ≠ⱼ xₖ wₖ  (partial residual)"
+  - "zⱼ = ‖xⱼ‖² / n,  ρⱼ = xⱼᵀ rⱼ / n"
+  - "S(a, t) = sign(a) · max(|a| − t, 0)"
+  - "wⱼ ← S(ρⱼ, αρ) / (zⱼ + α(1 − ρ))"
+  - "ρ = 1 gives lasso, ρ = 0 gives ridge"
+approach:
+  - "Start at w = 0 with residual r = y — the exact solution once α is large enough"
+  - "For coordinate j compute its correlation with the partial residual, adding back its own contribution — the least-squares target for wⱼ alone"
+  - "Soft-threshold by αρ and divide by zⱼ + α(1 − ρ) — the closed-form minimiser of the one-dimensional problem"
+  - "Update the residual by the change in wⱼ — keeps each step O(n) instead of recomputing Xw"
+  - "Sweep all coordinates until the largest change is below tol — all coordinate steps are small only at the minimum"
+code: |
+  import numpy as np
+
+  def soft(a, t):
+      return np.sign(a) * np.maximum(np.abs(a) - t, 0)
+
+  def enet(X, y, alpha, l1r, iters=5000, tol=1e-12):
+      n, d = X.shape
+      w, r = np.zeros(d), y.astype(float).copy()
+      z = (X ** 2).sum(0) / n
+      for _ in range(iters):
+          big = 0.0
+          for j in range(d):
+              old = w[j]
+              rho = X[:, j] @ r / n + z[j] * old
+              w[j] = soft(rho, alpha * l1r) / (z[j] + alpha * (1 - l1r))
+              r -= X[:, j] * (w[j] - old)
+              big = max(big, abs(w[j] - old))
+          if big < tol:
+              break
+      return w
+key_lines: [14, 15, 16]
+time: "O(iters·n·d) with the residual trick; each sweep costs O(n·d)"
+space: "O(n·d) for the data, O(n + d) extra"
+hyperparameters:
+  - "α — overall penalty strength, chosen by cross-validation along a path"
+  - "l1_ratio ρ in [0, 1] — mix between L1 (sparse) and L2 (grouping)"
+  - "tol and max iterations — stopping rule for the sweeps"
+  - "Standardisation — features must be on the same scale for the penalty to be fair"
+pitfalls:
+  - "Unscaled features are penalised unequally; standardise first"
+  - "Intercept is not penalised, so centre y and X or fit it separately (this code has no intercept)"
+  - "Convergence is slow for highly correlated features and small α"
+  - "Selected features can change across resamples; check stability, not just one fit"
+interview_qa:
+  - q: "Why use elastic net instead of lasso?"
+    a: "Among correlated features lasso tends to pick one at random, while the L2 term makes elastic net share weight across the group and also lets it keep more than n features when p is larger than n."
+  - q: "What does the soft-threshold do?"
+    a: "It shrinks the least-squares coordinate estimate toward zero by the L1 amount and sets it exactly to zero when it is smaller than that amount, which is how sparsity arises."
+  - q: "Why does coordinate descent converge here?"
+    a: "The loss is smooth and convex and the penalty is convex and separable by coordinate, so exact one-dimensional minimisation steps decrease the objective and reach the global minimum."
+related: [ridge-lasso-regularization, linear-regression, gradient-descent]
+patterns: ["Linear models", "Regularisation"]

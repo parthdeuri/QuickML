@@ -1,0 +1,100 @@
+slug: mean-average-precision
+title: Detection Mean Average Precision
+url: https://lightning.ai/docs/torchmetrics/stable/detection/mean_average_precision.html
+difficulty: Hard
+area: Vision
+topics: [Object Detection, Evaluation Metrics, Precision-Recall]
+summary: |
+  Rank detections by confidence, mark each as a true or false positive by
+  IoU matching, and take the area under the precision-recall curve per
+  class, then average over classes.
+intuition: |
+  A detector must both find objects and rank its confident boxes above
+  its doubtful ones, so a single threshold hides too much. Sweeping the
+  confidence threshold traces a precision-recall curve, and its area
+  (AP) rewards detectors that keep precision high as recall grows.
+  Matching uses IoU, so a box counts only if it overlaps a ground-truth
+  box enough, and each ground-truth box can be claimed only once.
+approach:
+  - "Sort one class's detections by descending score — simulates lowering the confidence threshold"
+  - "Match each detection to its best still-unmatched ground-truth box in the same image — IoU ≥ threshold makes it a TP, otherwise FP"
+  - "Take cumulative TP and FP counts — precision and recall at every threshold"
+  - "Make precision monotone: replace it by the maximum precision at any higher recall — removes zig-zags"
+  - "Sum precision × recall increments, then average AP over classes — all-point interpolated AP, then mAP"
+code: |
+  import numpy as np
+
+  def iou(a, b):
+      lo, hi = np.maximum(a[:2], b[:2]), np.minimum(a[2:], b[2:])
+      inter = np.prod(np.clip(hi - lo, 0, None))
+      area = lambda r: (r[2] - r[0]) * (r[3] - r[1])
+      return inter / (area(a) + area(b) - inter)
+
+  def average_precision(dets, gts, thr=0.5):
+      # dets: [(img, score, box)], gts: {img: [box, ...]}, one class
+      dets = sorted(dets, key=lambda d: -d[1])
+      used = {i: np.zeros(len(g), bool) for i, g in gts.items()}
+      n_gt = sum(len(g) for g in gts.values())
+      tp = np.zeros(len(dets))
+      for k, (img, _, box) in enumerate(dets):
+          ious = np.array([iou(box, g) for g in gts.get(img, [])])
+          if len(ious):
+              ious[used[img]] = -1
+              j = ious.argmax()
+              if ious[j] >= thr:
+                  used[img][j], tp[k] = True, 1
+      tp_c, fp_c = np.cumsum(tp), np.cumsum(1 - tp)
+      rec, prec = tp_c / n_gt, tp_c / (tp_c + fp_c)
+      prec = np.maximum.accumulate(prec[::-1])[::-1]
+      return float(np.sum(np.diff(np.r_[0, rec]) * prec))
+
+  def mean_ap(dets_by_cls, gts_by_cls, thr=0.5):
+      aps = [average_precision(dets_by_cls.get(c, []), g, thr)
+             for c, g in gts_by_cls.items()]
+      return float(np.mean(aps))
+key_lines: [18, 21, 24]
+time: "O(D log D + D·G_img) per class for D detections"
+space: "O(D + G) for the TP flags and matched marks"
+when_to_use: |
+  Comparing object detectors and instance segmenters on a labelled
+  benchmark (VOC, COCO), tuning NMS or score thresholds, and tracking
+  detection quality across releases.
+when_not_to_use: |
+  Deployment decisions at one fixed operating point (use precision,
+  recall or F1 at that threshold), or tasks without boxes, and when
+  localisation quality at strict IoU matters more than one threshold
+  shows.
+why_it_works: |
+  AP is the area under the precision-recall curve, so it summarises
+  ranking quality over all thresholds instead of one. The monotone
+  precision envelope removes the jitter from individual false positives,
+  and the one-match-per-ground-truth rule stops duplicate boxes from
+  inflating recall. Averaging over classes weights rare classes equally.
+math:
+  - "IoU(a, b) = |a ∩ b| / |a ∪ b|;  TP if IoU ≥ t and GT unmatched"
+  - "Sort by score; TPₖ, FPₖ = cumulative counts after k detections"
+  - "Recallₖ = TPₖ / #GT,   Precisionₖ = TPₖ / (TPₖ + FPₖ)"
+  - "p_interp(r) = max over r' ≥ r of precision(r')"
+  - "AP = Σₖ (Rₖ − Rₖ₋₁) · p_interp(Rₖ),   R₀ = 0"
+  - "mAP = (1/C) Σ_c AP_c;  COCO also averages IoU 0.50 to 0.95"
+interview_qa:
+  - q: "What does a detection need to count as a true positive?"
+    a: "Same class, IoU with an unmatched ground-truth box at or above the threshold; extra boxes on an already matched object are false positives."
+  - q: "Why take the monotone envelope of precision?"
+    a: "It replaces each precision with the best precision at that recall or higher, removing the zig-zag so AP is the area under a non-increasing curve."
+  - q: "How does AP50 differ from COCO mAP?"
+    a: "AP50 uses a single IoU threshold of 0.5; COCO mAP averages over IoU thresholds 0.50 to 0.95 and also uses 101-point recall interpolation."
+  - q: "Why must you sort detections by score first?"
+    a: "The curve is built by lowering the confidence threshold, so confident detections must be matched first and claim ground truths before weaker ones."
+hyperparameters:
+  - "IoU threshold(s) for matching"
+  - "Interpolation scheme (all-point or 101-point)"
+  - "Max detections per image"
+  - "Object size ranges for small, medium, large breakdowns"
+pitfalls:
+  - "Conventions differ: VOC07 uses 11 points, VOC10+ all points, COCO 101 points and averaged IoUs"
+  - "Detections must be matched within the same image and class only"
+  - "Unsorted detections, or unfiltered duplicates, change the result"
+  - "No crowd or ignore regions, area ranges or maximum-detection caps in this sketch"
+related: [iou-and-nms, precision-recall-f1, roc-auc]
+patterns: ["Convolution and vision"]

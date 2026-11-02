@@ -79,4 +79,12 @@ interview_qa:
   - q: "How do you check a backprop implementation?"
     a: "Compare against a finite-difference gradient or an autograd framework on a small random problem."
 related: [gradient-descent, mlp-forward-pass, activation-functions]
+diagram:
+- x ─► [W1,b1] ─► tanh ─► [W2,b2] ─► ŷ
+- '                                   │'
+- '                              loss L(ŷ, y)'
+- '                                   │'
+- x ◄─ dW1,db1 ◄─ ∂tanh ◄─ dW2,db2 ◄─┘
+- '   forward: left to right'
+- '   gradients: right to left (chain rule)'
 patterns: ["Gradient-based optimisation"]

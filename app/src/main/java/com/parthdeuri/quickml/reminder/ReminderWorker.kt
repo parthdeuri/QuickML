@@ -15,7 +15,7 @@ import androidx.work.WorkerParameters
 import com.parthdeuri.quickml.MainActivity
 import com.parthdeuri.quickml.R
 import com.parthdeuri.quickml.QuickMLApp
-import com.parthdeuri.quickml.data.repo.ProblemRepository
+import com.parthdeuri.quickml.data.repo.ConceptRepository
 import com.parthdeuri.quickml.domain.currentStreak
 import com.parthdeuri.quickml.widget.QuickMLWidgetProvider
 import java.time.Instant
@@ -40,7 +40,7 @@ class ReminderWorker(
         val due = repository.dueCount(today.toEpochDay())
         val since = today.minusDays(STREAK_WINDOW_DAYS).atStartOfDay(zone).toInstant().toEpochMilli()
         val viewDays = repository.activitySince(since)
-            .filter { it.type == ProblemRepository.LOG_VIEW }
+            .filter { it.type == ConceptRepository.LOG_VIEW }
             .map { Instant.ofEpochMilli(it.timestamp).atZone(zone).toLocalDate() }
             .toSet()
         val viewedToday = viewDays.contains(today)

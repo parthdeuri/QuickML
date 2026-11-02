@@ -1,0 +1,82 @@
+slug: cross-attention-encoder-decoder
+title: Cross-Attention (Encoder-Decoder)
+url: https://arxiv.org/abs/1706.03762
+difficulty: Hard
+area: NLP
+topics: [Transformers, Attention, Sequence-to-Sequence]
+summary: |
+  Let each decoder position look up information in the encoder output:
+  queries come from the decoder, keys and values from the encoder.
+intuition: |
+  Self-attention lets a sequence read itself; cross-attention lets one
+  sequence read another. The decoder state asks "which source words do I
+  need to produce the next word?", and the encoder outputs answer with
+  keys to match and values to hand over. The source length and target
+  length are independent, so the weight matrix is rectangular, one row
+  per target position and one column per source position.
+why_it_works: |
+  The encoder compresses the source once; the decoder can then consult
+  any source position at every step with content-based weights instead
+  of squeezing the source into one fixed vector. Keys and values are
+  computed once per source and reused for every generated token. A
+  padding mask sets the scores of padded source columns to −∞ so they
+  receive exactly zero weight.
+when_to_use: |
+  Translation, summarisation, speech recognition and any
+  encoder-decoder model where the output must be conditioned on a
+  separate input sequence, including image-to-text models whose
+  encoder outputs are patches.
+when_not_to_use: |
+  Decoder-only language models have no separate source, so they use
+  self-attention over a concatenated prompt instead. Very long sources
+  make the target-by-source score matrix expensive.
+math:
+  - "Q = X_dec·W_q   (T_dec × d_k)"
+  - "K = X_enc·W_k,  V = X_enc·W_v   (T_enc × d_k, T_enc × d_v)"
+  - "S = Q·Kᵀ / √d_k   (T_dec × T_enc)"
+  - "Padding: S[i, j] = −∞ where source position j is padding"
+  - "A = softmax(S) row-wise, so each row sums to 1"
+  - "Output = A·V   (T_dec × d_v)"
+approach:
+  - "Project decoder states to queries — the decoder is the one asking"
+  - "Project encoder outputs to keys and values — the source supplies what to match and what to give"
+  - "Score every target-source pair with Q·Kᵀ/√d_k — rectangular matrix, scaled to keep softmax healthy"
+  - "Mask padded source columns with −∞ — padding must receive zero weight"
+  - "Softmax each row and multiply by V — each target position gets a weighted average of source values"
+code: |
+  import numpy as np
+
+  def softmax(s):
+      e = np.exp(s - s.max(axis=-1, keepdims=True))
+      return e / e.sum(axis=-1, keepdims=True)
+
+  def cross_attention(Xd, Xe, Wq, Wk, Wv, src_mask=None):
+      Q = Xd @ Wq                  # queries: decoder
+      K, V = Xe @ Wk, Xe @ Wv      # keys, values: encoder
+      scores = Q @ K.T / np.sqrt(K.shape[-1])
+      if src_mask is not None:     # True = real token, False = pad
+          scores = np.where(src_mask[None, :], scores, -np.inf)
+      A = softmax(scores)
+      return A @ V, A
+key_lines: [8, 9, 12]
+time: "O(T_dec·T_enc·d) for target length T_dec, source length T_enc and width d"
+space: "O(T_dec·T_enc) for the attention matrix; K and V (O(T_enc·d)) can be cached across decoding steps"
+hyperparameters:
+  - "Key/query dimension d_k (sets the scale √d_k)"
+  - "Number of heads (this code is a single head)"
+  - "Source padding mask (needed whenever sources in a batch differ in length)"
+  - "Attention dropout"
+pitfalls:
+  - "Forgetting the source padding mask lets the decoder attend to padding tokens"
+  - "A source that is entirely padding gives a fully masked row and NaN; real batches contain at least one real token"
+  - "Queries must come from the decoder; swapping the roles gives a source-by-target matrix instead"
+  - "This is one head with no output projection, residual or layer norm, which a real decoder layer adds"
+interview_qa:
+  - q: "Where do Q, K and V come from in cross-attention?"
+    a: "Queries come from the decoder's current hidden states; keys and values come from the encoder's final outputs. The attention matrix is therefore target length by source length."
+  - q: "Why can encoder keys and values be cached during generation?"
+    a: "The source does not change while decoding, so its keys and values are computed once and reused at every step; only the new query is computed each step."
+  - q: "Does cross-attention need a causal mask?"
+    a: "No. The decoder may look at the whole source; causality applies only to the decoder's self-attention over its own previous outputs. A padding mask on the source is what it needs."
+related: [self-attention, multi-head-attention, kv-cache]
+patterns: ["Attention and sequences"]

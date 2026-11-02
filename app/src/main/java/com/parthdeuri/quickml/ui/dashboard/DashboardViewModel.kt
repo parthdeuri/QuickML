@@ -6,7 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.parthdeuri.quickml.AppContainer
 import com.parthdeuri.quickml.data.db.ActivityLogEntity
 import com.parthdeuri.quickml.data.repo.FeedData
-import com.parthdeuri.quickml.data.repo.ProblemRepository
+import com.parthdeuri.quickml.data.repo.ConceptRepository
 import com.parthdeuri.quickml.domain.srs.Rating
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -131,7 +131,7 @@ class DashboardViewModel(container: AppContainer) : ViewModel() {
         val countByDay = HashMap<LocalDate, Int>()
         val millisByDay = HashMap<LocalDate, Long>()
         for (log in logs) {
-            if (log.type != ProblemRepository.LOG_VIEW) continue
+            if (log.type != ConceptRepository.LOG_VIEW) continue
             val day = Instant.ofEpochMilli(log.timestamp).atZone(zone).toLocalDate()
             countByDay[day] = (countByDay[day] ?: 0) + 1
             millisByDay[day] = (millisByDay[day] ?: 0L) + log.durationMs
@@ -144,7 +144,7 @@ class DashboardViewModel(container: AppContainer) : ViewModel() {
         var recallTotal = 0
         var recallGood = 0
         for (log in logs) {
-            if (log.type != ProblemRepository.LOG_REVIEW) continue
+            if (log.type != ConceptRepository.LOG_REVIEW) continue
             val rating = ratings.firstOrNull { it.name == log.rating } ?: continue
             val day = Instant.ofEpochMilli(log.timestamp).atZone(zone).toLocalDate()
             reviewsByDay.getOrPut(day) { IntArray(ratings.size) }[rating.ordinal]++
@@ -158,11 +158,11 @@ class DashboardViewModel(container: AppContainer) : ViewModel() {
         var quizTotal = 0
         var quizCorrect = 0
         for (log in logs) {
-            if (log.type != ProblemRepository.LOG_QUIZ) continue
+            if (log.type != ConceptRepository.LOG_QUIZ) continue
             val day = Instant.ofEpochMilli(log.timestamp).atZone(zone).toLocalDate()
             if (day.isBefore(recallSince)) continue
             quizTotal++
-            if (log.rating == ProblemRepository.QUIZ_CORRECT) quizCorrect++
+            if (log.rating == ConceptRepository.QUIZ_CORRECT) quizCorrect++
         }
 
         // Streaks: current ends today (or yesterday if nothing logged yet today).

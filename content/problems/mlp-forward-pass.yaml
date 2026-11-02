@@ -75,4 +75,10 @@ interview_qa:
   - q: "Why scale init by fan-in?"
     a: "It keeps the variance of activations and gradients roughly constant across layers, avoiding vanishing or exploding signals."
 related: [backpropagation, activation-functions, softmax-cross-entropy]
+diagram:
+- x (d) ─► [W1, b1] ─► act ─► h (m)
+- '                              │'
+- '                         [W2, b2]'
+- '                              │'
+- '                       logits ─► softmax ─► p'
 patterns: ["Network building blocks"]

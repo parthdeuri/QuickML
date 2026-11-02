@@ -57,11 +57,11 @@ private enum class PatternSection(val label: String) {
     PROBLEMS("Concepts")
 }
 
-/** One card of Patterns mode: Overview · Template · Pitfalls · Problems. */
+/** One card of Patterns mode: Overview · Template · Pitfalls · Concepts. */
 @Composable
 fun PatternCard(
     card: PatternCardUi,
-    onOpenProblem: (String) -> Unit,
+    onOpenConcept: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val sections = PatternSection.values()
@@ -109,7 +109,7 @@ fun PatternCard(
                     PatternSection.OVERVIEW -> OverviewTab(card)
                     PatternSection.TEMPLATE -> TemplateTab(pattern.template)
                     PatternSection.PITFALLS -> PitfallsTab(pattern.pitfalls)
-                    PatternSection.PROBLEMS -> ProblemsTab(card.problems, onOpenProblem)
+                    PatternSection.PROBLEMS -> ConceptsTab(card.problems, onOpenConcept)
                 }
             }
         }
@@ -310,7 +310,7 @@ private fun PitfallsTab(pitfalls: List<String>) {
 }
 
 @Composable
-private fun ProblemsTab(problems: List<PatternProblemRow>, onOpenProblem: (String) -> Unit) {
+private fun ConceptsTab(problems: List<PatternConceptRow>, onOpenConcept: (String) -> Unit) {
     val colors = QuickMLTheme.colors
     Column(
         modifier = Modifier
@@ -332,7 +332,7 @@ private fun ProblemsTab(problems: List<PatternProblemRow>, onOpenProblem: (Strin
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .clickable { onOpenProblem(row.slug) }
+                    .clickable { onOpenConcept(row.slug) }
                     .padding(horizontal = 8.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {

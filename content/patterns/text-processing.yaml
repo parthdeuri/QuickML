@@ -30,5 +30,6 @@ problems:
 - top-k-top-p-sampling
 - perplexity
 - cosine-similarity-embeddings
+- bert-masked-lm
 aliases:
 - Text processing

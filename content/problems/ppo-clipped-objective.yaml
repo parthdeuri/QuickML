@@ -1,0 +1,84 @@
+slug: ppo-clipped-objective
+title: PPO Clipped Objective
+url: https://arxiv.org/abs/1707.06347
+difficulty: Hard
+area: RL
+topics: [Reinforcement Learning, Policy Gradient, Trust Region]
+summary: |
+  Improve a policy with several gradient steps on one batch of
+  experience, while clipping the probability ratio so a step cannot move
+  the new policy too far from the one that collected the data.
+intuition: |
+  Reusing a batch of data is efficient but dangerous: the further the
+  policy moves from the one that generated the data, the less the
+  advantages mean. PPO measures movement by the ratio of new to old
+  action probability and stops rewarding progress once that ratio leaves
+  a small band around one, in the direction the advantage wants. Taking
+  the minimum of the clipped and unclipped terms makes the objective a
+  pessimistic bound, so there is no incentive to push further, but a
+  harmful move is still fully penalised.
+why_it_works: |
+  The ratio-weighted advantage is a first-order surrogate for the true
+  improvement that is only valid near the sampling policy. Clipping
+  removes the gradient where the ratio has already moved beyond the band
+  in the favourable direction, which acts as a cheap trust region without
+  the second-order machinery of TRPO. Where the policy moved the wrong
+  way, the unclipped term is the smaller one and keeps its gradient, so
+  mistakes can be corrected.
+when_to_use: |
+  On-policy deep RL and RLHF fine-tuning of language models, where
+  stable updates with minimal tuning matter and rollouts are expensive
+  to collect.
+when_not_to_use: |
+  When sample efficiency from off-policy replay is critical, or in
+  settings with deterministic policies and continuous control tasks
+  where off-policy methods such as SAC are preferred.
+math:
+  - "Ratio: ρ = π_new(a|s) / π_old(a|s) = exp(logp_new − logp_old)"
+  - "Unclipped: ρ·Â"
+  - "Clipped: clip(ρ, 1 − ε, 1 + ε)·Â"
+  - "L_CLIP = mean[ min(ρ·Â, clip(ρ, 1 − ε, 1 + ε)·Â) ]"
+  - "Loss to minimise = −L_CLIP"
+  - "∂L_CLIP/∂logp_new = ρ·Â if the unclipped term is the min, else 0"
+  - "Â > 0 : gradient stops once ρ > 1 + ε"
+  - "Â < 0 : gradient stops once ρ < 1 − ε"
+approach:
+  - "Store log-probabilities of the sampled actions under the old policy — the fixed reference for the ratio"
+  - "Compute the ratio exp(logp_new − logp_old) — how much the policy has moved on each sample"
+  - "Form the unclipped term ρ·Â and the clipped term clip(ρ)·Â — the plain surrogate and its limited version"
+  - "Take the elementwise minimum and average — a pessimistic bound with no reward for moving too far"
+  - "Maximise it for a few epochs of minibatch gradient steps — reuse the batch safely"
+code: |
+  import numpy as np
+
+  def ppo_clip_loss(logp_new, logp_old, adv, eps=0.2):
+      ratio = np.exp(logp_new - logp_old)
+      unclipped = ratio * adv
+      clipped = np.clip(ratio, 1 - eps, 1 + eps) * adv
+      obj = np.minimum(unclipped, clipped)
+      # gradient flows only where the unclipped term is the minimum
+      active = unclipped <= clipped
+      grad = np.where(active, ratio * adv, 0.0) / len(adv)
+      return -obj.mean(), -grad     # loss, dloss/dlogp_new
+key_lines: [4, 6, 7]
+time: "O(N) per evaluation for N samples (the policy network dominates the real cost)"
+space: "O(N) for the ratios and advantages"
+hyperparameters:
+  - "Clip range ε (smaller is more conservative)"
+  - "Number of epochs and minibatches per batch of data"
+  - "Advantage estimator settings (γ and λ) and normalisation"
+  - "Value-loss and entropy coefficients when added to the objective"
+pitfalls:
+  - "Clipping bounds the gradient incentive, not the actual policy change; large steps can still overshoot the band"
+  - "Advantages are usually normalised per batch; the sign of Â decides which side of the band is clipped"
+  - "Log-probs must be from the policy that sampled the actions and be stored detached"
+  - "This is only the policy term; real PPO adds a value-function loss and an entropy bonus, and usually early-stops on KL"
+interview_qa:
+  - q: "Why take the minimum of the clipped and unclipped terms?"
+    a: "It makes the objective a lower bound on the unclipped surrogate. Improvements beyond the clip band are not rewarded, while moves in the harmful direction keep their full gradient."
+  - q: "When is the gradient zero?"
+    a: "For a positive advantage when the ratio is above 1 plus ε, and for a negative advantage when the ratio is below 1 minus ε. In those regions the clipped term is a constant."
+  - q: "How does PPO relate to TRPO?"
+    a: "Both limit how far the policy moves per update. TRPO enforces a KL constraint with second-order optimisation, while PPO uses a first-order clipped objective that is simpler to implement."
+related: [reinforce-policy-gradient, gae-advantage, entropy-kl-divergence]
+patterns: ["Reinforcement learning", "Preference alignment and policy gradients"]

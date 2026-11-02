@@ -15,6 +15,7 @@ sections:
   - adam-optimizer
   - learning-rate-schedules
   - gradient-clipping
+  - rmsprop-adagrad
 - name: Normalisation and regularisation
   problems:
   - batch-normalization
@@ -28,6 +29,7 @@ sections:
   problems:
   - focal-loss
   - knowledge-distillation
+  - clip-contrastive-loss
 - name: Transfer and adaptation
   problems:
   - transfer-learning-fine-tuning
@@ -36,6 +38,8 @@ sections:
   problems:
   - rnn-cell
   - lstm-cell
+  - gru-cell
+  - bidirectional-rnn
 - name: Architectures
   problems:
   - convolution-2d
@@ -43,9 +47,15 @@ sections:
   - self-attention
   - multi-head-attention
   - positional-encoding
+  - resnet-basic-block
+  - vision-transformer-patch-embed
 - name: Generative models
   problems:
   - autoencoder
   - vae-reparameterization
   - gan-minimax-loss
   - diffusion-forward-process
+- name: Graph neural networks
+  problems:
+  - gnn-message-passing
+  - graph-attention-layer

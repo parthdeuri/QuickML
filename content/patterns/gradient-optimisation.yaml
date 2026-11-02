@@ -33,5 +33,6 @@ problems:
 - weight-initialization
 - gradient-clipping
 - momentum-sgd
+- rmsprop-adagrad
 aliases:
 - Gradient-based optimisation

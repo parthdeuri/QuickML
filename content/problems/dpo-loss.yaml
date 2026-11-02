@@ -1,0 +1,82 @@
+slug: dpo-loss
+title: Direct Preference Optimisation Loss
+url: https://arxiv.org/abs/2305.18290
+difficulty: Hard
+area: NLP
+topics: [Alignment, Preference Learning, Language Models]
+summary: |
+  Fine-tune a language model on pairs of preferred and rejected
+  responses by pushing up the log-probability gap between them, measured
+  relative to a frozen reference model, with no separate reward model or
+  reinforcement learning loop.
+intuition: |
+  DPO treats β·log(π/π_ref) as an implicit reward: how much more the
+  tuned model likes a response than the reference does. The loss is a
+  logistic loss on the difference of that implicit reward between the
+  chosen and rejected response, so it raises the chosen response and
+  lowers the rejected one relative to the reference. Anchoring to the
+  reference is what keeps the model from drifting arbitrarily far.
+why_it_works: |
+  The KL-regularised reward maximisation problem has a closed-form
+  optimal policy, which can be inverted to express any reward as a
+  log-ratio of policy to reference. Substituting that into the
+  Bradley-Terry preference likelihood cancels the intractable
+  normaliser, leaving a loss that depends only on sequence
+  log-probabilities. The gradient weights each pair by how wrongly the
+  implicit reward currently orders it.
+when_to_use: |
+  Aligning an instruction-tuned model with a static dataset of
+  preference pairs when a simple, stable supervised-style training loop
+  is preferred over PPO.
+when_not_to_use: |
+  When preferences must be gathered online from the current policy, when
+  a reusable reward model is needed for ranking or filtering, or when
+  the preference data is far from the reference model's distribution.
+math:
+  - "Implicit reward: r(x, y) = β · log( π(y|x) / π_ref(y|x) )"
+  - "Margin: m = β·[(log π(y_w) − log π_ref(y_w))"
+  - "             − (log π(y_l) − log π_ref(y_l))]"
+  - "Loss: L = −mean over pairs of log σ(m)"
+  - "σ(m) = 1/(1 + e^(−m)),  log σ(m) = −log(1 + e^(−m))"
+  - "∂L/∂log π(y_w) = −β σ(−m) / N,  ∂L/∂log π(y_l) = +β σ(−m) / N"
+  - "y_w: preferred (winner),  y_l: rejected (loser),  N: pairs"
+approach:
+  - "Compute sequence log-probabilities of the chosen and rejected responses under the policy and the frozen reference — the four quantities the loss needs"
+  - "Subtract reference from policy for each response — the log-ratio is the implicit reward up to β"
+  - "Take the chosen-minus-rejected difference and scale by β — the preference margin"
+  - "Apply −log σ(margin) and average over pairs — the Bradley-Terry negative log-likelihood"
+  - "Backpropagate into the policy only — the reference stays frozen"
+code: |
+  import numpy as np
+
+  def log_sigmoid(x):
+      return -np.logaddexp(0.0, -x)
+
+  def dpo_loss(pi_w, pi_l, ref_w, ref_l, beta=0.1):
+      # inputs: summed token log-probs of each full response
+      m = beta * ((pi_w - ref_w) - (pi_l - ref_l))
+      loss = -log_sigmoid(m).mean()
+      g = -beta * np.exp(log_sigmoid(-m)) / len(m)
+      return loss, g, -g       # loss, dL/dpi_w, dL/dpi_l
+key_lines: [8, 9, 10]
+time: "O(N) given the log-probabilities; the real cost is two forward passes (policy and reference) per response"
+space: "O(N) for the margins; the reference model's weights must also be held in memory"
+hyperparameters:
+  - "β (strength of the pull toward the reference; larger keeps the policy closer)"
+  - "Learning rate (usually very small for fine-tuning)"
+  - "Reference model (usually the supervised fine-tuned checkpoint)"
+  - "Preference dataset quality and size"
+pitfalls:
+  - "Inputs must be sequence-level log-probs (summed over response tokens), computed with the same prompt formatting"
+  - "Reference log-probs are constants; backpropagating into the reference is a bug"
+  - "Both chosen and rejected log-probs can fall during training; DPO constrains only their gap"
+  - "This code returns gradients with respect to the log-probs; a real model backpropagates them into its parameters, and long sequences make the log-probs very negative"
+interview_qa:
+  - q: "How does DPO avoid training a reward model?"
+    a: "It reparameterises the reward as a log-ratio of policy to reference, so the preference likelihood can be written directly in terms of the policy. Training the policy on that likelihood implicitly fits the reward."
+  - q: "What does β control?"
+    a: "It scales the log-ratio reward, so it sets how strongly the policy is tied to the reference. A larger β penalises movement away from the reference more and gives smaller updates for a given log-ratio gap."
+  - q: "How does DPO relate to RLHF with PPO?"
+    a: "Both target the same KL-regularised reward objective. PPO learns an explicit reward and samples from the policy online; DPO optimises a closed-form loss on a fixed dataset of preference pairs."
+related: [reward-model-bradley-terry, entropy-kl-divergence, softmax-cross-entropy]
+patterns: ["Preference alignment and policy gradients"]

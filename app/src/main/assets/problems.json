@@ -1,5 +1,5 @@
 {
- "contentVersion": 5,
+ "contentVersion": 6,
  "problems": [
   {
    "slug": "ab-test-significance",
@@ -84,7 +84,8 @@
     "bayes-theorem",
     "cross-validation",
     "concept-drift"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "activation-functions",
@@ -158,7 +159,8 @@
     "backpropagation",
     "mlp-forward-pass",
     "softmax-cross-entropy"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "adaboost",
@@ -240,7 +242,8 @@
     "gradient-boosting",
     "decision-tree",
     "random-forest"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "adam-optimizer",
@@ -316,7 +319,165 @@
     "gradient-descent",
     "backpropagation",
     "mlp-forward-pass"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "arima-model",
+   "title": "ARIMA Forecasting",
+   "platform": "Classical ML",
+   "url": "https://otexts.com/fpp3/arima.html",
+   "difficulty": "Hard",
+   "topics": [
+    "Time Series",
+    "Forecasting",
+    "Autoregression",
+    "Differencing"
+   ],
+   "patterns": [
+    "Time series"
+   ],
+   "summary": "Difference the series until it is roughly stationary, regress it on its own recent values, forecast the differenced series forward, and sum the forecasts back to the original scale. This card implements the AR part with d differences, ARIMA(p, d, 0).",
+   "bruteForce": "Skip it for series with strong seasonality unless you add seasonal terms, for many exogenous drivers, for nonlinear dynamics, and for long horizons where forecasts collapse to a constant or a line.",
+   "intuition": "Many series wander, so their level is unpredictable, but the changes between steps are stable and depend on recent changes. Differencing turns the wandering series into a steadier one that a plain regression on lagged values can model, and summing the predicted changes brings the forecast back to the original level.",
+   "whyItWorks": "Stationarity makes the dependence on lags constant over time, so coefficients estimated on the past still apply to the future. Fitting an AR(p) by least squares is conditional maximum likelihood under Gaussian noise, and integrating the differenced forecast is exact because differencing is an invertible linear operation given the starting values.",
+   "approach": [
+    "Difference the series d times — removes stochastic trend so the dependence structure is stable",
+    "Build a lag matrix of the last p values plus a constant column — each row predicts the next difference",
+    "Solve least squares for the constant and AR coefficients — conditional maximum likelihood for Gaussian noise",
+    "Forecast the differenced series recursively, feeding each forecast back in — future lags are not yet observed",
+    "Undo differencing by cumulative sums from the last observed values — returns forecasts to the original scale"
+   ],
+   "time": "O(n·p²) for least squares plus O(h·p) for forecasting",
+   "space": "O(n·p) for the lag matrix",
+   "solution": "import numpy as np\n\ndef fit_ar(z, p):\n    n = len(z)\n    cols = [z[p - j - 1:n - j - 1] for j in range(p)]\n    X = np.column_stack([np.ones(n - p)] + cols)\n    return np.linalg.lstsq(X, z[p:], rcond=None)[0]\n\ndef forecast(y, p, d, h):\n    z = y\n    for _ in range(d):\n        z = np.diff(z)\n    beta = fit_ar(z, p)\n    hist = list(z[-p:])\n    for _ in range(h):\n        lags = hist[::-1][:p]\n        hist.append(beta[0] + beta[1:] @ lags)\n    dz = np.array(hist[p:])\n    for lvl in reversed(range(d)):\n        last = np.diff(y, n=lvl)[-1]\n        dz = last + np.cumsum(dz)\n    return dz, beta",
+   "keyLines": [
+    7,
+    17,
+    21
+   ],
+   "dryRun": [
+    "Difference: ∇yₜ = yₜ − yₜ₋₁, apply d times to get zₜ",
+    "AR(p): zₜ = c + φ₁ zₜ₋₁ + … + φₚ zₜ₋ₚ + εₜ",
+    "Least squares: β̂ = argmin Σₜ (zₜ − Xₜ β)², β = (c, φ₁..φₚ)",
+    "Forecast: ẑₜ₊₁ = c + Σᵢ φᵢ ẑₜ₊₁₋ᵢ (use forecasts once data ends)",
+    "Integrate (d = 1): ŷₜ₊ₕ = yₜ + Σⱼ ẑₜ₊ⱼ",
+    "Full ARIMA adds MA terms: zₜ = … + θ₁ εₜ₋₁ + … + θ_q εₜ₋_q"
+   ],
+   "description": "Univariate forecasting of autocorrelated series with trend that differencing removes, a transparent baseline to beat with machine learning models, and when ACF and PACF plots suggest low orders.",
+   "examples": [
+    {
+     "input": "What do p, d and q stand for?",
+     "output": "p is the number of lagged values in the autoregression, d the number of differences to make the series stationary, q the number of lagged forecast errors in the moving-average part.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you choose d?",
+     "output": "Difference until a plot and the ACF look stationary, typically once or twice; stationarity tests such as ADF help, but over-differencing hurts.",
+     "explanation": ""
+    },
+    {
+     "input": "Why do ARIMA forecasts get flat at long horizons?",
+     "output": "Future values are fed back as inputs, so shocks average out and the forecast converges to the mean of the differenced series, which becomes a straight drift line once integrated.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "p autoregressive order — read from the PACF or chosen by AIC",
+    "d differencing order — usually 0, 1 or 2, enough to look stationary",
+    "q moving-average order — not in this code, which fits ARIMA(p, d, 0)",
+    "Constant — include for a drift after differencing, drop it if the series has none"
+   ],
+   "edgeCases": [
+    "Over-differencing adds negative autocorrelation and inflates forecast variance",
+    "This is conditional least squares; libraries that fit exact likelihood or MA terms give slightly different estimates",
+    "Point forecasts of a stationary part revert to the mean, so long horizons look flat",
+    "Judge models on a rolling-origin hold-out, never on in-sample fit"
+   ],
+   "related": [
+    "autocorrelation-acf-pacf",
+    "exponential-smoothing",
+    "linear-regression"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "autocorrelation-acf-pacf",
+   "title": "Autocorrelation (ACF and PACF)",
+   "platform": "Math",
+   "url": "https://otexts.com/fpp3/acf.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Time Series",
+    "Correlation",
+    "Yule-Walker",
+    "Durbin-Levinson"
+   ],
+   "patterns": [
+    "Time series"
+   ],
+   "summary": "The ACF is the correlation of a series with a lagged copy of itself. The PACF is the correlation at each lag after removing the effect of the shorter lags, computed from the ACF with the Durbin-Levinson recursion.",
+   "bruteForce": "Skip it on non-stationary data without differencing first, for strongly nonlinear dependence that correlation misses, and for very short series where lag estimates are too noisy.",
+   "intuition": "If today resembles yesterday, the lag-1 correlation is high, but it also makes today resemble two days ago through yesterday. The ACF mixes direct and relayed dependence; the PACF strips the relayed part, so an AR(p) process shows a PACF that cuts off after lag p while its ACF decays.",
+   "whyItWorks": "For an autoregression the Yule-Walker equations link the ACF to the coefficients through a Toeplitz system. The PACF at lag k is the last coefficient φₖₖ of the best order-k autoregression, and the Durbin-Levinson recursion builds order k from order k − 1 in O(k) work instead of solving a fresh system.",
+   "approach": [
+    "Centre the series — correlation is about deviations from the mean",
+    "Compute autocovariances with a divisor of n at every lag — keeps the covariance matrix positive semi-definite",
+    "Divide by lag zero to get the ACF — makes it scale free in [−1, 1]",
+    "Run Durbin-Levinson on the ACF — gives each order's last coefficient without solving a linear system per lag",
+    "Compare each lag with the band of about two over root n — spikes outside are unlikely to be noise"
+   ],
+   "time": "O(n·K) for the ACF directly, O(K²) for Durbin-Levinson",
+   "space": "O(K) for the recursion state",
+   "solution": "import numpy as np\n\ndef acf(x, K):\n    x = x - x.mean()\n    c = np.array([x[: len(x) - k] @ x[k:] for k in range(K + 1)])\n    return c / c[0]\n\ndef pacf(r, K):\n    phi, out = np.zeros(0), [1.0]\n    for k in range(1, K + 1):\n        num = r[k] - phi @ r[k - 1:0:-1]\n        den = 1 - phi @ r[1:k]\n        c = num / den\n        phi = np.append(phi - c * phi[::-1], c)\n        out.append(c)\n    return np.array(out)",
+   "keyLines": [
+    5,
+    13,
+    14
+   ],
+   "dryRun": [
+    "Autocovariance: cₖ = (1/n) Σₜ (yₜ − ȳ)(yₜ₊ₖ − ȳ)",
+    "ACF: ρₖ = cₖ / c₀",
+    "Yule-Walker: ρⱼ = Σᵢ φₖᵢ ρ|ⱼ−ᵢ|  for j = 1..k",
+    "PACF: αₖ = φₖₖ (last coefficient of the order-k fit)",
+    "φₖₖ = (ρₖ − Σⱼ φₖ₋₁,ⱼ ρₖ₋ⱼ) / (1 − Σⱼ φₖ₋₁,ⱼ ρⱼ)",
+    "φₖⱼ = φₖ₋₁,ⱼ − φₖₖ φₖ₋₁,ₖ₋ⱼ  for j < k",
+    "Approximate 95% band: ± 1.96 / √n"
+   ],
+   "description": "Choosing AR and MA orders for ARIMA, spotting seasonality and trend from slowly decaying or periodic spikes, and checking that model residuals look like white noise.",
+   "examples": [
+    {
+     "input": "How do ACF and PACF identify an AR or MA model?",
+     "output": "An AR(p) has a PACF that cuts off after lag p and an ACF that decays; an MA(q) has an ACF that cuts off after lag q and a PACF that decays.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the PACF at lag k measure?",
+     "output": "The correlation between yₜ and yₜ₋ₖ after linearly removing the effect of the lags in between, equal to the last coefficient of an order-k autoregression.",
+     "explanation": ""
+    },
+    {
+     "input": "Why divide by n and not n − k in the autocovariance?",
+     "output": "Dividing by n guarantees the estimated autocovariance sequence is positive semi-definite, which the Yule-Walker system needs; n − k is less biased but can give invalid values.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "max lag K — a common rule is a fraction of n, such as n/4",
+    "Divisor n versus n − k — n keeps a valid covariance sequence and is the usual default",
+    "Differencing order — applied before computing so the series is near stationary"
+   ],
+   "edgeCases": [
+    "Trending series give an ACF that decays very slowly and hides the real structure; difference first",
+    "Many lags are tested at once, so a few spikes outside the band are expected by chance",
+    "Seasonal data needs a lag at the season length, not just short lags",
+    "Different libraries estimate the PACF differently (Yule-Walker, OLS, Burg), so small numeric differences are normal"
+   ],
+   "related": [
+    "linear-regression",
+    "maximum-likelihood"
+   ],
+   "diagram": []
   },
   {
    "slug": "autoencoder",
@@ -396,6 +557,13 @@
     "pca",
     "backpropagation",
     "vae-reparameterization"
+   ],
+   "diagram": [
+    "x ─► [encoder] ─► z (small) ─► [decoder] ─► x̂",
+    "",
+    "loss = ‖x − x̂‖²",
+    "z is the bottleneck: it must keep what the",
+    "decoder needs to rebuild x"
    ]
   },
   {
@@ -473,7 +641,98 @@
     "gradient-descent",
     "mlp-forward-pass",
     "activation-functions"
+   ],
+   "diagram": [
+    "x ─► [W1,b1] ─► tanh ─► [W2,b2] ─► ŷ",
+    "                                   │",
+    "                              loss L(ŷ, y)",
+    "                                   │",
+    "x ◄─ dW1,db1 ◄─ ∂tanh ◄─ dW2,db2 ◄─┘",
+    "   forward: left to right",
+    "   gradients: right to left (chain rule)"
    ]
+  },
+  {
+   "slug": "bahdanau-additive-attention",
+   "title": "Additive (Bahdanau) Attention",
+   "platform": "NLP",
+   "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/bahdanau-attention.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Attention",
+    "Sequence-to-Sequence",
+    "Machine Translation"
+   ],
+   "patterns": [
+    "Attention and sequences"
+   ],
+   "summary": "Score each encoder state against the current decoder state with a small one-hidden-layer network, softmax the scores, and return the weighted sum of encoder states as the context vector.",
+   "bruteForce": "Large transformer-style models where scaled dot-product attention is faster because it is a single matrix multiplication and parallelises well over positions.",
+   "intuition": "A sequence-to-sequence decoder that sees only one fixed summary of the source must squeeze a whole sentence into one vector. Additive attention lets the decoder look back at every encoder state at each step and decide which ones matter now. The relevance score comes from a learned tanh network over both vectors, so the two sides need not have the same size.",
+   "whyItWorks": "The tanh network can represent a learned relevance function between a query and each key, rather than just a dot product, and sees both vectors jointly. Softmax weighting is differentiable, so the model learns an alignment end to end from translation loss alone, and the decoder gets direct access to any source position instead of one compressed summary.",
+   "approach": [
+    "Project the decoder state with W_s and every encoder state with W_h — maps both into a shared scoring space",
+    "Add them (broadcast over positions) and apply tanh — lets query and key interact nonlinearly",
+    "Dot with a learned vector v — reduces each position to one scalar score",
+    "Softmax over source positions — turns scores into weights that sum to one",
+    "Weighted sum of the encoder states — the context vector fed to the decoder"
+   ],
+   "time": "O(T·(d_s + d_h)·d_a) per decoder step for T source positions",
+   "space": "O(T) for the weights",
+   "solution": "import numpy as np\n\ndef softmax(s):\n    e = np.exp(s - s.max())\n    return e / e.sum()\n\ndef additive_attention(s, H, Ws, Wh, v):\n    # s: decoder state (ds,), H: encoder states (T, dh)\n    e = np.tanh(s @ Ws + H @ Wh) @ v      # (T,) scores\n    a = softmax(e)\n    return a @ H, a",
+   "keyLines": [
+    9,
+    10,
+    11
+   ],
+   "dryRun": [
+    "eₜ = vᵀ tanh(W_s s + W_h hₜ)     (t = 1 … T)",
+    "αₜ = exp(eₜ) / Σⱼ exp(eⱼ)",
+    "c = Σₜ αₜ hₜ",
+    "s ∈ ℝ^(d_s), hₜ ∈ ℝ^(d_h), W_s ∈ ℝ^(d_s×d_a), W_h ∈ ℝ^(d_h×d_a)",
+    "Decoder update: s' = RNN(s, [y_prev ; c])"
+   ],
+   "description": "RNN encoder-decoder models for translation, summarisation or speech, and whenever query and key have different dimensions or you need a small, parametrised scorer.",
+   "examples": [
+    {
+     "input": "Why is it called additive attention?",
+     "output": "The query and key projections are added before the tanh and scoring vector, unlike the multiplicative dot-product form.",
+     "explanation": ""
+    },
+    {
+     "input": "What problem does attention solve in seq2seq?",
+     "output": "It removes the fixed-size bottleneck by letting the decoder read all encoder states with a different weighting at each output step.",
+     "explanation": ""
+    },
+    {
+     "input": "How does it differ from scaled dot-product attention?",
+     "output": "It uses a learned one-hidden-layer scorer and works with different query and key sizes; dot-product is cheaper and parallelises but needs matching dimensions or a projection.",
+     "explanation": ""
+    },
+    {
+     "input": "What are the shapes of the attention weights and context?",
+     "output": "One weight per source position (T,) and a context vector of the encoder width d_h.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Attention hidden width d_a",
+    "Encoder and decoder state sizes",
+    "Whether encoder states are bidirectional",
+    "Attention dropout"
+   ],
+   "edgeCases": [
+    "Padded source positions need masking before the softmax",
+    "Original Bahdanau attention uses the previous decoder state; some variants use the current one",
+    "Costs more than dot-product attention since scoring has its own hidden layer",
+    "This sketch is one query and has no mask, bias or batching"
+   ],
+   "related": [
+    "self-attention",
+    "rnn-cell",
+    "lstm-cell"
+   ],
+   "diagram": []
   },
   {
    "slug": "batch-normalization",
@@ -549,6 +808,15 @@
     "mlp-forward-pass",
     "backpropagation",
     "dropout"
+   ],
+   "diagram": [
+    "            features →",
+    "         ┌─────────────┐",
+    " batch   │ x x x x x x │ ◄ layer norm:",
+    "   ↓     │ x x x x x x │   each row",
+    "         │ x x x x x x │",
+    "         └─────────────┘",
+    "           ▲ batch norm: each column"
    ]
   },
   {
@@ -621,7 +889,8 @@
    "related": [
     "maximum-likelihood",
     "entropy-kl-divergence"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "beam-search",
@@ -696,7 +965,86 @@
    "related": [
     "softmax-cross-entropy",
     "self-attention"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "bert-masked-lm",
+   "title": "BERT Masked Language Modelling",
+   "platform": "NLP",
+   "url": "https://arxiv.org/abs/1810.04805",
+   "difficulty": "Medium",
+   "topics": [
+    "Pre-training",
+    "Transformers",
+    "Language Modelling"
+   ],
+   "patterns": [
+    "Text processing"
+   ],
+   "summary": "Pre-train a bidirectional encoder by hiding a random subset of input tokens and training it to predict the originals from the surrounding context on both sides.",
+   "bruteForce": "Open-ended text generation, where a left-to-right decoder is the natural fit. Masked models also learn from only a fraction of positions per pass, so they are less sample-efficient per token than causal models.",
+   "intuition": "A left-to-right language model cannot see the future, but an encoder that sees the whole sentence would trivially copy its input. Masking breaks the copy: the model must reconstruct hidden words from context on both sides. Not every selected token becomes a mask symbol, though. Since the mask never appears at fine-tuning time, some selected tokens are swapped for random words or left unchanged, so the model cannot assume that only masked-looking positions need attention.",
+   "whyItWorks": "Predicting a missing token from both directions forces the encoder to build contextual representations that capture syntax and meaning. The loss is computed only on the selected positions, so the learning signal is a clean cross-entropy over the vocabulary where the targets are unambiguous. Random and unchanged replacements reduce the mismatch between pre-training inputs, which contain mask symbols, and downstream inputs, which do not.",
+   "approach": [
+    "Draw a uniform number per token and select those below 0.15 — random positions to hide",
+    "Set labels to the original id at selected positions and −100 elsewhere — only selected positions contribute to the loss",
+    "Draw a second uniform number for the selected tokens: below 0.8 become [MASK] — the main corruption",
+    "Replace the next tenth with a random vocabulary token and leave the last tenth as is — reduces the pre-train/fine-tune mismatch",
+    "Run the encoder, take the logits at selected positions and average the cross-entropy — predict the originals"
+   ],
+   "time": "O(T) for masking; the loss is O(M·V) for M masked positions and vocabulary V, plus the encoder cost",
+   "space": "O(M·V) for the logits at masked positions (a full-sequence output layer would be O(T·V))",
+   "solution": "import numpy as np\n\ndef mask_tokens(ids, vocab, mask_id, rng, p=0.15):\n    ids = ids.copy()\n    labels = np.full(ids.shape, -100)\n    sel = rng.random(ids.shape) < p\n    labels[sel] = ids[sel]\n    u = rng.random(ids.shape)\n    ids[sel & (u < 0.8)] = mask_id\n    rand = sel & (u >= 0.8) & (u < 0.9)\n    ids[rand] = rng.integers(0, vocab, rand.sum())\n    return ids, labels      # last 10% of selected stay unchanged\n\ndef mlm_loss(logits, labels):\n    m = labels != -100\n    z = logits[m]\n    z = z - z.max(axis=1, keepdims=True)\n    logp = z - np.log(np.exp(z).sum(axis=1, keepdims=True))\n    return -logp[np.arange(len(z)), labels[m]].mean()",
+   "keyLines": [
+    6,
+    9,
+    15
+   ],
+   "dryRun": [
+    "Select each token independently with probability p = 0.15",
+    "Of selected tokens: 80% → [MASK], 10% → random token, 10% → unchanged",
+    "Labels: original id at selected positions, −100 elsewhere",
+    "M = set of selected positions",
+    "L = −(1/|M|) · Σ_{i∈M} log softmax(zᵢ)[yᵢ]",
+    "zᵢ: logits at position i;  yᵢ: original token id"
+   ],
+   "description": "Pre-training encoder models for classification, tagging, retrieval and other tasks that need rich bidirectional context rather than text generation.",
+   "examples": [
+    {
+     "input": "Why not replace every selected token with [MASK]?",
+     "output": "The mask symbol never appears at fine-tuning time, creating a train-test mismatch. Leaving some selected tokens unchanged or random forces the model to produce good representations for all tokens.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does the loss ignore unmasked positions?",
+     "output": "At unmasked positions the input equals the target, so predicting it is trivial and would dilute the signal. Labels of −100 are skipped by the cross-entropy so only hidden tokens train the model.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the downside of masked language modelling compared with causal modelling?",
+     "output": "Only the selected fraction of tokens gives a training signal per sequence, and the model is not a natural generator, since it predicts tokens independently given the corrupted context.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Masking probability (0.15 in the original paper)",
+    "Split between mask, random and unchanged (80/10/10)",
+    "Dynamic masking (new mask each epoch) versus static",
+    "Vocabulary and sequence length"
+   ],
+   "edgeCases": [
+    "This code treats every token as maskable; real pipelines never select special tokens such as [CLS], [SEP] and padding",
+    "Random replacement here may draw any vocabulary id, including the mask id or the original token",
+    "Averaging over masked positions means batches with few masks give noisy loss; an empty selection gives NaN here",
+    "WordPiece pieces of one word are masked independently here; whole-word masking is a common variant"
+   ],
+   "related": [
+    "softmax-cross-entropy",
+    "self-attention",
+    "transformer-block"
+   ],
+   "diagram": []
   },
   {
    "slug": "bias-variance-tradeoff",
@@ -776,7 +1124,165 @@
    "related": [
     "linear-regression",
     "cross-validation"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "bidirectional-rnn",
+   "title": "Bidirectional RNN",
+   "platform": "Deep Learning",
+   "url": "https://d2l.ai/chapter_recurrent-modern/bi-rnn.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Recurrent Networks",
+    "Sequence Models",
+    "Context"
+   ],
+   "patterns": [
+    "Attention and sequences"
+   ],
+   "summary": "Run one recurrent network left to right and another right to left over the same sequence, then concatenate their states at every position.",
+   "bruteForce": "Autoregressive language modelling, streaming or real-time prediction, where future tokens do not exist at prediction time. Use causal models there.",
+   "intuition": "A forward RNN at position t has only seen the past, but many tasks such as tagging or reading comprehension also need the words that come later. Running a second RNN backwards gives each position a summary of its future, and concatenating both gives full-sentence context at every step. The price is that it cannot be used when the future is not available, such as in autoregressive generation.",
+   "whyItWorks": "The two directions have separate weights and each one is a valid summary of one side of the position. Concatenating them gives the downstream layer both left and right context without any change to the recurrent cell itself, so it works with plain RNN, GRU or LSTM cells alike.",
+   "approach": [
+    "Run the forward RNN from t = 1 to T — each state summarises the prefix up to t",
+    "Reverse the sequence and run a separate backward RNN — each state summarises the suffix from t onward",
+    "Reverse the backward outputs back into time order — so both states line up at position t",
+    "Concatenate forward and backward states on the feature axis — output width becomes 2H"
+   ],
+   "time": "O(T·(I·H + H²)) per direction, so about twice a unidirectional RNN",
+   "space": "O(T·2H) for the concatenated states",
+   "solution": "import numpy as np\n\ndef rnn_pass(X, Wx, Wh, b):\n    h = np.zeros(Wh.shape[0])\n    states = []\n    for x in X:\n        h = np.tanh(x @ Wx + h @ Wh + b)\n        states.append(h)\n    return np.array(states)\n\ndef bi_rnn(X, fwd, bwd):\n    hf = rnn_pass(X, *fwd)\n    hb = rnn_pass(X[::-1], *bwd)[::-1]\n    return np.concatenate([hf, hb], axis=1)",
+   "keyLines": [
+    7,
+    13,
+    14
+   ],
+   "dryRun": [
+    "hₜ→ = tanh(W_x→ xₜ + W_h→ hₜ₋₁→ + b→)",
+    "hₜ← = tanh(W_x← xₜ + W_h← hₜ₊₁← + b←)",
+    "hₜ = [hₜ→ ; hₜ←] ∈ ℝ^(2H)",
+    "Forward starts at h₀→ = 0; backward starts at h_{T+1}← = 0",
+    "Summary vector often = [h_T→ ; h₁←]"
+   ],
+   "description": "Tasks where the whole input is available at once: tagging, named entity recognition, speech recognition with offline audio, and encoders in sequence-to-sequence models.",
+   "examples": [
+    {
+     "input": "Why can't a bidirectional RNN do language generation?",
+     "output": "The backward pass needs future tokens, which do not exist while generating, so generation must use a causal (unidirectional) model.",
+     "explanation": ""
+    },
+    {
+     "input": "What are the output and final-state shapes?",
+     "output": "Per-step outputs have width 2H (forward and backward concatenated); the final states are the forward state at T and the backward state at the first position.",
+     "explanation": ""
+    },
+    {
+     "input": "Do the two directions share weights?",
+     "output": "No, each direction has its own parameters, so the parameter count doubles.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you use it for sentence classification?",
+     "output": "Concatenate the last forward state and the first backward state, since each has read the entire sentence, then feed that to a classifier.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Hidden size H per direction",
+    "Cell type (RNN, GRU, LSTM)",
+    "Number of stacked layers",
+    "How to merge directions (concatenate, sum, average)"
+   ],
+   "edgeCases": [
+    "The backward outputs must be flipped back, otherwise states are misaligned in time",
+    "Padded batches need packing or masks, or the backward pass starts on padding",
+    "Not usable for causal or streaming prediction",
+    "This sketch is a plain tanh RNN for one sequence; real models use GRU or LSTM cells"
+   ],
+   "related": [
+    "rnn-cell",
+    "lstm-cell",
+    "self-attention"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "bleu-score",
+   "title": "BLEU Score",
+   "platform": "NLP",
+   "url": "https://aclanthology.org/P02-1040/",
+   "difficulty": "Medium",
+   "topics": [
+    "Evaluation",
+    "Machine Translation",
+    "Text Generation"
+   ],
+   "patterns": [
+    "Text evaluation and retrieval"
+   ],
+   "summary": "Score a generated text against a reference by how many of its n-grams also appear in the reference, with a penalty for being too short.",
+   "bruteForce": "Single sentences (any missing n-gram order gives zero without smoothing), paraphrase-heavy tasks, open-ended generation, and comparisons across different tokenisations. It ignores meaning, so fluent paraphrases score poorly.",
+   "intuition": "Precision alone rewards a one-word output that happens to be correct, so BLEU does two things to stop that. It clips each n-gram's credit to the number of times it occurs in the reference, so repeating a word earns nothing extra, and it multiplies by a brevity penalty so short outputs cannot win by being safe. Combining 1- to 4-gram precisions with a geometric mean checks both word choice and local fluency.",
+   "whyItWorks": "Matching n-grams of several orders is a cheap proxy for adequacy (unigrams) and fluency (longer n-grams) that correlates with human judgement when averaged over a whole corpus. Counts are summed over the corpus before taking ratios, which keeps one short sentence from producing a zero that wipes out the score. The geometric mean means a single order with no matches drives the score to zero.",
+   "approach": [
+    "Count hypothesis n-grams for n = 1 to 4 — the units being matched",
+    "Clip each count to the reference count — repeated words cannot be rewarded twice",
+    "Sum matches and totals over the whole corpus, then divide for each pₙ — corpus-level precision is more stable than per-sentence",
+    "Compute the brevity penalty from total hypothesis and reference lengths — precision cannot see missing content",
+    "Take BP times the geometric mean of the pₙ — one number that needs every order to match"
+   ],
+   "time": "O(total tokens · N) for N-gram orders, using hash-based counting",
+   "space": "O(distinct n-grams in one sentence)",
+   "solution": "import numpy as np\nfrom collections import Counter\n\ndef ngrams(t, n):\n    return Counter(tuple(t[i:i + n]) for i in range(len(t) - n + 1))\n\ndef corpus_bleu(hyps, refs, max_n=4):\n    match, total = np.zeros(max_n), np.zeros(max_n)\n    hl = rl = 0\n    for h, r in zip(hyps, refs):\n        hl, rl = hl + len(h), rl + len(r)\n        for n in range(1, max_n + 1):\n            hn, rn = ngrams(h, n), ngrams(r, n)\n            match[n - 1] += sum(min(c, rn[g]) for g, c in hn.items())\n            total[n - 1] += max(len(h) - n + 1, 0)\n    if match.min() == 0:\n        return 0.0\n    bp = 1.0 if hl > rl else np.exp(1 - rl / hl)\n    return 100 * bp * np.exp(np.log(match / total).mean())",
+   "keyLines": [
+    14,
+    18,
+    19
+   ],
+   "dryRun": [
+    "Clipped count: min(count_hyp(g), count_ref(g)) for each n-gram g",
+    "pₙ = Σ clipped counts / Σ hypothesis n-grams  (summed over corpus)",
+    "BP = 1 if c > r,  else exp(1 − r/c)   (c, r: hyp / ref length)",
+    "BLEU = BP · exp( (1/N) · Σₙ log pₙ ),  N = 4"
+   ],
+   "description": "Comparing machine translation systems on the same test set, using a standard tool such as sacreBLEU so that tokenisation is identical.",
+   "examples": [
+    {
+     "input": "Why does BLEU clip n-gram counts?",
+     "output": "Without clipping, a hypothesis repeating a reference word many times would get full precision. Clipping caps credit at the number of times the n-gram appears in the reference.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the brevity penalty do and why is there no recall term?",
+     "output": "BLEU is precision-based, so very short outputs could score high. The brevity penalty multiplies the score down when total hypothesis length is below the reference length. It is a length-based stand-in for recall.",
+     "explanation": ""
+    },
+    {
+     "input": "Why compute BLEU at corpus level rather than averaging sentence BLEU?",
+     "output": "Summing n-gram counts over the corpus avoids zero precisions on short sentences and gives a more stable statistic. Averaging sentence scores treats a three-word sentence like a long one.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Maximum n-gram order N (4 is the standard BLEU-4)",
+    "Tokenisation (scores are only comparable under the same tokeniser)",
+    "Smoothing method for short texts (this code uses none)",
+    "Number of references (this code uses one)"
+   ],
+   "edgeCases": [
+    "Scores from different tokenisers or casing are not comparable; report the sacreBLEU signature",
+    "Without smoothing, a corpus with no matching 4-gram scores exactly zero",
+    "This code takes one reference per sentence and tokens already split; real BLEU allows several references and picks the closest length",
+    "BLEU measures overlap, not meaning, and is not reliable for single sentences"
+   ],
+   "related": [
+    "perplexity",
+    "precision-recall-f1",
+    "rouge-score"
+   ],
+   "diagram": []
   },
   {
    "slug": "bpe-tokenization",
@@ -852,7 +1358,8 @@
    "related": [
     "tf-idf",
     "word2vec-skipgram"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "causal-masking",
@@ -926,7 +1433,8 @@
     "self-attention",
     "multi-head-attention",
     "positional-encoding"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "class-imbalance",
@@ -1007,7 +1515,90 @@
     "precision-recall-f1",
     "data-leakage",
     "probability-calibration"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "clip-contrastive-loss",
+   "title": "CLIP Contrastive Loss",
+   "platform": "Deep Learning",
+   "url": "https://arxiv.org/abs/2103.00020",
+   "difficulty": "Hard",
+   "topics": [
+    "Contrastive Learning",
+    "Multimodal Models",
+    "Embeddings"
+   ],
+   "patterns": [
+    "Information-theoretic losses"
+   ],
+   "summary": "Embed a batch of images and their captions, score every image against every caption, and train each image to pick its own caption and each caption to pick its own image.",
+   "bruteForce": "Small batches, where there are too few negatives, or data with many near-duplicate captions in a batch, which creates false negatives.",
+   "intuition": "Within a batch the true pair sits on the diagonal of a similarity matrix and every other entry is a free negative. Treating each row as a classification over captions, and each column as a classification over images, pulls matching pairs together and pushes the rest apart without any labels beyond the pairing. The temperature controls how sharply the softmax separates near and far, so it matters a lot.",
+   "whyItWorks": "The loss is an InfoNCE bound on the mutual information between the two modalities: it rewards scoring the true partner above all N − 1 other candidates. Larger batches provide more negatives and a tighter bound. Normalising and using a temperature keeps the similarities bounded while still letting the softmax become sharp.",
+   "approach": [
+    "L2-normalise image and text embeddings — dot products become cosine similarities",
+    "Form logits = I Tᵀ / τ, an N × N matrix — every image against every caption, τ sharpens the softmax",
+    "Use labels 0 … N−1 as targets — the matching pair is the diagonal entry",
+    "Cross-entropy along rows — image-to-text, each image must pick its caption",
+    "Cross-entropy along columns (logits transposed) and average both — text-to-image, symmetric training"
+   ],
+   "time": "O(N²·D) for the N × N similarity matrix",
+   "space": "O(N²) for the logits",
+   "solution": "import numpy as np\n\ndef log_softmax(z):\n    z = z - z.max(axis=1, keepdims=True)\n    return z - np.log(np.exp(z).sum(axis=1, keepdims=True))\n\ndef clip_loss(img, txt, tau=0.07):\n    img = img / np.linalg.norm(img, axis=1, keepdims=True)\n    txt = txt / np.linalg.norm(txt, axis=1, keepdims=True)\n    logits = img @ txt.T / tau\n    idx = np.arange(len(logits))\n    loss_i = -log_softmax(logits)[idx, idx].mean()     # image -> text\n    loss_t = -log_softmax(logits.T)[idx, idx].mean()   # text -> image\n    return (loss_i + loss_t) / 2",
+   "keyLines": [
+    10,
+    12,
+    13
+   ],
+   "dryRun": [
+    "I, T ∈ ℝ^(N×D) rows unit-normalised;  S = I Tᵀ / τ",
+    "L_i→t = −(1/N) Σᵢ log softmax(Sᵢ,:)ᵢ   (rows)",
+    "L_t→i = −(1/N) Σⱼ log softmax(S:,ⱼ)ⱼ   (columns)",
+    "L = (L_i→t + L_t→i) / 2",
+    "Original CLIP learns τ as exp(−logit_scale), a trained scalar"
+   ],
+   "description": "Learning aligned image-text (or audio-text, video-text) embeddings from paired data, enabling zero-shot classification and retrieval.",
+   "examples": [
+    {
+     "input": "Why is the loss symmetric?",
+     "output": "Each direction is a separate N-way classification, image to text and text to image; averaging trains both encoders to retrieve in both directions.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the temperature do?",
+     "output": "It scales the cosine similarities before the softmax; small τ makes the distribution sharper and weights hard negatives more.",
+     "explanation": ""
+    },
+    {
+     "input": "Where do the negatives come from?",
+     "output": "Every other pair in the batch, so batch size directly sets the number of negatives.",
+     "explanation": ""
+    },
+    {
+     "input": "How is zero-shot classification done with CLIP?",
+     "output": "Embed a text prompt per class, embed the image, and pick the class whose text embedding has the highest cosine similarity.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Temperature τ (fixed or learned)",
+    "Batch size N (number of negatives)",
+    "Embedding dimension D",
+    "Encoder architectures and projection heads"
+   ],
+   "edgeCases": [
+    "Forgetting to normalise embeddings changes the loss and can make training unstable",
+    "Duplicate or very similar captions in one batch act as false negatives",
+    "Here τ is a constant; CLIP learns it and clamps it to a maximum scale",
+    "Distributed training needs gathered embeddings from all devices to get the full negative set"
+   ],
+   "related": [
+    "cosine-similarity-embeddings",
+    "softmax-cross-entropy",
+    "multi-head-attention"
+   ],
+   "diagram": []
   },
   {
    "slug": "concept-drift",
@@ -1085,7 +1676,8 @@
     "entropy-kl-divergence",
     "data-leakage",
     "roc-auc"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "convolution-2d",
@@ -1161,6 +1753,16 @@
     "mlp-forward-pass",
     "backpropagation",
     "activation-functions"
+   ],
+   "diagram": [
+    "input (5×5)         kernel (3×3)",
+    " ■ ■ ■ · ·            a b c",
+    " ■ ■ ■ · ·      ∗     d e f",
+    " ■ ■ ■ · ·            g h i",
+    " · · · · ·",
+    " · · · · ·",
+    "slide the kernel: each stop gives one output",
+    "out size = (n − k + 2p) / s + 1"
    ]
   },
   {
@@ -1234,7 +1836,86 @@
     "word2vec-skipgram",
     "knn",
     "pca"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "cross-attention-encoder-decoder",
+   "title": "Cross-Attention (Encoder-Decoder)",
+   "platform": "NLP",
+   "url": "https://arxiv.org/abs/1706.03762",
+   "difficulty": "Hard",
+   "topics": [
+    "Transformers",
+    "Attention",
+    "Sequence-to-Sequence"
+   ],
+   "patterns": [
+    "Attention and sequences"
+   ],
+   "summary": "Let each decoder position look up information in the encoder output: queries come from the decoder, keys and values from the encoder.",
+   "bruteForce": "Decoder-only language models have no separate source, so they use self-attention over a concatenated prompt instead. Very long sources make the target-by-source score matrix expensive.",
+   "intuition": "Self-attention lets a sequence read itself; cross-attention lets one sequence read another. The decoder state asks \"which source words do I need to produce the next word?\", and the encoder outputs answer with keys to match and values to hand over. The source length and target length are independent, so the weight matrix is rectangular, one row per target position and one column per source position.",
+   "whyItWorks": "The encoder compresses the source once; the decoder can then consult any source position at every step with content-based weights instead of squeezing the source into one fixed vector. Keys and values are computed once per source and reused for every generated token. A padding mask sets the scores of padded source columns to −∞ so they receive exactly zero weight.",
+   "approach": [
+    "Project decoder states to queries — the decoder is the one asking",
+    "Project encoder outputs to keys and values — the source supplies what to match and what to give",
+    "Score every target-source pair with Q·Kᵀ/√d_k — rectangular matrix, scaled to keep softmax healthy",
+    "Mask padded source columns with −∞ — padding must receive zero weight",
+    "Softmax each row and multiply by V — each target position gets a weighted average of source values"
+   ],
+   "time": "O(T_dec·T_enc·d) for target length T_dec, source length T_enc and width d",
+   "space": "O(T_dec·T_enc) for the attention matrix; K and V (O(T_enc·d)) can be cached across decoding steps",
+   "solution": "import numpy as np\n\ndef softmax(s):\n    e = np.exp(s - s.max(axis=-1, keepdims=True))\n    return e / e.sum(axis=-1, keepdims=True)\n\ndef cross_attention(Xd, Xe, Wq, Wk, Wv, src_mask=None):\n    Q = Xd @ Wq                  # queries: decoder\n    K, V = Xe @ Wk, Xe @ Wv      # keys, values: encoder\n    scores = Q @ K.T / np.sqrt(K.shape[-1])\n    if src_mask is not None:     # True = real token, False = pad\n        scores = np.where(src_mask[None, :], scores, -np.inf)\n    A = softmax(scores)\n    return A @ V, A",
+   "keyLines": [
+    8,
+    9,
+    12
+   ],
+   "dryRun": [
+    "Q = X_dec·W_q   (T_dec × d_k)",
+    "K = X_enc·W_k,  V = X_enc·W_v   (T_enc × d_k, T_enc × d_v)",
+    "S = Q·Kᵀ / √d_k   (T_dec × T_enc)",
+    "Padding: S[i, j] = −∞ where source position j is padding",
+    "A = softmax(S) row-wise, so each row sums to 1",
+    "Output = A·V   (T_dec × d_v)"
+   ],
+   "description": "Translation, summarisation, speech recognition and any encoder-decoder model where the output must be conditioned on a separate input sequence, including image-to-text models whose encoder outputs are patches.",
+   "examples": [
+    {
+     "input": "Where do Q, K and V come from in cross-attention?",
+     "output": "Queries come from the decoder's current hidden states; keys and values come from the encoder's final outputs. The attention matrix is therefore target length by source length.",
+     "explanation": ""
+    },
+    {
+     "input": "Why can encoder keys and values be cached during generation?",
+     "output": "The source does not change while decoding, so its keys and values are computed once and reused at every step; only the new query is computed each step.",
+     "explanation": ""
+    },
+    {
+     "input": "Does cross-attention need a causal mask?",
+     "output": "No. The decoder may look at the whole source; causality applies only to the decoder's self-attention over its own previous outputs. A padding mask on the source is what it needs.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Key/query dimension d_k (sets the scale √d_k)",
+    "Number of heads (this code is a single head)",
+    "Source padding mask (needed whenever sources in a batch differ in length)",
+    "Attention dropout"
+   ],
+   "edgeCases": [
+    "Forgetting the source padding mask lets the decoder attend to padding tokens",
+    "A source that is entirely padding gives a fully masked row and NaN; real batches contain at least one real token",
+    "Queries must come from the decoder; swapping the roles gives a source-by-target matrix instead",
+    "This is one head with no output projection, residual or layer norm, which a real decoder layer adds"
+   ],
+   "related": [
+    "self-attention",
+    "multi-head-attention",
+    "kv-cache"
+   ],
+   "diagram": []
   },
   {
    "slug": "cross-validation",
@@ -1307,6 +1988,15 @@
    "related": [
     "bias-variance-tradeoff",
     "data-leakage"
+   ],
+   "diagram": [
+    "fold 1   VAL  tr   tr   tr   tr",
+    "fold 2   tr   VAL  tr   tr   tr",
+    "fold 3   tr   tr   VAL  tr   tr",
+    "fold 4   tr   tr   tr   VAL  tr",
+    "fold 5   tr   tr   tr   tr   VAL",
+    "",
+    "score = mean of the 5 validation scores"
    ]
   },
   {
@@ -1382,7 +2072,8 @@
     "convolution-2d",
     "dropout",
     "feature-scaling"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "data-leakage",
@@ -1454,7 +2145,8 @@
    "related": [
     "cross-validation",
     "bias-variance-tradeoff"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "dbscan",
@@ -1530,7 +2222,8 @@
     "k-means",
     "knn",
     "feature-scaling"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "decision-tree",
@@ -1602,14 +2295,15 @@
    "edgeCases": [
     "Unlimited depth reaches 100% training accuracy and overfits",
     "Split search favours features with many distinct values",
-    "Class imbalance makes majority-class leaves dominate; use class weights",
+    "Equal-gain splits are tied: sklearn breaks ties by a random feature order, so deep trees can differ from this code",
     "Predictions are piecewise constant, so a tree cannot extrapolate"
    ],
    "related": [
     "random-forest",
     "gradient-boosting",
     "logistic-regression"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "depthwise-separable-convolution",
@@ -1682,7 +2376,8 @@
     "convolution-2d",
     "receptive-field",
     "residual-connections"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "diffusion-forward-process",
@@ -1758,7 +2453,94 @@
     "vae-reparameterization",
     "autoencoder",
     "entropy-kl-divergence"
+   ],
+   "diagram": [
+    "x₀ ─► x₁ ─► x₂ ─► … ─► x_T    add noise",
+    "clean                   pure noise",
+    "",
+    "q(x_t | x₀) = N(√ᾱ_t x₀, (1 − ᾱ_t) I)",
+    "",
+    "the model learns the reverse: x_T ─► … ─► x₀"
    ]
+  },
+  {
+   "slug": "dpo-loss",
+   "title": "Direct Preference Optimisation Loss",
+   "platform": "NLP",
+   "url": "https://arxiv.org/abs/2305.18290",
+   "difficulty": "Hard",
+   "topics": [
+    "Alignment",
+    "Preference Learning",
+    "Language Models"
+   ],
+   "patterns": [
+    "Preference alignment and policy gradients"
+   ],
+   "summary": "Fine-tune a language model on pairs of preferred and rejected responses by pushing up the log-probability gap between them, measured relative to a frozen reference model, with no separate reward model or reinforcement learning loop.",
+   "bruteForce": "When preferences must be gathered online from the current policy, when a reusable reward model is needed for ranking or filtering, or when the preference data is far from the reference model's distribution.",
+   "intuition": "DPO treats β·log(π/π_ref) as an implicit reward: how much more the tuned model likes a response than the reference does. The loss is a logistic loss on the difference of that implicit reward between the chosen and rejected response, so it raises the chosen response and lowers the rejected one relative to the reference. Anchoring to the reference is what keeps the model from drifting arbitrarily far.",
+   "whyItWorks": "The KL-regularised reward maximisation problem has a closed-form optimal policy, which can be inverted to express any reward as a log-ratio of policy to reference. Substituting that into the Bradley-Terry preference likelihood cancels the intractable normaliser, leaving a loss that depends only on sequence log-probabilities. The gradient weights each pair by how wrongly the implicit reward currently orders it.",
+   "approach": [
+    "Compute sequence log-probabilities of the chosen and rejected responses under the policy and the frozen reference — the four quantities the loss needs",
+    "Subtract reference from policy for each response — the log-ratio is the implicit reward up to β",
+    "Take the chosen-minus-rejected difference and scale by β — the preference margin",
+    "Apply −log σ(margin) and average over pairs — the Bradley-Terry negative log-likelihood",
+    "Backpropagate into the policy only — the reference stays frozen"
+   ],
+   "time": "O(N) given the log-probabilities; the real cost is two forward passes (policy and reference) per response",
+   "space": "O(N) for the margins; the reference model's weights must also be held in memory",
+   "solution": "import numpy as np\n\ndef log_sigmoid(x):\n    return -np.logaddexp(0.0, -x)\n\ndef dpo_loss(pi_w, pi_l, ref_w, ref_l, beta=0.1):\n    # inputs: summed token log-probs of each full response\n    m = beta * ((pi_w - ref_w) - (pi_l - ref_l))\n    loss = -log_sigmoid(m).mean()\n    g = -beta * np.exp(log_sigmoid(-m)) / len(m)\n    return loss, g, -g       # loss, dL/dpi_w, dL/dpi_l",
+   "keyLines": [
+    8,
+    9,
+    10
+   ],
+   "dryRun": [
+    "Implicit reward: r(x, y) = β · log( π(y|x) / π_ref(y|x) )",
+    "Margin: m = β·[(log π(y_w) − log π_ref(y_w))",
+    "             − (log π(y_l) − log π_ref(y_l))]",
+    "Loss: L = −mean over pairs of log σ(m)",
+    "σ(m) = 1/(1 + e^(−m)),  log σ(m) = −log(1 + e^(−m))",
+    "∂L/∂log π(y_w) = −β σ(−m) / N,  ∂L/∂log π(y_l) = +β σ(−m) / N",
+    "y_w: preferred (winner),  y_l: rejected (loser),  N: pairs"
+   ],
+   "description": "Aligning an instruction-tuned model with a static dataset of preference pairs when a simple, stable supervised-style training loop is preferred over PPO.",
+   "examples": [
+    {
+     "input": "How does DPO avoid training a reward model?",
+     "output": "It reparameterises the reward as a log-ratio of policy to reference, so the preference likelihood can be written directly in terms of the policy. Training the policy on that likelihood implicitly fits the reward.",
+     "explanation": ""
+    },
+    {
+     "input": "What does β control?",
+     "output": "It scales the log-ratio reward, so it sets how strongly the policy is tied to the reference. A larger β penalises movement away from the reference more and gives smaller updates for a given log-ratio gap.",
+     "explanation": ""
+    },
+    {
+     "input": "How does DPO relate to RLHF with PPO?",
+     "output": "Both target the same KL-regularised reward objective. PPO learns an explicit reward and samples from the policy online; DPO optimises a closed-form loss on a fixed dataset of preference pairs.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "β (strength of the pull toward the reference; larger keeps the policy closer)",
+    "Learning rate (usually very small for fine-tuning)",
+    "Reference model (usually the supervised fine-tuned checkpoint)",
+    "Preference dataset quality and size"
+   ],
+   "edgeCases": [
+    "Inputs must be sequence-level log-probs (summed over response tokens), computed with the same prompt formatting",
+    "Reference log-probs are constants; backpropagating into the reference is a bug",
+    "Both chosen and rejected log-probs can fall during training; DPO constrains only their gap",
+    "This code returns gradients with respect to the log-probs; a real model backpropagates them into its parameters, and long sequences make the log-probs very negative"
+   ],
+   "related": [
+    "reward-model-bradley-terry",
+    "entropy-kl-divergence",
+    "softmax-cross-entropy"
+   ],
+   "diagram": []
   },
   {
    "slug": "dropout",
@@ -1833,7 +2615,8 @@
     "mlp-forward-pass",
     "batch-normalization",
     "backpropagation"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "early-stopping",
@@ -1910,7 +2693,88 @@
     "bias-variance-tradeoff",
     "dropout",
     "ridge-lasso-regularization"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "elastic-net-coordinate-descent",
+   "title": "Elastic Net via Coordinate Descent",
+   "platform": "Classical ML",
+   "url": "https://scikit-learn.org/stable/modules/linear_model.html#elastic-net",
+   "difficulty": "Medium",
+   "topics": [
+    "Regression",
+    "Regularization",
+    "Optimization",
+    "Sparsity"
+   ],
+   "patterns": [
+    "Linear models",
+    "Regularisation"
+   ],
+   "summary": "Linear regression with a mix of L1 and L2 penalties, solved by cycling through coordinates and updating one weight at a time with a soft-threshold. The L1 part zeroes weights; the L2 part stabilises groups of correlated features.",
+   "bruteForce": "Skip it when you want unbiased estimates of the large coefficients (the penalty shrinks them), when features are unscaled, or when you need coefficient standard errors and p-values.",
+   "intuition": "With all other weights held fixed, the objective in one weight is a one-dimensional problem whose answer is closed form: take the plain least-squares fit to the current residual, shrink it toward zero by the L1 amount (stopping at exactly zero) and divide by a factor that includes the L2 penalty. Cycling over coordinates repeats this until nothing moves.",
+   "whyItWorks": "The squared loss is smooth and convex and the penalty is convex and separable across coordinates, which is the case where coordinate descent provably converges to the global minimum. Each one-dimensional subproblem is solved exactly by soft-thresholding, so the objective never increases.",
+   "approach": [
+    "Start at w = 0 with residual r = y — the exact solution once α is large enough",
+    "For coordinate j compute its correlation with the partial residual, adding back its own contribution — the least-squares target for wⱼ alone",
+    "Soft-threshold by αρ and divide by zⱼ + α(1 − ρ) — the closed-form minimiser of the one-dimensional problem",
+    "Update the residual by the change in wⱼ — keeps each step O(n) instead of recomputing Xw",
+    "Sweep all coordinates until the largest change is below tol — all coordinate steps are small only at the minimum"
+   ],
+   "time": "O(iters·n·d) with the residual trick; each sweep costs O(n·d)",
+   "space": "O(n·d) for the data, O(n + d) extra",
+   "solution": "import numpy as np\n\ndef soft(a, t):\n    return np.sign(a) * np.maximum(np.abs(a) - t, 0)\n\ndef enet(X, y, alpha, l1r, iters=5000, tol=1e-12):\n    n, d = X.shape\n    w, r = np.zeros(d), y.astype(float).copy()\n    z = (X ** 2).sum(0) / n\n    for _ in range(iters):\n        big = 0.0\n        for j in range(d):\n            old = w[j]\n            rho = X[:, j] @ r / n + z[j] * old\n            w[j] = soft(rho, alpha * l1r) / (z[j] + alpha * (1 - l1r))\n            r -= X[:, j] * (w[j] - old)\n            big = max(big, abs(w[j] - old))\n        if big < tol:\n            break\n    return w",
+   "keyLines": [
+    14,
+    15,
+    16
+   ],
+   "dryRun": [
+    "min over w of (1/2n)‖y − Xw‖² + αρ‖w‖₁ + ½α(1−ρ)‖w‖²",
+    "rⱼ = y − Σₖ≠ⱼ xₖ wₖ  (partial residual)",
+    "zⱼ = ‖xⱼ‖² / n,  ρⱼ = xⱼᵀ rⱼ / n",
+    "S(a, t) = sign(a) · max(|a| − t, 0)",
+    "wⱼ ← S(ρⱼ, αρ) / (zⱼ + α(1 − ρ))",
+    "ρ = 1 gives lasso, ρ = 0 gives ridge"
+   ],
+   "description": "Many correlated features where lasso picks one arbitrarily, p larger than n, automatic feature selection with stable grouping, and large sparse problems where coordinate descent is fast.",
+   "examples": [
+    {
+     "input": "Why use elastic net instead of lasso?",
+     "output": "Among correlated features lasso tends to pick one at random, while the L2 term makes elastic net share weight across the group and also lets it keep more than n features when p is larger than n.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the soft-threshold do?",
+     "output": "It shrinks the least-squares coordinate estimate toward zero by the L1 amount and sets it exactly to zero when it is smaller than that amount, which is how sparsity arises.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does coordinate descent converge here?",
+     "output": "The loss is smooth and convex and the penalty is convex and separable by coordinate, so exact one-dimensional minimisation steps decrease the objective and reach the global minimum.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "α — overall penalty strength, chosen by cross-validation along a path",
+    "l1_ratio ρ in [0, 1] — mix between L1 (sparse) and L2 (grouping)",
+    "tol and max iterations — stopping rule for the sweeps",
+    "Standardisation — features must be on the same scale for the penalty to be fair"
+   ],
+   "edgeCases": [
+    "Unscaled features are penalised unequally; standardise first",
+    "Intercept is not penalised, so centre y and X or fit it separately (this code has no intercept)",
+    "Convergence is slow for highly correlated features and small α",
+    "Selected features can change across resamples; check stability, not just one fit"
+   ],
+   "related": [
+    "ridge-lasso-regularization",
+    "linear-regression",
+    "gradient-descent"
+   ],
+   "diagram": []
   },
   {
    "slug": "entropy-kl-divergence",
@@ -1986,7 +2850,86 @@
     "softmax-cross-entropy",
     "maximum-likelihood",
     "bayes-theorem"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "exponential-smoothing",
+   "title": "Exponential Smoothing (Simple and Holt)",
+   "platform": "Classical ML",
+   "url": "https://otexts.com/fpp3/holt.html",
+   "difficulty": "Easy",
+   "topics": [
+    "Time Series",
+    "Forecasting",
+    "Smoothing",
+    "Recursive Estimation"
+   ],
+   "patterns": [
+    "Time series"
+   ],
+   "summary": "Forecast a series with a running level (and optionally a trend) that is nudged toward each new observation by a smoothing weight. Simple smoothing gives a flat forecast; Holt's method adds a linear trend.",
+   "bruteForce": "Skip it when the series has seasonality you have not modelled (use Holt-Winters), when you need prediction intervals from a fitted likelihood, or when external regressors drive the series.",
+   "intuition": "The newest observation is the best clue about where the series is now, but a single value is noisy. Blending it with the previous estimate gives weights on past values that decay geometrically, so recent data matters most and old data fades without being stored.",
+   "whyItWorks": "Unrolling the recursion ℓ = α y + (1 − α) ℓ shows the level is a weighted average of all past observations with weights α(1 − α)ᵏ that sum to one. It is the optimal one-step predictor for a random walk plus noise, and Holt's method is the same idea applied to level and slope.",
+   "approach": [
+    "Choose a start level ℓ₀ (and slope b₀ for Holt) — the recursion needs a state before the first observation",
+    "For each point, record the one-step prediction from the current state — these are the fitted values used to score the model",
+    "Update the level as a blend of the observation and the predicted level — α sets how fast old data is forgotten",
+    "For Holt, update the slope from the change in level — β sets how quickly the trend can change",
+    "Forecast ahead from the final state, flat for simple and linear for Holt — no further data is available to update it"
+   ],
+   "time": "O(n) per pass; fitting α and β with a numerical optimiser multiplies this by the number of evaluations",
+   "space": "O(1) state for forecasting, O(n) if the fitted values are stored",
+   "solution": "import numpy as np\n\ndef ses(y, a, l0):\n    l, fit = l0, []\n    for v in y:\n        fit.append(l)\n        l = a * v + (1 - a) * l\n    return np.array(fit), l\n\ndef holt(y, a, b, l0, b0, h=5):\n    l, t, fit = l0, b0, []\n    for v in y:\n        fit.append(l + t)\n        new = a * v + (1 - a) * (l + t)\n        t = b * (new - l) + (1 - b) * t\n        l = new\n    return np.array(fit), l + t * np.arange(1, h + 1)",
+   "keyLines": [
+    7,
+    14,
+    15
+   ],
+   "dryRun": [
+    "Simple: ℓₜ = α yₜ + (1 − α) ℓₜ₋₁,  ŷₜ₊₁|ₜ = ℓₜ",
+    "Unrolled: ℓₜ = Σₖ α(1−α)ᵏ yₜ₋ₖ + (1−α)ᵗ ℓ₀",
+    "Holt level: ℓₜ = α yₜ + (1 − α)(ℓₜ₋₁ + bₜ₋₁)",
+    "Holt trend: bₜ = β (ℓₜ − ℓₜ₋₁) + (1 − β) bₜ₋₁",
+    "Forecast: ŷₜ₊ₕ|ₜ = ℓₜ + h bₜ",
+    "Fit: minimise Σₜ (yₜ − ŷₜ|ₜ₋₁)² over α, β (and ℓ₀, b₀)"
+   ],
+   "description": "Short-horizon forecasts of many series, a cheap and strong baseline, demand or traffic with slowly drifting level, and online updating where only the last state is kept.",
+   "examples": [
+    {
+     "input": "Why is it called exponential smoothing?",
+     "output": "Unrolling the recursion gives each past observation a weight that shrinks by a constant factor (1 − α) per step back, an exponential decay that sums to one.",
+     "explanation": ""
+    },
+    {
+     "input": "What do α near 0 and α near 1 mean?",
+     "output": "α near 1 trusts the latest value and nearly copies it forward, a naive forecast; α near 0 keeps the initial level almost unchanged, close to a long-run average.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does simple smoothing fail on trending data?",
+     "output": "Its forecast is a weighted average of past values, so it always lags behind a rising or falling series; Holt's slope term removes that lag.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "α level smoothing in (0, 1) — large reacts fast, small averages more",
+    "β trend smoothing in (0, 1) — large lets the slope change quickly",
+    "Initial level and slope — first value or a regression on the first few points",
+    "Damping φ — optional factor that flattens a Holt trend over long horizons (not in this code)"
+   ],
+   "edgeCases": [
+    "Undamped Holt trends extrapolate forever and overshoot at long horizons",
+    "A high α on a noisy series chases noise; the fitted values lag turning points when α is small",
+    "The start state matters for short series, so conventions differ between libraries",
+    "Pick α and β by one-step error on held-out data, not by eye"
+   ],
+   "related": [
+    "linear-regression",
+    "bias-variance-tradeoff"
+   ],
+   "diagram": []
   },
   {
    "slug": "feature-scaling",
@@ -2062,7 +3005,8 @@
     "data-leakage",
     "pca",
     "knn"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "focal-loss",
@@ -2136,7 +3080,87 @@
     "class-imbalance",
     "softmax-cross-entropy",
     "iou-and-nms"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "gae-advantage",
+   "title": "Generalised Advantage Estimation",
+   "platform": "RL",
+   "url": "https://arxiv.org/abs/1506.02438",
+   "difficulty": "Hard",
+   "topics": [
+    "Reinforcement Learning",
+    "Policy Gradient",
+    "Advantage Estimation"
+   ],
+   "patterns": [
+    "Reinforcement learning",
+    "Preference alignment and policy gradients"
+   ],
+   "summary": "Estimate how much better an action was than average by summing one-step temporal-difference errors with exponentially decaying weights, trading bias against variance with a single parameter λ.",
+   "bruteForce": "When no value function is learned (pure REINFORCE with a baseline from returns), or when the critic is so poor that bootstrapping hurts. Off-policy replay needs importance-corrected estimators instead.",
+   "intuition": "A one-step estimate of an action's advantage trusts the value function heavily: low variance but biased if the critic is wrong. A full Monte-Carlo return trusts only observed rewards: unbiased but noisy. GAE blends them: each TD error δ looks one step ahead, and the advantage is a decayed sum of future TD errors, with γλ controlling how far the sum reaches. Computing it is a simple backward recursion over the trajectory.",
+   "whyItWorks": "The sum of TD errors with weights (γλ)^l is an exponentially weighted average of n-step advantage estimates. λ = 0 recovers the one-step TD error and λ = 1 recovers the Monte-Carlo advantage, with intermediate values interpolating. Because the weights decay geometrically, the whole sum satisfies A_t = δ_t + γλ·A_{t+1}, so a single backward pass computes every advantage in linear time.",
+   "approach": [
+    "Compute the TD error δ_t for every step, bootstrapping from V(s_{t+1}) unless the episode ended — the one-step advantage signal",
+    "Start at the end of the rollout with a running advantage of zero — nothing lies beyond the horizon",
+    "Walk backwards: add δ_t to γλ times the next step's advantage — accumulates decayed future TD errors",
+    "Reset the running sum across episode boundaries using the done flag — advantages must not leak between episodes",
+    "Return advantages and A + V as value targets — the policy and critic training signals"
+   ],
+   "time": "O(T) for a rollout of T steps",
+   "space": "O(T) for the TD errors and advantages",
+   "solution": "import numpy as np\n\ndef gae(rewards, values, last_value, dones, gamma=0.99, lam=0.95):\n    # dones[t] = 1 if the episode ended after step t\n    v_next = np.append(values[1:], last_value)\n    alive = 1.0 - dones\n    delta = rewards + gamma * alive * v_next - values\n    adv = np.zeros(len(rewards))\n    run = 0.0\n    for t in reversed(range(len(rewards))):\n        run = delta[t] + gamma * lam * alive[t] * run\n        adv[t] = run\n    return adv, adv + values      # advantages, value targets",
+   "keyLines": [
+    7,
+    11
+   ],
+   "dryRun": [
+    "TD error: δ_t = r_t + γ·(1 − d_t)·V(s_{t+1}) − V(s_t)",
+    "GAE: A_t = Σ_{l≥0} (γλ)^l · δ_{t+l}   (stops at episode end)",
+    "Recursion: A_t = δ_t + γλ·(1 − d_t)·A_{t+1}",
+    "λ = 0:  A_t = δ_t   (one-step TD)",
+    "λ = 1:  A_t = G_t − V(s_t)   (Monte-Carlo advantage)",
+    "Value target: A_t + V(s_t)",
+    "d_t = 1 if the episode ends after step t, else 0"
+   ],
+   "description": "Actor-critic methods such as PPO and A2C, where a value function is available and advantages should be less noisy than raw returns.",
+   "examples": [
+    {
+     "input": "What do λ = 0 and λ = 1 give?",
+     "output": "λ = 0 gives the one-step TD error, low variance but biased by the critic. λ = 1 gives the discounted Monte-Carlo return minus the value baseline, unbiased but high variance.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is GAE computed backwards?",
+     "output": "Each advantage equals its own TD error plus γλ times the next advantage, so iterating from the end reuses the already-computed suffix and costs linear time.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the done flag do in the recursion?",
+     "output": "It removes the bootstrap term at a terminal state and stops the running sum from carrying future advantages across an episode boundary.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Discount γ",
+    "GAE parameter λ (low is biased and low variance, high is unbiased and noisy)",
+    "Rollout length (sets how far bootstrapping from last_value reaches)",
+    "Advantage normalisation across the batch"
+   ],
+   "edgeCases": [
+    "Bootstrap from last_value only if the rollout was cut off; a terminated episode must have done = 1 at its final step",
+    "Time-limit truncation is not a true terminal and should still bootstrap from the value of the final state; this code treats done as terminal",
+    "Values and last_value come from the critic at collection time and are not differentiated through",
+    "This handles one environment; vectorised rollouts apply the same recursion per environment"
+   ],
+   "related": [
+    "reinforce-policy-gradient",
+    "q-learning",
+    "ppo-clipped-objective"
+   ],
+   "diagram": []
   },
   {
    "slug": "gan-minimax-loss",
@@ -2213,6 +3237,15 @@
     "vae-reparameterization",
     "softmax-cross-entropy",
     "logistic-regression"
+   ],
+   "diagram": [
+    "noise z ─► Generator ─► fake ─┐",
+    "real data ────────────────────┤",
+    "                              ▼",
+    "                       Discriminator",
+    "                              │",
+    "                       real or fake?",
+    "D tells them apart; G tries to fool D"
    ]
   },
   {
@@ -2298,7 +3331,172 @@
     "k-means",
     "maximum-likelihood",
     "pca"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "gaussian-process-regression",
+   "title": "Gaussian Process Regression",
+   "platform": "Classical ML",
+   "url": "https://scikit-learn.org/stable/modules/gaussian_process.html",
+   "difficulty": "Hard",
+   "topics": [
+    "Regression",
+    "Probabilistic",
+    "Kernel Methods",
+    "Bayesian"
+   ],
+   "patterns": [
+    "Probabilistic models"
+   ],
+   "summary": "Place a Gaussian process prior over functions, condition it on noisy observations, and get a predictive mean and variance at any new input in closed form. The kernel decides what kind of functions are plausible.",
+   "bruteForce": "Skip it for large n, since training cubes and memory squares with the number of points, for high dimensional inputs with weak structure, or when a fast approximate model is enough.",
+   "intuition": "Instead of fitting parameters, keep every training point and let the kernel say how strongly nearby inputs share their outputs. Close to data the prediction is pinned down and the variance is small; far from data it falls back to the prior mean with the prior variance, so the model knows what it does not know.",
+   "whyItWorks": "Any finite set of function values under the prior is a multivariate Gaussian, and a joint Gaussian conditioned on some coordinates is again Gaussian with a mean and covariance given by linear algebra. The posterior mean is a kernel-weighted sum of the training targets, the same form as kernel ridge regression with the noise as the ridge.",
+   "approach": [
+    "Build the kernel matrix on the training inputs and add the noise variance to its diagonal — noise makes it positive definite and stops exact interpolation",
+    "Factor it with a Cholesky decomposition — cheaper and more stable than inverting",
+    "Solve for α = K⁻¹y with two triangular solves — the prediction weights on the training targets",
+    "Compute the cross kernel between test and train points and form the mean as a weighted sum — predictions",
+    "Solve L v = k* and subtract vᵀv from the prior variance — uncertainty shrinks where data is nearby",
+    "Evaluate the log marginal likelihood from the same factor — the score used to tune ℓ, s² and noise"
+   ],
+   "time": "O(n³) for the Cholesky factor, O(n·m) per extra test point for the mean and O(n²·m) for variances",
+   "space": "O(n²) for the kernel matrix",
+   "solution": "import numpy as np\n\ndef rbf(A, B, ell, s2):\n    d2 = ((A[:, None, :] - B[None, :, :]) ** 2).sum(-1)\n    return s2 * np.exp(-d2 / (2 * ell ** 2))\n\ndef gp(X, y, Xs, ell, s2, noise):\n    K = rbf(X, X, ell, s2) + noise * np.eye(len(X))\n    L = np.linalg.cholesky(K)\n    a = np.linalg.solve(L.T, np.linalg.solve(L, y))\n    Ks = rbf(X, Xs, ell, s2)\n    v = np.linalg.solve(L, Ks)\n    mean = Ks.T @ a\n    var = s2 - (v ** 2).sum(0)\n    lml = (-0.5 * y @ a - np.log(np.diag(L)).sum()\n           - 0.5 * len(X) * np.log(2 * np.pi))\n    return mean, var, lml",
+   "keyLines": [
+    10,
+    13,
+    14
+   ],
+   "dryRun": [
+    "Prior: f ~ GP(0, k),  k(x, x′) = s² exp(−‖x − x′‖² / 2ℓ²)",
+    "Noisy targets: y = f(x) + ε,  ε ~ N(0, σₙ²)",
+    "K = k(X, X) + σₙ² I,  K = L Lᵀ (Cholesky)",
+    "α = K⁻¹ y = Lᵀ \\ (L \\ y)",
+    "Mean: μ* = k(X*, X) α",
+    "Variance of f: σ*² = k(x*, x*) − ‖L⁻¹ k(X, x*)‖²",
+    "log p(y) = −½ yᵀα − Σᵢ log Lᵢᵢ − (n/2) log 2π"
+   ],
+   "description": "Small or medium datasets where calibrated uncertainty matters, Bayesian optimisation surrogates, smooth interpolation of expensive simulations, and regression where a kernel encodes domain knowledge.",
+   "examples": [
+    {
+     "input": "How is a GP different from kernel ridge regression?",
+     "output": "The posterior mean has the same form as kernel ridge with the noise variance as the ridge, but a GP also returns a predictive variance and tunes the kernel by marginal likelihood.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the length scale control?",
+     "output": "How quickly the function varies: a short length scale gives wiggly fits that revert to the prior quickly, a long one gives smooth, slowly varying fits.",
+     "explanation": ""
+    },
+    {
+     "input": "Why use a Cholesky factor instead of a matrix inverse?",
+     "output": "It is faster and numerically stable for symmetric positive definite matrices and gives the log-determinant needed for the marginal likelihood for free.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Length scale ℓ — how far apart inputs can be and still be correlated",
+    "Signal variance s² — prior amplitude of the function",
+    "Noise variance σₙ² — observation noise, also acts as a jitter for stability",
+    "Kernel family — RBF, Matérn, periodic, or sums and products of them",
+    "Optimiser restarts — the marginal likelihood is non-convex in the hyperparameters"
+   ],
+   "edgeCases": [
+    "Training cost grows as n cubed, so thousands of points need sparse or inducing-point approximations",
+    "Tiny noise makes the kernel matrix near singular and the Cholesky fail; add jitter",
+    "The variance returned here is for the latent function; add the noise variance for a new observation",
+    "A zero prior mean pulls predictions to zero away from data; centre or normalise the targets"
+   ],
+   "related": [
+    "kernel-trick-rbf",
+    "linear-regression",
+    "ridge-lasso-regularization"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "gnn-message-passing",
+   "title": "GNN Message Passing (GCN Layer)",
+   "platform": "Deep Learning",
+   "url": "https://pytorch-geometric.readthedocs.io/en/latest/generated/torch_geometric.nn.conv.GCNConv.html",
+   "difficulty": "Hard",
+   "topics": [
+    "Graph Neural Networks",
+    "Message Passing",
+    "Graph Convolution"
+   ],
+   "patterns": [
+    "Graph neural networks"
+   ],
+   "summary": "Update each node by averaging its own and its neighbours' features with symmetric degree normalisation, then applying a shared linear map and nonlinearity.",
+   "bruteForce": "Very deep stacks, because repeated averaging over-smooths node features until they look alike, or tasks needing edge features or anisotropic neighbour weights, where GAT or message-passing variants fit better.",
+   "intuition": "A node cannot see the whole graph, so it learns from its neighbourhood: each layer collects messages from adjacent nodes and mixes them with its own state. Stacking k layers lets information travel k hops. The normalisation by degrees stops high-degree nodes from dominating, and the added self-loop keeps a node's own features in the mix.",
+   "whyItWorks": "Each layer is a first-order approximation of a spectral graph filter, so it low-pass filters node signals over the graph, which suits tasks where connected nodes tend to share labels. Symmetric normalisation keeps the eigenvalues of the propagation matrix in a stable range, so repeated application does not blow up or collapse the scale.",
+   "approach": [
+    "Add self-loops, Â = A + I — each node keeps its own features in the sum",
+    "Compute degrees d̃ of Â — needed for normalisation",
+    "Scale to Â_norm = D̃^(−1/2) Â D̃^(−1/2) — symmetric weights stop hubs from blowing up the scale",
+    "Aggregate neighbour features with Â_norm X — the message-passing step",
+    "Apply the shared weight W and ReLU — transforms the aggregated features like a dense layer"
+   ],
+   "time": "O(N²·F + N·F·F') dense; O(E·F + N·F·F') with sparse edges",
+   "space": "O(N²) dense adjacency; O(E) sparse",
+   "solution": "import numpy as np\n\ndef gcn_layer(A, X, W):\n    A_hat = A + np.eye(len(A))\n    deg = A_hat.sum(axis=1)\n    d = 1 / np.sqrt(deg)\n    A_norm = d[:, None] * A_hat * d[None, :]\n    H = A_norm @ X @ W\n    return np.maximum(0, H)\n\ndef gcn_two_layers(A, X, W1, W2):\n    return gcn_layer(A, gcn_layer(A, X, W1), W2)",
+   "keyLines": [
+    4,
+    7,
+    8
+   ],
+   "dryRun": [
+    "Â = A + I,   D̃ᵢᵢ = Σⱼ Âᵢⱼ",
+    "H' = σ( D̃^(−1/2) Â D̃^(−1/2) · H · W )",
+    "Per node: hᵢ' = σ( Σⱼ∈N(i)∪{i} (1/√(d̃ᵢ d̃ⱼ)) · W hⱼ )",
+    "H ∈ ℝ^(N×F), W ∈ ℝ^(F×F'), A ∈ {0,1}^(N×N) symmetric",
+    "k layers aggregate information from k-hop neighbourhoods"
+   ],
+   "description": "Node classification and link prediction on citation, social or molecular graphs where neighbours carry signal, and with moderate graph sizes.",
+   "examples": [
+    {
+     "input": "Why add self-loops?",
+     "output": "Without Â = A + I a node would ignore its own features after aggregation and nodes with no neighbours would receive nothing.",
+     "explanation": ""
+    },
+    {
+     "input": "Why symmetric normalisation instead of dividing by degree?",
+     "output": "D^(−1/2) A D^(−1/2) treats both endpoints' degrees, keeping the operator symmetric with stable eigenvalues, while row normalisation only averages.",
+     "explanation": ""
+    },
+    {
+     "input": "What is over-smoothing?",
+     "output": "Repeated neighbourhood averaging pushes node representations toward each other, so deep GCNs lose the ability to tell nodes apart.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the receptive field after k layers?",
+     "output": "Nodes within k hops of the target.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of layers (hops)",
+    "Hidden width F'",
+    "Dropout rate on features and edges",
+    "Normalisation scheme (symmetric, row, none)"
+   ],
+   "edgeCases": [
+    "Assumes an undirected graph with a symmetric 0/1 adjacency; directed graphs need care",
+    "A dense N×N adjacency does not scale; real code uses sparse edge lists",
+    "Stacking many layers over-smooths",
+    "No bias, dropout or edge weights in this sketch"
+   ],
+   "related": [
+    "mlp-forward-pass",
+    "activation-functions",
+    "self-attention"
+   ],
+   "diagram": []
   },
   {
    "slug": "gradient-boosting",
@@ -2378,7 +3576,8 @@
     "decision-tree",
     "random-forest",
     "gradient-descent"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "gradient-clipping",
@@ -2452,7 +3651,8 @@
     "gradient-descent",
     "backpropagation",
     "rnn-cell"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "gradient-descent",
@@ -2525,7 +3725,172 @@
    "related": [
     "linear-regression",
     "logistic-regression"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "graph-attention-layer",
+   "title": "Graph Attention (GAT) Layer",
+   "platform": "Deep Learning",
+   "url": "https://arxiv.org/abs/1710.10903",
+   "difficulty": "Hard",
+   "topics": [
+    "Graph Neural Networks",
+    "Attention",
+    "Message Passing"
+   ],
+   "patterns": [
+    "Graph neural networks"
+   ],
+   "summary": "Aggregate neighbour features with learned attention weights, computed from the two endpoint features and normalised by a softmax over each node's neighbourhood.",
+   "bruteForce": "Very large dense graphs where scoring every edge is costly, or when a plain GCN already performs well and you want the simpler, faster model.",
+   "intuition": "A GCN weights every neighbour by a fixed function of node degrees, while a GAT lets the data decide which neighbours matter for each node. The score for an edge depends on both endpoints, a LeakyReLU keeps it nonlinear, and the softmax is restricted to real neighbours by masking out non-edges, so the model never attends outside the graph.",
+   "whyItWorks": "The attention weights make the aggregation operator depend on node content instead of just graph structure, so each node can emphasise the neighbours most useful for its task. Because the weights are a softmax over a neighbourhood they are convex, which keeps the scale of the output comparable to the input features regardless of degree.",
+   "approach": [
+    "Project features H = XW — shared linear transform to the new width",
+    "Score every edge e_ij = LeakyReLU(a_iᵀ h_i + a_jᵀ h_j) — splitting a into two halves avoids concatenating pairs",
+    "Mask non-edges to −∞ (self-loops allowed) — restricts attention to the neighbourhood",
+    "Softmax over each row — turns scores into attention weights α_ij that sum to one",
+    "Output α H — attention-weighted sum of neighbour features"
+   ],
+   "time": "O(N·F·F' + E·F') with sparse edges; O(N²) for dense scores here",
+   "space": "O(N²) for dense attention; O(E) sparse",
+   "solution": "import numpy as np\n\ndef softmax(s):\n    e = np.exp(s - s.max(axis=-1, keepdims=True))\n    return e / e.sum(axis=-1, keepdims=True)\n\ndef gat_layer(A, X, W, a_i, a_j, slope=0.2):\n    H = X @ W\n    e = (H @ a_i)[:, None] + (H @ a_j)[None, :]\n    e = np.where(e > 0, e, slope * e)          # LeakyReLU\n    mask = (A + np.eye(len(A))) > 0            # edges + self loops\n    alpha = softmax(np.where(mask, e, -np.inf))\n    return alpha @ H, alpha",
+   "keyLines": [
+    9,
+    12,
+    13
+   ],
+   "dryRun": [
+    "hᵢ = W xᵢ   (H = XW)",
+    "e_ij = LeakyReLU( aᵀ [hᵢ ‖ hⱼ] ) = LeakyReLU( a_iᵀ hᵢ + a_jᵀ hⱼ )",
+    "α_ij = exp(e_ij) / Σ_{k∈N(i)∪{i}} exp(e_ik)",
+    "hᵢ' = σ( Σ_{j∈N(i)∪{i}} α_ij · hⱼ )",
+    "Multi-head: concatenate K heads, or average on the last layer"
+   ],
+   "description": "Graphs where neighbours differ in importance, such as citation or protein-interaction networks, and when you want interpretable attention per edge.",
+   "examples": [
+    {
+     "input": "How does GAT differ from GCN?",
+     "output": "GCN uses fixed degree-based weights; GAT learns edge weights from node features through attention, so aggregation is content dependent.",
+     "explanation": ""
+    },
+    {
+     "input": "Why mask before the softmax?",
+     "output": "Setting non-edges to −∞ gives them zero weight, so attention is only over the real neighbourhood; skipping it would attend over the whole graph.",
+     "explanation": ""
+    },
+    {
+     "input": "Why split the attention vector into two halves?",
+     "output": "aᵀ[hᵢ‖hⱼ] = a_iᵀhᵢ + a_jᵀhⱼ, so scores for all pairs come from one broadcast sum instead of building N² concatenated vectors.",
+     "explanation": ""
+    },
+    {
+     "input": "Why use multi-head attention in GAT?",
+     "output": "Several independent attention heads stabilise learning and capture different notions of neighbour relevance.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of attention heads",
+    "Hidden width per head",
+    "LeakyReLU negative slope (0.2 in the paper)",
+    "Attention and feature dropout"
+   ],
+   "edgeCases": [
+    "Rows with no allowed entries give NaN; self-loops guarantee at least one",
+    "Attention scores here are not symmetric: α_ij differs from α_ji",
+    "Single head, no output nonlinearity, bias or dropout in this sketch",
+    "Dense N×N scoring does not scale to large graphs"
+   ],
+   "related": [
+    "gnn-message-passing",
+    "self-attention",
+    "multi-head-attention"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "gru-cell",
+   "title": "GRU Cell",
+   "platform": "Deep Learning",
+   "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.GRUCell.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Recurrent Networks",
+    "Gating",
+    "Sequence Models"
+   ],
+   "patterns": [
+    "Attention and sequences"
+   ],
+   "summary": "A recurrent cell with an update gate and a reset gate that blends the old hidden state with a new candidate, using no separate cell state.",
+   "bruteForce": "Long-range dependencies where attention or a transformer works better, or when you need to parallelise over time, since the recurrence is sequential.",
+   "intuition": "The update gate z decides, per unit, how much of the old state to keep and how much to overwrite, so information can pass through many steps almost unchanged when z stays near one. The reset gate r decides how much of the old state feeds the new candidate. A GRU gets most of an LSTM's benefit with one state vector and fewer parameters.",
+   "whyItWorks": "The blend h' = (1 − z) ⊙ n + z ⊙ h is a convex combination of the old state and a candidate. When z is near one the state is copied and the gradient through that path is multiplied by z rather than by a squashing Jacobian, which reduces vanishing gradients compared with a plain RNN. The reset gate lets the cell ignore stale history when forming new content.",
+   "approach": [
+    "Compute input and hidden projections once for all three gates — one matmul each, split into r, z, n",
+    "Reset gate r = σ(·) — chooses how much past state the candidate may see",
+    "Update gate z = σ(·) — chooses how much old state to keep",
+    "Candidate n = tanh(input part + r ⊙ hidden part) — proposes new content from the input and reset-filtered past",
+    "Blend h' = (1 − z) ⊙ n + z ⊙ h — interpolation gives a gradient path along h"
+   ],
+   "time": "O(B·(I + H)·3H) per step for batch B",
+   "space": "O(B·H) for the state; 3H·(I + H + 2) parameters",
+   "solution": "import numpy as np\n\ndef sigmoid(a):\n    return 1 / (1 + np.exp(-a))\n\ndef gru_cell(x, h, Wx, Wh, bx, bh):\n    H = h.shape[-1]\n    gx = x @ Wx + bx          # input part, columns [r | z | n]\n    gh = h @ Wh + bh          # hidden part, same layout\n    r = sigmoid(gx[..., :H] + gh[..., :H])\n    z = sigmoid(gx[..., H:2 * H] + gh[..., H:2 * H])\n    n = np.tanh(gx[..., 2 * H:] + r * gh[..., 2 * H:])\n    return (1 - z) * n + z * h",
+   "keyLines": [
+    10,
+    12,
+    13
+   ],
+   "dryRun": [
+    "r = σ(W_ir x + b_ir + W_hr h + b_hr)",
+    "z = σ(W_iz x + b_iz + W_hz h + b_hz)",
+    "n = tanh(W_in x + b_in + r ⊙ (W_hn h + b_hn))",
+    "h' = (1 − z) ⊙ n + z ⊙ h",
+    "Parameters: 3H(I + H) + 6H with both bias vectors"
+   ],
+   "description": "Sequence tasks where an LSTM is a good fit but you want fewer parameters and faster steps, such as small speech, text or time-series models.",
+   "examples": [
+    {
+     "input": "How does a GRU differ from an LSTM?",
+     "output": "It merges the cell and hidden states and uses two gates (reset, update) instead of three, so it has fewer parameters and no separate memory cell.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the update gate do?",
+     "output": "It sets the mix between the old hidden state and the new candidate; near one the unit simply remembers.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does the GRU ease vanishing gradients?",
+     "output": "The additive-style blend gives a path from h' to h scaled by z, so gradients can flow across many steps without repeated squashing.",
+     "explanation": ""
+    },
+    {
+     "input": "Do all libraries compute the candidate the same way?",
+     "output": "No. PyTorch applies the reset gate after the hidden matmul, r ⊙ (W h + b); the original paper applies it to h before the matmul.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Hidden size H",
+    "Number of stacked layers",
+    "Dropout between layers",
+    "Initial hidden state (zeros or learned)"
+   ],
+   "edgeCases": [
+    "Which of z or 1 − z multiplies the old state differs between papers and libraries",
+    "The reset gate position (before or after the hidden matmul) changes the function",
+    "Gate column order r, z, n must match the weights you load",
+    "Long sequences still need gradient clipping"
+   ],
+   "related": [
+    "lstm-cell",
+    "rnn-cell",
+    "gradient-clipping"
+   ],
+   "diagram": []
   },
   {
    "slug": "hidden-markov-forward",
@@ -2610,7 +3975,88 @@
     "gaussian-mixture-em",
     "bayes-theorem",
     "maximum-likelihood"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "hierarchical-clustering",
+   "title": "Agglomerative Hierarchical Clustering",
+   "platform": "Classical ML",
+   "url": "https://scikit-learn.org/stable/modules/clustering.html#hierarchical-clustering",
+   "difficulty": "Medium",
+   "topics": [
+    "Clustering",
+    "Unsupervised",
+    "Dendrogram",
+    "Linkage"
+   ],
+   "patterns": [
+    "Distance and clustering"
+   ],
+   "summary": "Start with every point as its own cluster and repeatedly merge the two closest clusters, recording the merge distances. Cutting the resulting tree at any height gives a clustering, so k need not be fixed in advance.",
+   "bruteForce": "Skip it for large n because the naive method is cubic and needs a distance matrix, for data with heavy noise (single linkage chains through it), or when you need to assign new points.",
+   "intuition": "Merging order encodes the whole nested structure of the data: points that join early are tightly packed, and the heights at which groups join show how separated they are. The linkage rule defines what close means between groups, and that choice, not the algorithm, decides the shapes you find.",
+   "whyItWorks": "Single, average and ward linkage distances can all be updated from the old row distances after a merge by the Lance-Williams formula, so the data is never revisited. Ward chooses the merge with the smallest increase in within-cluster sum of squares, which links it to k-means.",
+   "approach": [
+    "Compute all pairwise distances (squared for ward) — the only place the raw data is used",
+    "Find the closest pair of active clusters — the next merge in the hierarchy",
+    "Record both ids, the merge height and the new size — one row of the linkage matrix",
+    "Overwrite one row and column with the Lance-Williams update and deactivate the other — keeps distances to the merged cluster correct without recomputing",
+    "Repeat n − 1 times, then replay the first n − k merges to get k clusters — a cut of the tree"
+   ],
+   "time": "O(n³) time for this naive version; priority queues or nearest-neighbour chains give O(n²)",
+   "space": "O(n²) for the distance matrix",
+   "solution": "import numpy as np\n\ndef linkage(X, method=\"average\"):\n    n = len(X)\n    D = np.sqrt(((X[:, None] - X[None]) ** 2).sum(-1))\n    D = D ** 2 if method == \"ward\" else D\n    np.fill_diagonal(D, np.inf)\n    size, ids, Z = np.ones(n), list(range(n)), []\n    for s in range(n - 1):\n        i, j = np.unravel_index(np.argmin(D), D.shape)\n        dij, ni, nj = D[i, j], size[i], size[j]\n        if method == \"single\":\n            new = np.minimum(D[i], D[j])\n        elif method == \"average\":\n            new = (ni * D[i] + nj * D[j]) / (ni + nj)\n        else:\n            t = size + ni + nj\n            new = ((size + ni) * D[i] + (size + nj) * D[j]\n                   - size * dij) / t\n        D[i], D[:, i], D[i, i] = new, new, np.inf\n        D[j], D[:, j] = np.inf, np.inf\n        h = np.sqrt(dij) if method == \"ward\" else dij\n        Z.append([ids[i], ids[j], h, ni + nj])\n        ids[i], size[i], size[j] = n + s, ni + nj, 0\n    return np.array(Z)\n\ndef cut(Z, n, k):\n    mem = {i: [i] for i in range(n)}\n    for s, (a, b, _, _) in enumerate(Z[: n - k]):\n        mem[n + s] = mem.pop(int(a)) + mem.pop(int(b))\n    lab = np.zeros(n, int)\n    for c, pts in enumerate(mem.values()):\n        lab[pts] = c\n    return lab",
+   "keyLines": [
+    10,
+    15,
+    20
+   ],
+   "dryRun": [
+    "Single: d(A, B) = min over a∈A, b∈B of ‖a − b‖",
+    "Average: d(A, B) = (1/|A||B|) Σₐ Σ_b ‖a − b‖",
+    "Ward: Δ(A, B) = |A||B| / (|A| + |B|) · ‖μ_A − μ_B‖²",
+    "Lance-Williams: d(k, i∪j) = αᵢ d(k,i) + αⱼ d(k,j) + β d(i,j)",
+    "  (+ γ|d(k,i) − d(k,j)|: γ = −½ single, 0 average/ward)",
+    "Average: αᵢ = nᵢ / (nᵢ + nⱼ), β = γ = 0",
+    "Ward (squared d): αᵢ = (nₖ + nᵢ) / N,  β = −nₖ / N",
+    "  with N = nₖ + nᵢ + nⱼ"
+   ],
+   "description": "A dendrogram for exploration, small to medium datasets, clusters of different scales, a cut chosen after seeing the merge heights, and non-Euclidean distances (except ward).",
+   "examples": [
+    {
+     "input": "How do single, average and ward linkage differ?",
+     "output": "Single uses the closest pair between clusters and can chain; average uses the mean pairwise distance and is a compromise; ward merges the pair that least increases within-cluster variance and favours compact, round clusters.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you choose the number of clusters from a dendrogram?",
+     "output": "Cut where there is a large jump in merge height, meaning the next merge joins clusters that are far apart, or validate with a score such as the silhouette.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is agglomerative clustering expensive?",
+     "output": "It stores all pairwise distances, which is quadratic in memory, and a naive search for the closest pair at each of n − 1 merges makes the time cubic.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Linkage — single, complete, average or ward",
+    "Number of clusters k, or a distance threshold at which to cut",
+    "Distance metric — Euclidean for ward, any metric for the others"
+   ],
+   "edgeCases": [
+    "Single linkage chains points through bridges of noise into one long cluster",
+    "Ward assumes Euclidean distance and favours compact, similarly sized clusters",
+    "Merges are never undone, so an early mistake stays in the tree",
+    "Ties in the minimum distance make the tree depend on the tie-breaking order"
+   ],
+   "related": [
+    "k-means",
+    "dbscan",
+    "pca"
+   ],
+   "diagram": []
   },
   {
    "slug": "hyperparameter-search",
@@ -2686,7 +4132,8 @@
     "cross-validation",
     "bias-variance-tradeoff",
     "data-leakage"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "iou-and-nms",
@@ -2762,7 +4209,86 @@
    "related": [
     "precision-recall-f1",
     "convolution-2d"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "isotonic-regression-pava",
+   "title": "Isotonic Regression (PAVA)",
+   "platform": "Classical ML",
+   "url": "https://scikit-learn.org/stable/modules/isotonic.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Regression",
+    "Calibration",
+    "Monotonic",
+    "Nonparametric"
+   ],
+   "patterns": [
+    "Classification metrics"
+   ],
+   "summary": "Fit the non-decreasing step function closest to the targets in least squares. The pool-adjacent-violators algorithm scans left to right and averages neighbouring blocks whenever the order is violated.",
+   "bruteForce": "Skip it with little data for calibration, where it overfits into steps (Platt scaling is smoother), when the relation is not monotone, or when you need a smooth curve with derivatives.",
+   "intuition": "If two neighbouring values break the required order, the best you can do for both is to replace them with their weighted average, since any other common value is worse. Pooling can create a new violation with the block before it, so keep merging backwards until the sequence is ordered.",
+   "whyItWorks": "Isotonic regression is a convex projection onto the cone of monotone sequences, with a unique solution. A violation cannot remain in any optimum, so those two values must share one fitted value, which must be their weighted mean. The stack of blocks is therefore always optimal for the prefix seen so far, which makes a single pass enough.",
+   "approach": [
+    "Sort by the input variable and push each target as its own block with its weight — a single point is trivially ordered",
+    "While the last two blocks decrease, merge them into their weighted mean — the best common value for both",
+    "Keep merging backwards after each merge — a new mean can break order with earlier blocks",
+    "Expand each block value over the points it covers — gives the fitted non-decreasing sequence",
+    "For a decreasing fit, negate the targets or reverse the order — same algorithm"
+   ],
+   "time": "O(n) after sorting, since each point is merged at most once; O(n log n) with the sort",
+   "space": "O(n) for the block stack",
+   "solution": "import numpy as np\n\ndef pava(y, w=None):\n    w = np.ones(len(y)) if w is None else np.asarray(w, float)\n    val, wt, cnt = [], [], []\n    for yi, wi in zip(y, w):\n        val.append(float(yi)); wt.append(wi); cnt.append(1)\n        while len(val) > 1 and val[-2] > val[-1]:\n            t = wt[-2] + wt[-1]\n            m = (wt[-2] * val[-2] + wt[-1] * val[-1]) / t\n            c = cnt[-2] + cnt[-1]\n            del val[-1], wt[-1], cnt[-1]\n            val[-1], wt[-1], cnt[-1] = m, t, c\n    return np.repeat(val, cnt)",
+   "keyLines": [
+    8,
+    10,
+    13
+   ],
+   "dryRun": [
+    "min over f₁ ≤ f₂ ≤ … ≤ fₙ of Σᵢ wᵢ (yᵢ − fᵢ)²",
+    "Pool B = block, value m(B) = Σᵢ∈B wᵢ yᵢ / Σᵢ∈B wᵢ",
+    "Violation: m(B_prev) > m(B_last)  ⇒  merge the two blocks",
+    "Merged weight W = W₁ + W₂",
+    "Merged value m = (W₁ m₁ + W₂ m₂) / (W₁ + W₂)",
+    "Fitted fᵢ = m(block containing i)"
+   ],
+   "description": "Calibrating classifier probabilities with a monotone map, dose-response and other curves known to be monotone, and a nonparametric fit without choosing a smoothing parameter.",
+   "examples": [
+    {
+     "input": "What does the pool-adjacent-violators step do?",
+     "output": "When two adjacent fitted values are out of order it replaces them with their weighted average, and keeps merging backwards while order is violated.",
+     "explanation": ""
+    },
+    {
+     "input": "Why use isotonic regression for calibration?",
+     "output": "It learns any monotone map from scores to probabilities without a parametric form, correcting miscalibration while keeping the ranking of predictions.",
+     "explanation": ""
+    },
+    {
+     "input": "Is the PAVA solution optimal?",
+     "output": "Yes. Least squares isotonic regression is a convex projection with a unique minimiser, and PAVA finds it exactly in one pass.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "increasing — direction of the monotone constraint",
+    "Sample weights — weight each point, for example by counts",
+    "out_of_bounds — how to treat inputs outside the training range when predicting"
+   ],
+   "edgeCases": [
+    "Produces flat steps and can overfit when calibration data is small",
+    "Predictions at new x need interpolation between block values, usually linear",
+    "Tied x values must be pooled first, since the order among ties is arbitrary",
+    "A single outlier at an end can drag a long block to a poor value"
+   ],
+   "related": [
+    "probability-calibration",
+    "linear-regression",
+    "roc-auc"
+   ],
+   "diagram": []
   },
   {
    "slug": "k-means",
@@ -2835,6 +4361,16 @@
    ],
    "related": [
     "gradient-descent"
+   ],
+   "diagram": [
+    "init centres",
+    "   │",
+    "   ▼",
+    "assign each point to nearest centre ◄─┐",
+    "   │                                  │",
+    "   ▼                                  │",
+    "move each centre to its cluster mean ─┘",
+    "repeat until assignments stop changing"
    ]
   },
   {
@@ -2918,7 +4454,8 @@
     "svm",
     "ridge-lasso-regularization",
     "linear-regression"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "knn",
@@ -2992,7 +4529,8 @@
    "related": [
     "k-means",
     "logistic-regression"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "knowledge-distillation",
@@ -3066,7 +4604,8 @@
     "softmax-cross-entropy",
     "entropy-kl-divergence",
     "label-smoothing"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "kv-cache",
@@ -3140,6 +4679,13 @@
     "self-attention",
     "multi-head-attention",
     "beam-search"
+   ],
+   "diagram": [
+    "step t: compute q_t, k_t, v_t for ONE token",
+    "cache:  K = [k1 … kt]    V = [v1 … vt]",
+    "",
+    "out_t = softmax(q_t Kᵀ / √d) · V",
+    "(older keys and values are never recomputed)"
    ]
   },
   {
@@ -3213,7 +4759,8 @@
     "softmax-cross-entropy",
     "entropy-kl-divergence",
     "probability-calibration"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "layer-normalization",
@@ -3286,7 +4833,8 @@
     "batch-normalization",
     "residual-connections",
     "multi-head-attention"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "learning-rate-schedules",
@@ -3361,7 +4909,8 @@
     "gradient-descent",
     "adam-optimizer",
     "backpropagation"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "linear-discriminant-analysis",
@@ -3446,7 +4995,8 @@
     "pca",
     "logistic-regression",
     "naive-bayes"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "linear-regression",
@@ -3514,7 +5064,85 @@
    "related": [
     "gradient-descent",
     "logistic-regression"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "local-outlier-factor",
+   "title": "Local Outlier Factor",
+   "platform": "Classical ML",
+   "url": "https://scikit-learn.org/stable/modules/outlier_detection.html#local-outlier-factor",
+   "difficulty": "Medium",
+   "topics": [
+    "Anomaly Detection",
+    "Unsupervised",
+    "Density Estimation",
+    "Nearest Neighbors"
+   ],
+   "patterns": [
+    "Distance and clustering"
+   ],
+   "summary": "Score each point by comparing its local density with the density around its k nearest neighbours. A score near one means a point is as dense as its surroundings; a much larger score marks a local outlier.",
+   "bruteForce": "Skip it when outliers are global extremes (simple distance or isolation forest is cheaper), in high dimensions where distances lose contrast, and for large n without a neighbour index.",
+   "intuition": "A point can be far from everything in absolute terms and still be normal if it sits in a naturally sparse region. What makes a point odd is being sparser than the neighbours it belongs to, so the score is a ratio of the neighbours' density to the point's own density rather than a raw distance.",
+   "whyItWorks": "The reachability distance smooths density estimates by flooring each distance at the neighbour's own k-distance, so points inside a cluster get stable, comparable densities. Dividing the neighbours' average density by the point's density normalises away the cluster's overall scale, which makes clusters of different density comparable.",
+   "approach": [
+    "Compute pairwise distances and set the self distance to infinity — a point is not its own neighbour",
+    "Take the k nearest neighbours of each point and the distance to the k-th — the k-distance defines the neighbourhood scale",
+    "Form reachability distances with the floor at the neighbour's k-distance — smooths out noise inside dense clusters",
+    "Invert the mean reachability to get a local density — high when neighbours are close",
+    "Divide the neighbours' mean density by the point's own — a ratio above one means sparser than the neighbourhood"
+   ],
+   "time": "O(n²·d) here from the full distance matrix; spatial indexes make neighbour search faster in low dimensions",
+   "space": "O(n²) for the distance matrix, O(n·k) for neighbour lists",
+   "solution": "import numpy as np\n\ndef lof(X, k):\n    D = np.sqrt(((X[:, None] - X[None]) ** 2).sum(-1))\n    np.fill_diagonal(D, np.inf)\n    nb = np.argsort(D, axis=1, kind=\"stable\")[:, :k]\n    dk = np.take_along_axis(D, nb, 1)\n    reach = np.maximum(dk[nb, -1], dk)\n    lrd = 1 / (reach.mean(1) + 1e-10)\n    return lrd[nb].mean(1) / lrd",
+   "keyLines": [
+    8,
+    9,
+    10
+   ],
+   "dryRun": [
+    "k-dist(o) = distance from o to its k-th nearest neighbour",
+    "reach(p, o) = max(k-dist(o), d(p, o))",
+    "lrd(p) = 1 / mean over o ∈ N_k(p) of reach(p, o)",
+    "LOF(p) = mean over o ∈ N_k(p) of lrd(o) / lrd(p)",
+    "LOF ≈ 1 inlier, LOF ≫ 1 outlier"
+   ],
+   "description": "Anomalies defined relative to local context, data with clusters of differing density, and unsupervised outlier ranking where no labels exist.",
+   "examples": [
+    {
+     "input": "Why is LOF a local method?",
+     "output": "It compares a point's density with that of its own neighbours instead of the global average, so a point in a sparse cluster is not flagged just because the whole cluster is sparse.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the reachability distance do?",
+     "output": "It replaces the true distance by the larger of the true distance and the neighbour's k-distance, which stops very close pairs from producing wildly large densities.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you choose k?",
+     "output": "Use at least the size of the smallest group you would still call a cluster; larger k smooths the scores, and ranking stability across a range of k is a useful check.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "n_neighbors k — larger smooths the score, small is noisy and sensitive to tiny clusters",
+    "Distance metric — Euclidean by default, scale features first",
+    "Contamination — fraction flagged when a hard threshold is needed"
+   ],
+   "edgeCases": [
+    "Features on different scales make the distance, and so the score, meaningless",
+    "Duplicate points give zero reachability distance, so a tiny constant avoids dividing by zero",
+    "Ties at the k-th distance make the neighbour set depend on tie-breaking",
+    "Scores are relative to k; there is no universal threshold above 1"
+   ],
+   "related": [
+    "knn",
+    "dbscan",
+    "k-means"
+   ],
+   "diagram": []
   },
   {
    "slug": "logistic-regression",
@@ -3591,7 +5219,8 @@
     "linear-regression",
     "gradient-descent",
     "softmax-cross-entropy"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "lora-low-rank-adaptation",
@@ -3667,6 +5296,13 @@
     "multi-head-attention",
     "svd",
     "backpropagation"
+   ],
+   "diagram": [
+    "x ────► W (frozen) ───────────┐",
+    " └─► A (d×r) ─► B (r×d) ─────►(+) ─► y",
+    "",
+    "y = x W + (α / r) · x A B",
+    "r ≪ d, so only A and B are trained"
    ]
   },
   {
@@ -3742,6 +5378,16 @@
     "rnn-cell",
     "activation-functions",
     "backpropagation"
+   ],
+   "diagram": [
+    "h(t-1), x(t) ─► [W, b] ─► f, i, g, o",
+    "",
+    "c(t-1) ══(× f)══(+)══════════► c(t)",
+    "                 ▲",
+    "              (i ⊙ g)",
+    "h(t) = o ⊙ tanh(c(t))",
+    "",
+    "f forget · i input · g candidate · o output"
    ]
   },
   {
@@ -3826,7 +5472,8 @@
     "svd",
     "pca",
     "ridge-lasso-regularization"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "max-pooling",
@@ -3899,7 +5546,8 @@
     "convolution-2d",
     "activation-functions",
     "dropout"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "maximum-likelihood",
@@ -3975,7 +5623,91 @@
     "bayes-theorem",
     "logistic-regression",
     "entropy-kl-divergence"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "mean-average-precision",
+   "title": "Detection Mean Average Precision",
+   "platform": "Vision",
+   "url": "https://lightning.ai/docs/torchmetrics/stable/detection/mean_average_precision.html",
+   "difficulty": "Hard",
+   "topics": [
+    "Object Detection",
+    "Evaluation Metrics",
+    "Precision-Recall"
+   ],
+   "patterns": [
+    "Convolution and vision"
+   ],
+   "summary": "Rank detections by confidence, mark each as a true or false positive by IoU matching, and take the area under the precision-recall curve per class, then average over classes.",
+   "bruteForce": "Deployment decisions at one fixed operating point (use precision, recall or F1 at that threshold), or tasks without boxes, and when localisation quality at strict IoU matters more than one threshold shows.",
+   "intuition": "A detector must both find objects and rank its confident boxes above its doubtful ones, so a single threshold hides too much. Sweeping the confidence threshold traces a precision-recall curve, and its area (AP) rewards detectors that keep precision high as recall grows. Matching uses IoU, so a box counts only if it overlaps a ground-truth box enough, and each ground-truth box can be claimed only once.",
+   "whyItWorks": "AP is the area under the precision-recall curve, so it summarises ranking quality over all thresholds instead of one. The monotone precision envelope removes the jitter from individual false positives, and the one-match-per-ground-truth rule stops duplicate boxes from inflating recall. Averaging over classes weights rare classes equally.",
+   "approach": [
+    "Sort one class's detections by descending score — simulates lowering the confidence threshold",
+    "Match each detection to its best still-unmatched ground-truth box in the same image — IoU ≥ threshold makes it a TP, otherwise FP",
+    "Take cumulative TP and FP counts — precision and recall at every threshold",
+    "Make precision monotone: replace it by the maximum precision at any higher recall — removes zig-zags",
+    "Sum precision × recall increments, then average AP over classes — all-point interpolated AP, then mAP"
+   ],
+   "time": "O(D log D + D·G_img) per class for D detections",
+   "space": "O(D + G) for the TP flags and matched marks",
+   "solution": "import numpy as np\n\ndef iou(a, b):\n    lo, hi = np.maximum(a[:2], b[:2]), np.minimum(a[2:], b[2:])\n    inter = np.prod(np.clip(hi - lo, 0, None))\n    area = lambda r: (r[2] - r[0]) * (r[3] - r[1])\n    return inter / (area(a) + area(b) - inter)\n\ndef average_precision(dets, gts, thr=0.5):\n    # dets: [(img, score, box)], gts: {img: [box, ...]}, one class\n    dets = sorted(dets, key=lambda d: -d[1])\n    used = {i: np.zeros(len(g), bool) for i, g in gts.items()}\n    n_gt = sum(len(g) for g in gts.values())\n    tp = np.zeros(len(dets))\n    for k, (img, _, box) in enumerate(dets):\n        ious = np.array([iou(box, g) for g in gts.get(img, [])])\n        if len(ious):\n            ious[used[img]] = -1\n            j = ious.argmax()\n            if ious[j] >= thr:\n                used[img][j], tp[k] = True, 1\n    tp_c, fp_c = np.cumsum(tp), np.cumsum(1 - tp)\n    rec, prec = tp_c / n_gt, tp_c / (tp_c + fp_c)\n    prec = np.maximum.accumulate(prec[::-1])[::-1]\n    return float(np.sum(np.diff(np.r_[0, rec]) * prec))\n\ndef mean_ap(dets_by_cls, gts_by_cls, thr=0.5):\n    aps = [average_precision(dets_by_cls.get(c, []), g, thr)\n           for c, g in gts_by_cls.items()]\n    return float(np.mean(aps))",
+   "keyLines": [
+    18,
+    21,
+    24
+   ],
+   "dryRun": [
+    "IoU(a, b) = |a ∩ b| / |a ∪ b|;  TP if IoU ≥ t and GT unmatched",
+    "Sort by score; TPₖ, FPₖ = cumulative counts after k detections",
+    "Recallₖ = TPₖ / #GT,   Precisionₖ = TPₖ / (TPₖ + FPₖ)",
+    "p_interp(r) = max over r' ≥ r of precision(r')",
+    "AP = Σₖ (Rₖ − Rₖ₋₁) · p_interp(Rₖ),   R₀ = 0",
+    "mAP = (1/C) Σ_c AP_c;  COCO also averages IoU 0.50 to 0.95"
+   ],
+   "description": "Comparing object detectors and instance segmenters on a labelled benchmark (VOC, COCO), tuning NMS or score thresholds, and tracking detection quality across releases.",
+   "examples": [
+    {
+     "input": "What does a detection need to count as a true positive?",
+     "output": "Same class, IoU with an unmatched ground-truth box at or above the threshold; extra boxes on an already matched object are false positives.",
+     "explanation": ""
+    },
+    {
+     "input": "Why take the monotone envelope of precision?",
+     "output": "It replaces each precision with the best precision at that recall or higher, removing the zig-zag so AP is the area under a non-increasing curve.",
+     "explanation": ""
+    },
+    {
+     "input": "How does AP50 differ from COCO mAP?",
+     "output": "AP50 uses a single IoU threshold of 0.5; COCO mAP averages over IoU thresholds 0.50 to 0.95 and also uses 101-point recall interpolation.",
+     "explanation": ""
+    },
+    {
+     "input": "Why must you sort detections by score first?",
+     "output": "The curve is built by lowering the confidence threshold, so confident detections must be matched first and claim ground truths before weaker ones.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "IoU threshold(s) for matching",
+    "Interpolation scheme (all-point or 101-point)",
+    "Max detections per image",
+    "Object size ranges for small, medium, large breakdowns"
+   ],
+   "edgeCases": [
+    "Conventions differ: VOC07 uses 11 points, VOC10+ all points, COCO 101 points and averaged IoUs",
+    "Detections must be matched within the same image and class only",
+    "Unsorted detections, or unfiltered duplicates, change the result",
+    "No crowd or ignore regions, area ranges or maximum-detection caps in this sketch"
+   ],
+   "related": [
+    "iou-and-nms",
+    "precision-recall-f1",
+    "roc-auc"
+   ],
+   "diagram": []
   },
   {
    "slug": "metropolis-hastings",
@@ -4059,7 +5791,8 @@
     "bayes-theorem",
     "maximum-likelihood",
     "entropy-kl-divergence"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "mlp-forward-pass",
@@ -4135,6 +5868,13 @@
     "backpropagation",
     "activation-functions",
     "softmax-cross-entropy"
+   ],
+   "diagram": [
+    "x (d) ─► [W1, b1] ─► act ─► h (m)",
+    "                              │",
+    "                         [W2, b2]",
+    "                              │",
+    "                       logits ─► softmax ─► p"
    ]
   },
   {
@@ -4210,7 +5950,8 @@
     "gradient-descent",
     "adam-optimizer",
     "learning-rate-schedules"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "multi-head-attention",
@@ -4285,6 +6026,14 @@
     "self-attention",
     "positional-encoding",
     "layer-normalization"
+   ],
+   "diagram": [
+    "x ─► split into h heads",
+    "     head 1: attention(Q1,K1,V1) ─┐",
+    "     head 2: attention(Q2,K2,V2) ─┼► concat",
+    "     head h: attention(Qh,Kh,Vh) ─┘",
+    "                                  ▼",
+    "                               [Wo] ─► out"
    ]
   },
   {
@@ -4369,7 +6118,8 @@
     "precision-recall-f1",
     "class-imbalance",
     "roc-auc"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "naive-bayes",
@@ -4445,7 +6195,86 @@
    "related": [
     "logistic-regression",
     "softmax-cross-entropy"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "nmf-multiplicative-updates",
+   "title": "Non-negative Matrix Factorisation",
+   "platform": "Classical ML",
+   "url": "https://scikit-learn.org/stable/modules/decomposition.html#non-negative-matrix-factorization-nmf-or-nnmf",
+   "difficulty": "Medium",
+   "topics": [
+    "Matrix Factorization",
+    "Dimensionality Reduction",
+    "Unsupervised",
+    "Topic Modeling"
+   ],
+   "patterns": [
+    "Dimensionality reduction"
+   ],
+   "summary": "Factor a non-negative matrix X into W H with both factors non-negative and a small inner rank. Multiplicative updates rescale each entry by a ratio of positive terms, so non-negativity is kept without any projection step.",
+   "bruteForce": "Skip it when data has negative values, when you need a unique answer (the factorisation is not unique and depends on initialisation), or when plain SVD's optimality and speed are enough.",
+   "intuition": "Forbidding negative entries means each row of X can only be built by adding parts, never subtracting them, so the learned factors tend to be parts such as topics, strokes or sources. The update multiplies each entry by how much the data wants it, over how much the model already uses it, which grows an entry when it is too small and shrinks it when too large.",
+   "whyItWorks": "The Frobenius error is not jointly convex, but it is convex in W for a fixed H and the other way round. The multiplicative step is a majorise-minimise update, built from an auxiliary function that touches the loss at the current point, so each update cannot increase the loss. It converges to a stationary point, not necessarily the best one.",
+   "approach": [
+    "Start from non-negative W and H — updates only rescale, so a zero entry stays zero and a positive one stays positive",
+    "Multiply W by the data-to-model ratio computed with H fixed — the W step cannot raise the loss",
+    "Multiply H by the same kind of ratio using the new W — the H step cannot raise it either",
+    "Floor the denominator with a tiny constant — avoids dividing by zero for entries that become zero",
+    "Track the loss each sweep and stop when it stops falling — it is monotone, so flatness means a stationary point"
+   ],
+   "time": "O(iters·n·m·r) for an n×m matrix with rank r",
+   "space": "O((n + m)·r) for factors plus the n×m data",
+   "solution": "import numpy as np\n\ndef nmf(X, W, H, iters=200, eps=1e-10):\n    loss = []\n    for _ in range(iters):\n        W = W * (X @ H.T) / np.maximum(W @ H @ H.T, eps)\n        H = H * (W.T @ X) / np.maximum(W.T @ W @ H, eps)\n        loss.append(0.5 * ((X - W @ H) ** 2).sum())\n    return W, H, loss",
+   "keyLines": [
+    6,
+    7
+   ],
+   "dryRun": [
+    "min over W, H ≥ 0 of  ½ ‖X − W H‖²_F",
+    "W ← W ⊙ (X Hᵀ) / (W H Hᵀ)",
+    "H ← H ⊙ (Wᵀ X) / (Wᵀ W H)",
+    "⊙ and the fraction are elementwise",
+    "Gradient wrt W: ∇ = W H Hᵀ − X Hᵀ  (positive part − negative part)",
+    "Loss is non-increasing under the updates"
+   ],
+   "description": "Parts-based features from non-negative data such as word counts, images and spectra, topic modelling, and interpretable low-rank structure where signs would be confusing.",
+   "examples": [
+    {
+     "input": "How is NMF different from PCA or SVD?",
+     "output": "NMF forces non-negative factors and gives additive, parts-based components that are not orthogonal and not unique; SVD allows signs, is orthogonal and gives the best rank-r approximation.",
+     "explanation": ""
+    },
+    {
+     "input": "Why do multiplicative updates preserve non-negativity?",
+     "output": "Each update multiplies an entry by a ratio of non-negative quantities, so entries stay non-negative if they start that way.",
+     "explanation": ""
+    },
+    {
+     "input": "Does NMF find the global optimum?",
+     "output": "No. The problem is non-convex in W and H jointly, so the updates reach a stationary point that depends on initialisation.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Rank r — number of parts; chosen by reconstruction error or interpretability",
+    "Initialisation — random or SVD-based (NNDSVD) and it changes the result",
+    "Loss — Frobenius here; KL divergence suits counts, with different updates",
+    "Regularisation — L1 or L2 on W and H for sparser or smaller factors"
+   ],
+   "edgeCases": [
+    "Entries that reach exactly zero can never recover under multiplicative updates",
+    "Different initialisations converge to different local solutions, so use restarts",
+    "Convergence is slow compared with alternating least squares or coordinate descent",
+    "Scale ambiguity: W and H can trade a scale factor, so normalise before comparing factors"
+   ],
+   "related": [
+    "svd",
+    "pca",
+    "matrix-factorization-recommender"
+   ],
+   "diagram": []
   },
   {
    "slug": "pca",
@@ -4523,7 +6352,8 @@
     "k-means",
     "linear-regression",
     "ridge-lasso-regularization"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "perplexity",
@@ -4596,7 +6426,8 @@
     "softmax-cross-entropy",
     "entropy-kl-divergence",
     "maximum-likelihood"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "positional-encoding",
@@ -4669,7 +6500,89 @@
     "self-attention",
     "multi-head-attention",
     "layer-normalization"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "ppo-clipped-objective",
+   "title": "PPO Clipped Objective",
+   "platform": "RL",
+   "url": "https://arxiv.org/abs/1707.06347",
+   "difficulty": "Hard",
+   "topics": [
+    "Reinforcement Learning",
+    "Policy Gradient",
+    "Trust Region"
+   ],
+   "patterns": [
+    "Reinforcement learning",
+    "Preference alignment and policy gradients"
+   ],
+   "summary": "Improve a policy with several gradient steps on one batch of experience, while clipping the probability ratio so a step cannot move the new policy too far from the one that collected the data.",
+   "bruteForce": "When sample efficiency from off-policy replay is critical, or in settings with deterministic policies and continuous control tasks where off-policy methods such as SAC are preferred.",
+   "intuition": "Reusing a batch of data is efficient but dangerous: the further the policy moves from the one that generated the data, the less the advantages mean. PPO measures movement by the ratio of new to old action probability and stops rewarding progress once that ratio leaves a small band around one, in the direction the advantage wants. Taking the minimum of the clipped and unclipped terms makes the objective a pessimistic bound, so there is no incentive to push further, but a harmful move is still fully penalised.",
+   "whyItWorks": "The ratio-weighted advantage is a first-order surrogate for the true improvement that is only valid near the sampling policy. Clipping removes the gradient where the ratio has already moved beyond the band in the favourable direction, which acts as a cheap trust region without the second-order machinery of TRPO. Where the policy moved the wrong way, the unclipped term is the smaller one and keeps its gradient, so mistakes can be corrected.",
+   "approach": [
+    "Store log-probabilities of the sampled actions under the old policy — the fixed reference for the ratio",
+    "Compute the ratio exp(logp_new − logp_old) — how much the policy has moved on each sample",
+    "Form the unclipped term ρ·Â and the clipped term clip(ρ)·Â — the plain surrogate and its limited version",
+    "Take the elementwise minimum and average — a pessimistic bound with no reward for moving too far",
+    "Maximise it for a few epochs of minibatch gradient steps — reuse the batch safely"
+   ],
+   "time": "O(N) per evaluation for N samples (the policy network dominates the real cost)",
+   "space": "O(N) for the ratios and advantages",
+   "solution": "import numpy as np\n\ndef ppo_clip_loss(logp_new, logp_old, adv, eps=0.2):\n    ratio = np.exp(logp_new - logp_old)\n    unclipped = ratio * adv\n    clipped = np.clip(ratio, 1 - eps, 1 + eps) * adv\n    obj = np.minimum(unclipped, clipped)\n    # gradient flows only where the unclipped term is the minimum\n    active = unclipped <= clipped\n    grad = np.where(active, ratio * adv, 0.0) / len(adv)\n    return -obj.mean(), -grad     # loss, dloss/dlogp_new",
+   "keyLines": [
+    4,
+    6,
+    7
+   ],
+   "dryRun": [
+    "Ratio: ρ = π_new(a|s) / π_old(a|s) = exp(logp_new − logp_old)",
+    "Unclipped: ρ·Â",
+    "Clipped: clip(ρ, 1 − ε, 1 + ε)·Â",
+    "L_CLIP = mean[ min(ρ·Â, clip(ρ, 1 − ε, 1 + ε)·Â) ]",
+    "Loss to minimise = −L_CLIP",
+    "∂L_CLIP/∂logp_new = ρ·Â if the unclipped term is the min, else 0",
+    "Â > 0 : gradient stops once ρ > 1 + ε",
+    "Â < 0 : gradient stops once ρ < 1 − ε"
+   ],
+   "description": "On-policy deep RL and RLHF fine-tuning of language models, where stable updates with minimal tuning matter and rollouts are expensive to collect.",
+   "examples": [
+    {
+     "input": "Why take the minimum of the clipped and unclipped terms?",
+     "output": "It makes the objective a lower bound on the unclipped surrogate. Improvements beyond the clip band are not rewarded, while moves in the harmful direction keep their full gradient.",
+     "explanation": ""
+    },
+    {
+     "input": "When is the gradient zero?",
+     "output": "For a positive advantage when the ratio is above 1 plus ε, and for a negative advantage when the ratio is below 1 minus ε. In those regions the clipped term is a constant.",
+     "explanation": ""
+    },
+    {
+     "input": "How does PPO relate to TRPO?",
+     "output": "Both limit how far the policy moves per update. TRPO enforces a KL constraint with second-order optimisation, while PPO uses a first-order clipped objective that is simpler to implement.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Clip range ε (smaller is more conservative)",
+    "Number of epochs and minibatches per batch of data",
+    "Advantage estimator settings (γ and λ) and normalisation",
+    "Value-loss and entropy coefficients when added to the objective"
+   ],
+   "edgeCases": [
+    "Clipping bounds the gradient incentive, not the actual policy change; large steps can still overshoot the band",
+    "Advantages are usually normalised per batch; the sign of Â decides which side of the band is clipped",
+    "Log-probs must be from the policy that sampled the actions and be stored detached",
+    "This is only the policy term; real PPO adds a value-function loss and an entropy bonus, and usually early-stops on KL"
+   ],
+   "related": [
+    "reinforce-policy-gradient",
+    "gae-advantage",
+    "entropy-kl-divergence"
+   ],
+   "diagram": []
   },
   {
    "slug": "precision-recall-f1",
@@ -4748,7 +6661,8 @@
    "related": [
     "roc-auc",
     "logistic-regression"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "probability-calibration",
@@ -4825,7 +6739,8 @@
     "roc-auc",
     "logistic-regression",
     "class-imbalance"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "q-learning",
@@ -4901,7 +6816,86 @@
    "related": [
     "gradient-descent",
     "bayes-theorem"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "rag-dense-retrieval",
+   "title": "RAG Retrieval (Chunk, Embed, Top-k)",
+   "platform": "NLP",
+   "url": "https://arxiv.org/abs/2005.11401",
+   "difficulty": "Medium",
+   "topics": [
+    "Retrieval-Augmented Generation",
+    "Embeddings",
+    "Vector Search"
+   ],
+   "patterns": [
+    "Text evaluation and retrieval"
+   ],
+   "summary": "Split documents into overlapping chunks, embed each chunk and the query as vectors, and return the k chunks whose vectors are most similar to the query to put in the language model's prompt.",
+   "bruteForce": "When the whole corpus fits in the prompt, when queries need exact keyword or ID matching that embeddings blur, or when the answer requires reasoning across many scattered passages that top-k cannot gather.",
+   "intuition": "A language model cannot read a whole corpus, so retrieval chooses the few passages worth reading. Chunking sets the unit of retrieval: too large and the relevant sentence is diluted, too small and it loses its context, and overlap keeps a sentence that straddles a boundary from being cut in half. Normalising embeddings turns cosine similarity into a plain dot product, so search is one matrix-vector product.",
+   "whyItWorks": "If the embedding places related texts near each other, nearest neighbours of the query vector are likely relevant passages, and the generator can then ground its answer in text it was never trained on. With unit-length vectors, ranking by dot product is identical to ranking by cosine similarity, which is why indexes normalise once at build time and search with a single product.",
+   "approach": [
+    "Split each document into word chunks of fixed size with overlap — sets the unit of retrieval and protects boundary sentences",
+    "Embed every chunk once and normalise to unit length — an offline index; unit length makes dot product equal cosine",
+    "Embed the query the same way — query and chunks must live in the same space",
+    "Score all chunks with one matrix-vector product — cosine similarity for every chunk",
+    "Take the k highest scores — the passages to place in the prompt"
+   ],
+   "time": "O(N·d) to score N chunks of dimension d by brute force; approximate indexes reduce this at some recall cost",
+   "space": "O(N·d) for the chunk embedding matrix",
+   "solution": "import numpy as np, zlib\n\ndef chunk(words, size=8, overlap=2):\n    step = size - overlap\n    stop = max(len(words) - overlap, 1)\n    return [words[i:i + size] for i in range(0, stop, step)]\n\ndef embed(words, dim=256):\n    v = np.zeros(dim)\n    for w in words:\n        h = zlib.crc32(w.encode())\n        v[h % dim] += 1 if (h >> 16) & 1 else -1\n    n = np.linalg.norm(v)\n    return v / n if n else v\n\ndef retrieve(query, chunks, k=3):\n    E = np.stack([embed(c) for c in chunks])\n    sims = E @ embed(query)\n    top = np.argsort(-sims)[:k]\n    return top, sims[top]",
+   "keyLines": [
+    6,
+    12,
+    18
+   ],
+   "dryRun": [
+    "Chunks: words[i : i + size] for i = 0, step, 2·step, ...,",
+    "step = size − overlap",
+    "Embedding: e(x) = v(x) / ‖v(x)‖₂   (unit length)",
+    "cos(q, c) = e(q)·e(c)   for unit vectors",
+    "Top-k: indices of the k largest cos(q, cᵢ)"
+   ],
+   "description": "Question answering over private or fresh documents, where the model needs facts that are not in its weights and answers should cite sources.",
+   "examples": [
+    {
+     "input": "Why use overlapping chunks?",
+     "output": "Information near a chunk boundary would be split across two chunks and could be missed by both. Overlap repeats boundary text so at least one chunk contains the whole passage, at the cost of a larger index.",
+     "explanation": ""
+    },
+    {
+     "input": "Why normalise embeddings before search?",
+     "output": "For unit vectors the dot product equals cosine similarity, so exact search is a single matrix product and magnitude differences cannot affect the ranking.",
+     "explanation": ""
+    },
+    {
+     "input": "What are the trade-offs of exact versus approximate nearest-neighbour search?",
+     "output": "Exact search is simple and gives the true top-k but scales linearly with corpus size. Approximate indexes such as graph or clustering based ones are much faster on large corpora but can miss true neighbours.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Chunk size and overlap",
+    "Number of retrieved chunks k",
+    "Embedding model and dimension (a hashing stand-in here)",
+    "Similarity (cosine on normalised vectors, or dot product)",
+    "Exact versus approximate nearest-neighbour index"
+   ],
+   "edgeCases": [
+    "The embedding here is a signed hashing bag of words, so it only matches shared words; it has no semantic understanding, unlike a trained embedding model",
+    "Embedding the chunks inside retrieve is for brevity; real systems embed once and store the matrix",
+    "Chunk by words here for simplicity; production systems chunk by tokens or sentences and keep metadata",
+    "Query and chunks must use the same embedding model and normalisation"
+   ],
+   "related": [
+    "cosine-similarity-embeddings",
+    "knn",
+    "retrieval-metrics-recall-at-k"
+   ],
+   "diagram": []
   },
   {
    "slug": "random-forest",
@@ -4978,7 +6972,8 @@
    "related": [
     "decision-tree",
     "gradient-boosting"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "receptive-field",
@@ -5054,7 +7049,8 @@
     "convolution-2d",
     "max-pooling",
     "depthwise-separable-convolution"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "reinforce-policy-gradient",
@@ -5131,7 +7127,8 @@
     "softmax-cross-entropy",
     "q-learning",
     "gradient-descent"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "residual-connections",
@@ -5202,7 +7199,257 @@
     "layer-normalization",
     "backpropagation",
     "batch-normalization"
+   ],
+   "diagram": [
+    "x ───────────┐",
+    "│            │",
+    "▼            │",
+    "[ F(x) ]     │ identity",
+    "│            │ shortcut",
+    "▼            │",
+    "(+) ◄────────┘",
+    "│",
+    "▼",
+    "y = x + F(x)"
    ]
+  },
+  {
+   "slug": "resnet-basic-block",
+   "title": "ResNet Basic Block",
+   "platform": "Vision",
+   "url": "https://d2l.ai/chapter_convolutional-modern/resnet.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Residual Networks",
+    "Convolutional Networks",
+    "Skip Connections"
+   ],
+   "patterns": [
+    "Convolution and vision"
+   ],
+   "summary": "Two 3×3 convolutions with batch norm and ReLU, plus a shortcut that adds the block's input to its output before the final ReLU.",
+   "bruteForce": "Very deep or wide networks where a bottleneck block (1×1, 3×3, 1×1) is cheaper, or latency-bound mobile models where depthwise-separable blocks are a better trade.",
+   "intuition": "The block only has to learn a correction F(x) on top of the identity, so if the best change is small the weights can simply stay near zero. The shortcut also gives gradients a direct path back through the addition, which is what lets networks with dozens of layers train. When the shape changes (stride 2 or more channels) the shortcut uses a 1×1 convolution so the two branches can still be added.",
+   "whyItWorks": "Writing the block as y = x + F(x) means the Jacobian is I + ∂F/∂x, so the identity term carries gradient to earlier layers unchanged and prevents it from vanishing. The optimisation problem also becomes easier because \"do nothing\" is the zero-weight solution rather than a precise mapping the stacked layers must discover.",
+   "approach": [
+    "Convolve with a 3×3 kernel (stride s) and batch-normalise — first feature transform, s downsamples",
+    "Apply ReLU — adds the nonlinearity between the two convolutions",
+    "Convolve again at stride 1 and batch-normalise — second transform, no ReLU yet",
+    "If shape changes, map x with a strided 1×1 conv plus batch norm — makes the shortcut addable",
+    "Add the shortcut to the branch output, then ReLU — output is x + F(x), so identity is easy to learn"
+   ],
+   "time": "O(N·H·W·C²·9) per conv, dominated by the two 3×3 convolutions",
+   "space": "O(N·C·H·W) per activation map kept for backpropagation",
+   "solution": "import numpy as np\n\ndef conv(x, w, stride=1, pad=1):\n    x = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)))\n    k = w.shape[2]\n    oh = (x.shape[2] - k) // stride + 1\n    ow = (x.shape[3] - k) // stride + 1\n    out = np.zeros((x.shape[0], w.shape[0], oh, ow))\n    for i in range(oh):\n        for j in range(ow):\n            r, s = i * stride, j * stride\n            p = x[:, :, r:r + k, s:s + k]\n            out[:, :, i, j] = np.einsum(\"ncuv,fcuv->nf\", p, w)\n    return out\n\ndef bn(x, g, b, eps=1e-5):\n    mu = x.mean(axis=(0, 2, 3), keepdims=True)\n    var = x.var(axis=(0, 2, 3), keepdims=True)\n    xhat = (x - mu) / np.sqrt(var + eps)\n    return g.reshape(1, -1, 1, 1) * xhat + b.reshape(1, -1, 1, 1)\n\ndef basic_block(x, p, stride=1):\n    out = bn(conv(x, p[\"w1\"], stride), p[\"g1\"], p[\"b1\"])\n    out = bn(conv(np.maximum(0, out), p[\"w2\"]), p[\"g2\"], p[\"b2\"])\n    if \"ws\" in p:\n        x = bn(conv(x, p[\"ws\"], stride, 0), p[\"gs\"], p[\"bs\"])\n    return np.maximum(0, out + x)",
+   "keyLines": [
+    24,
+    26,
+    27
+   ],
+   "dryRun": [
+    "F(x) = BN(W₂ ∗ ReLU(BN(W₁ ∗ x)))",
+    "y = ReLU(F(x) + x)   when shapes match",
+    "y = ReLU(F(x) + BN(W_s ∗ x))   with a 1×1 conv W_s at stride s",
+    "BN(x) = γ · (x − μ_B) / √(σ²_B + ε) + β, stats over (N, H, W)",
+    "∂y/∂x = I + ∂F/∂x   (before the ReLU gate)"
+   ],
+   "description": "Medium-depth image backbones (ResNet-18 and ResNet-34 use this block), and as a default building block when you want a deeper CNN that still trains reliably.",
+   "examples": [
+    {
+     "input": "Why does a skip connection help train deep networks?",
+     "output": "The addition gives an identity path for both signal and gradient, so the layers learn a residual and gradients do not have to pass through every nonlinearity.",
+     "explanation": ""
+    },
+    {
+     "input": "When does the shortcut need a projection?",
+     "output": "When the block changes the spatial size or channel count, the input and F(x) differ in shape, so a strided 1×1 conv (with batch norm) matches them.",
+     "explanation": ""
+    },
+    {
+     "input": "Where is the last ReLU placed in the original basic block?",
+     "output": "After the addition, so the block output is non-negative; pre-activation variants move BN and ReLU before each conv instead.",
+     "explanation": ""
+    },
+    {
+     "input": "Why no bias in the convolutions?",
+     "output": "The following batch norm has its own shift β, which makes a conv bias redundant.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Channels per stage and number of blocks per stage",
+    "Stride of the first block in each stage (downsampling)",
+    "BatchNorm ε and momentum",
+    "Zero-initialising the last BN γ so each block starts as identity"
+   ],
+   "edgeCases": [
+    "This code uses batch statistics only (train mode); inference needs running averages",
+    "Adding before the ReLU versus after changes the function; follow the variant you load weights for",
+    "A stride-2 first conv with an identity shortcut fails on shape; use the projection",
+    "Loops make this very slow; it is for understanding, not training"
+   ],
+   "related": [
+    "residual-connections",
+    "batch-normalization",
+    "convolution-2d"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "retrieval-metrics-recall-at-k",
+   "title": "Retrieval Metrics (Recall@k, MRR, nDCG)",
+   "platform": "NLP",
+   "url": "https://scikit-learn.org/stable/modules/generated/sklearn.metrics.ndcg_score.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Information Retrieval",
+    "Evaluation",
+    "Ranking"
+   ],
+   "patterns": [
+    "Text evaluation and retrieval"
+   ],
+   "summary": "Judge a ranked list of documents against known relevance labels: did the relevant ones appear in the top k, how high was the first one, and how good is the whole ordering.",
+   "bruteForce": "When no relevance judgements are available, or when answer quality rather than retrieval quality is the goal; a high Recall@k does not guarantee a good generated answer. MRR ignores everything after the first relevant hit.",
+   "intuition": "A retriever returns an ordered list, so correctness depends on position as well as membership. Recall@k asks what fraction of the relevant items made the top k, MRR rewards putting the first relevant item high, and nDCG discounts each item's relevance by the log of its rank and divides by the best possible ordering, so a perfect ranking scores one and graded relevance is handled.",
+   "whyItWorks": "Users only look at the top of a list, so metrics weight early ranks more. Recall@k suits a first-stage retriever that feeds a reranker or a language model, because only missing a relevant item is unrecoverable. The logarithmic discount in DCG decays smoothly, and normalising by the ideal DCG makes scores comparable across queries with different numbers of relevant documents.",
+   "approach": [
+    "Rank documents for each query by score, highest first — the ordering is what is being judged",
+    "Look up each ranked document's relevance label — turns scores into a sequence of hits and misses",
+    "Recall@k: relevant hits in the first k divided by all relevant — did the retriever find them",
+    "MRR: reciprocal of the rank of the first hit — how soon does the user see something useful",
+    "nDCG@k: discounted gain divided by the ideal discounted gain — position-aware and normalised to one"
+   ],
+   "time": "O(Q·D log D) to sort D documents for each of Q queries",
+   "space": "O(Q·D) for the score and label matrices",
+   "solution": "import numpy as np\n\ndef ranked_rel(scores, rel):\n    order = np.argsort(-scores, axis=1)\n    return np.take_along_axis(rel, order, axis=1)\n\ndef recall_at_k(scores, rel, k):\n    hit = ranked_rel(scores, rel) > 0\n    return np.mean(hit[:, :k].sum(1) / hit.sum(1))\n\ndef mrr(scores, rel):\n    hit = ranked_rel(scores, rel) > 0\n    return np.mean(1.0 / (hit.argmax(1) + 1))\n\ndef ndcg_at_k(scores, rel, k):\n    disc = 1 / np.log2(np.arange(2, k + 2))\n    dcg = (ranked_rel(scores, rel)[:, :k] * disc).sum(1)\n    ideal = (-np.sort(-rel, axis=1)[:, :k] * disc).sum(1)\n    return np.mean(dcg / ideal)",
+   "keyLines": [
+    9,
+    13,
+    18
+   ],
+   "dryRun": [
+    "Recall@k = |relevant ∩ top-k| / |relevant|",
+    "RR = 1 / rank of first relevant item;  MRR = mean of RR over queries",
+    "DCG@k = Σᵢ₌₁ᵏ relᵢ / log₂(i + 1)    (linear gain)",
+    "nDCG@k = DCG@k / IDCG@k",
+    "IDCG@k: DCG@k of the ideal ordering (labels sorted descending)",
+    "Each metric is averaged over queries"
+   ],
+   "description": "Evaluating search, recommender candidate generation and the retrieval step of RAG systems when relevance labels exist for each query.",
+   "examples": [
+    {
+     "input": "When is Recall@k the right metric for retrieval?",
+     "output": "For a first-stage retriever feeding a reranker or an LLM, since anything missing from the top k can never be recovered later. Order within the top k matters less.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does nDCG normalise by the ideal DCG?",
+     "output": "Raw DCG grows with the number of relevant items, so queries are not comparable. Dividing by the best achievable DCG puts every query on a zero-to-one scale.",
+     "explanation": ""
+    },
+    {
+     "input": "How do MRR and nDCG differ?",
+     "output": "MRR only looks at the first relevant item and treats relevance as binary. nDCG uses the whole ranked list and supports graded relevance with a smooth position discount.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Cut-off k (match the number of items a downstream stage or user actually sees)",
+    "Gain function (linear relevance here; 2^rel − 1 is also common)",
+    "Relevance grades (binary or graded)",
+    "Tie handling for equal scores"
+   ],
+   "edgeCases": [
+    "Queries with no relevant document divide by zero here; drop them or define them as zero",
+    "Gain choice matters: this code uses linear gain, which is what scikit-learn uses; other libraries use 2^rel − 1",
+    "Ties in scores are broken arbitrarily here by sort order; scikit-learn averages over ties by default",
+    "The nDCG code needs k no larger than the number of documents per query"
+   ],
+   "related": [
+    "precision-recall-f1",
+    "roc-auc",
+    "rag-dense-retrieval"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "reward-model-bradley-terry",
+   "title": "Reward Model (Bradley-Terry Loss)",
+   "platform": "NLP",
+   "url": "https://arxiv.org/abs/2203.02155",
+   "difficulty": "Medium",
+   "topics": [
+    "Alignment",
+    "Preference Learning",
+    "RLHF"
+   ],
+   "patterns": [
+    "Preference alignment and policy gradients"
+   ],
+   "summary": "Learn a scalar reward for text from human comparisons by training so that the preferred response scores higher than the rejected one, using a logistic loss on the score difference.",
+   "bruteForce": "When labels are absolute scores (use regression), when preferences are intransitive or inconsistent across annotators, or when the reward will be optimised so hard that the model exploits its errors.",
+   "intuition": "People find it easier to say which of two answers is better than to give an absolute score. The Bradley-Terry model turns that into probability: the chance that the chosen response wins is a sigmoid of the difference between the two rewards. Only the difference matters, so the learned rewards have no absolute scale or zero point, and the loss simply pushes the gap in the right direction with more force when the model currently has the pair the wrong way round.",
+   "whyItWorks": "Minimising the loss is maximum likelihood for the Bradley-Terry model, and the logistic loss is smooth and convex in a linear reward. The gradient on each pair is proportional to the probability the model assigns to the wrong ordering, so confident mistakes are corrected hardest while correctly ranked pairs fade out of the update.",
+   "approach": [
+    "Score the chosen and rejected response with the reward model — a scalar for each",
+    "Take the difference d = r_c − r_r — Bradley-Terry only depends on the gap",
+    "Apply −log σ(d), computed as log(1 + e^(−d)) — negative log-likelihood that the chosen response wins",
+    "Average over pairs — one training objective for the batch",
+    "Step the reward model's parameters down the gradient — larger corrections for pairs currently ranked wrongly"
+   ],
+   "time": "O(N·d) per pass for N pairs of d-dimensional features (a real reward model costs a transformer forward pass per response)",
+   "space": "O(N·d) for the pair features",
+   "solution": "import numpy as np\n\ndef bt_loss(w, Xc, Xr):\n    # Xc, Xr: features of chosen / rejected responses (N x d)\n    diff = Xc - Xr\n    d = diff @ w                       # r_chosen - r_rejected\n    loss = np.logaddexp(0.0, -d).mean()\n    p = np.exp(-np.logaddexp(0.0, d))  # sigma(-d): P(wrong order)\n    grad = -(diff.T @ p) / len(d)\n    return loss, grad",
+   "keyLines": [
+    6,
+    7,
+    8
+   ],
+   "dryRun": [
+    "P(chosen ≻ rejected) = σ(r_c − r_r) = e^{r_c} / (e^{r_c} + e^{r_r})",
+    "Linear reward: r(x) = w·x",
+    "d = r_c − r_r = w·(x_c − x_r)",
+    "L = −mean log σ(d) = mean log(1 + e^(−d))",
+    "∂L/∂w = −mean[ σ(−d) · (x_c − x_r) ]",
+    "Shift invariance: adding any constant to both rewards leaves L fixed"
+   ],
+   "description": "Building the reward model in RLHF from pairwise human or AI preference labels, or for any ranking problem trained on pairs.",
+   "examples": [
+    {
+     "input": "Why is the loss a function of the reward difference only?",
+     "output": "The Bradley-Terry probability that one item beats another is a sigmoid of the difference of their scores. Adding a constant to all scores cancels, so absolute reward values are unidentifiable.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does the loss equal log(1 + e^(−d))?",
+     "output": "−log σ(d) = log(1 + e^(−d)). Computing it with logaddexp avoids overflow and underflow for large positive or negative differences.",
+     "explanation": ""
+    },
+    {
+     "input": "How does the reward model connect to DPO?",
+     "output": "DPO uses the same Bradley-Terry likelihood but defines the reward as a scaled log-ratio of policy to reference, so the policy itself plays the role of the reward model.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Learning rate and optimiser",
+    "Number of epochs (reward models overfit quickly on small preference sets)",
+    "L2 regularisation or reward centring",
+    "Base model and score head (here a linear head on fixed features)"
+   ],
+   "edgeCases": [
+    "Only reward differences are meaningful; normalise or centre rewards before using them elsewhere",
+    "This code uses a linear reward on fixed features; a real model scores text with a transformer and a scalar head on its final token",
+    "Noisy or contradictory labels cap how well pairs can be ordered",
+    "Policies optimised against the reward can exploit its mistakes (reward hacking)"
+   ],
+   "related": [
+    "logistic-regression",
+    "dpo-loss",
+    "softmax-cross-entropy"
+   ],
+   "diagram": []
   },
   {
    "slug": "ridge-lasso-regularization",
@@ -5283,7 +7530,90 @@
     "linear-regression",
     "logistic-regression",
     "gradient-descent"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "rmsprop-adagrad",
+   "title": "Adagrad and RMSProp",
+   "platform": "Deep Learning",
+   "url": "https://d2l.ai/chapter_optimization/adagrad.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Optimizers",
+    "Adaptive Learning Rates",
+    "Gradient Descent"
+   ],
+   "patterns": [
+    "Gradient-based optimisation"
+   ],
+   "summary": "Give every parameter its own step size by dividing the gradient by the root of a running sum (Adagrad) or running average (RMSProp) of its squared past gradients.",
+   "bruteForce": "Adagrad on long non-convex training, where its steps decay too far. Neither is ideal when you need best final generalisation, where SGD with momentum often wins.",
+   "intuition": "Parameters with consistently large gradients get their step shrunk and rarely updated ones keep large steps, so one global learning rate no longer has to suit every direction. Adagrad sums squared gradients forever, so its steps only ever shrink and can stall. RMSProp swaps the sum for an exponential average, so old gradients are forgotten and the step size stays usable on long, non-convex runs.",
+   "whyItWorks": "Dividing by √v rescales each coordinate by its typical gradient size, acting like a diagonal preconditioner. Steep directions get smaller steps and flat directions larger ones, so progress is more even on badly scaled problems. The exponential average in RMSProp keeps the scale tied to recent gradients instead of the whole history.",
+   "approach": [
+    "Keep one accumulator per parameter, started at zero — stores gradient scale history",
+    "Adagrad adds g² each step; RMSProp sets v = αv + (1 − α)g² — sum versus forgetting average",
+    "Take the square root of the accumulator and add ε — per-parameter scale, ε avoids dividing by zero",
+    "Divide the gradient by that scale — normalises the step so each coordinate moves a comparable amount",
+    "Scale by the learning rate and subtract from the weights — the actual update"
+   ],
+   "time": "O(P) per step for P parameters",
+   "space": "O(P) for one extra accumulator",
+   "solution": "import numpy as np\n\ndef adagrad_step(w, g, G, lr=0.1, eps=1e-10):\n    G = G + g * g\n    return w - lr * g / (np.sqrt(G) + eps), G\n\ndef rmsprop_step(w, g, v, lr=0.01, alpha=0.99, eps=1e-8):\n    v = alpha * v + (1 - alpha) * g * g\n    return w - lr * g / (np.sqrt(v) + eps), v\n\ndef minimize(step, grad, w, n=50, **kw):\n    state = np.zeros_like(w)\n    for _ in range(n):\n        w, state = step(w, grad(w), state, **kw)\n    return w",
+   "keyLines": [
+    4,
+    8,
+    9
+   ],
+   "dryRun": [
+    "Adagrad:  Gₜ = Gₜ₋₁ + gₜ²",
+    "wₜ₊₁ = wₜ − η · gₜ / (√Gₜ + ε)",
+    "RMSProp:  vₜ = α vₜ₋₁ + (1 − α) gₜ²",
+    "wₜ₊₁ = wₜ − η · gₜ / (√vₜ + ε)",
+    "All operations are element-wise; ε is added outside the root"
+   ],
+   "description": "Adagrad for sparse features (embeddings, bag-of-words) with convex-ish problems. RMSProp for non-stationary or non-convex training such as RNNs, and as the base of Adam.",
+   "examples": [
+    {
+     "input": "Why does Adagrad's learning rate decay?",
+     "output": "Its accumulator is a sum of squares that only grows, so the effective step η/√G keeps shrinking and training can stall.",
+     "explanation": ""
+    },
+    {
+     "input": "How does RMSProp fix that?",
+     "output": "It uses an exponential moving average of squared gradients, so old values fade and the scale tracks recent gradients.",
+     "explanation": ""
+    },
+    {
+     "input": "How does RMSProp relate to Adam?",
+     "output": "Adam is RMSProp-style scaling plus momentum on the gradient and bias correction of both averages.",
+     "explanation": ""
+    },
+    {
+     "input": "Where does ε go and why does it matter?",
+     "output": "PyTorch adds it after the square root, √v + ε; putting it inside the root, √(v + ε), is a different update, which matters when v is tiny.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Learning rate η",
+    "Decay rate α for RMSProp (commonly 0.9 to 0.99)",
+    "ε for numerical stability",
+    "Initial accumulator value (Adagrad)"
+   ],
+   "edgeCases": [
+    "The first RMSProp step is large because v starts at zero and is biased low",
+    "ε placement (inside versus outside the root) differs between libraries",
+    "Adagrad needs a larger learning rate than RMSProp because the accumulator grows",
+    "No momentum, weight decay or centring here; PyTorch offers them as options"
+   ],
+   "related": [
+    "adam-optimizer",
+    "momentum-sgd",
+    "gradient-descent"
+   ],
+   "diagram": []
   },
   {
    "slug": "rnn-cell",
@@ -5357,7 +7687,8 @@
     "lstm-cell",
     "backpropagation",
     "activation-functions"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "roc-auc",
@@ -5431,7 +7762,8 @@
    "related": [
     "precision-recall-f1",
     "logistic-regression"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "rotary-position-embedding",
@@ -5505,7 +7837,87 @@
     "positional-encoding",
     "self-attention",
     "multi-head-attention"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "rouge-score",
+   "title": "ROUGE-N and ROUGE-L",
+   "platform": "NLP",
+   "url": "https://aclanthology.org/W04-1013/",
+   "difficulty": "Medium",
+   "topics": [
+    "Evaluation",
+    "Summarisation",
+    "Text Generation"
+   ],
+   "patterns": [
+    "Text evaluation and retrieval"
+   ],
+   "summary": "Score a generated summary against a reference by n-gram overlap (ROUGE-N) or by the longest common subsequence of words (ROUGE-L), reported as precision, recall and F1.",
+   "bruteForce": "Abstractive outputs that paraphrase the reference, where overlap understates quality, and tasks where factual correctness matters more than wording. It cannot detect hallucinations that reuse the reference's words.",
+   "intuition": "ROUGE asks how much of the reference the candidate recovered, which is recall, and the F1 version also asks how much of the candidate was actually in the reference. ROUGE-N counts exact n-gram matches and is strict about local phrasing; ROUGE-L only needs the shared words to appear in the same order, with gaps allowed, so it rewards keeping the reference's sequence without demanding adjacency.",
+   "whyItWorks": "Summaries should contain the reference's key content, and overlap of words and phrases is a cheap proxy for that. Clipped counts (the multiset intersection) stop repeated words from inflating the score. The longest common subsequence is found by dynamic programming over prefixes, because the best match of two prefixes extends the best match of shorter prefixes.",
+   "approach": [
+    "Tokenise candidate and reference the same way — scores are only comparable under one tokenisation",
+    "ROUGE-N: count n-grams in each and intersect the counts — clipped overlap, so repeats do not inflate the score",
+    "ROUGE-L: fill the LCS table over word prefixes — finds the longest in-order, gap-tolerant match",
+    "Divide the overlap by candidate length for precision and by reference length for recall — ROUGE is usually quoted as recall, F1 balances both",
+    "Combine into F1 — a single number that penalises both padding and omission"
+   ],
+   "time": "ROUGE-N O(m + n); ROUGE-L O(m·n) for candidate length m and reference length n",
+   "space": "O(m·n) for the LCS table (O(min(m, n)) with a rolling row)",
+   "solution": "import numpy as np\nfrom collections import Counter\n\ndef ngrams(t, n):\n    return Counter(zip(*[t[i:] for i in range(n)]))\n\ndef prf(ov, n_hyp, n_ref):\n    p = ov / n_hyp if n_hyp else 0.0\n    r = ov / n_ref if n_ref else 0.0\n    return p, r, 2 * p * r / (p + r) if p + r else 0.0\n\ndef rouge_n(hyp, ref, n=1):\n    h, r = ngrams(hyp, n), ngrams(ref, n)\n    ov = sum((h & r).values())\n    return prf(ov, sum(h.values()), sum(r.values()))\n\ndef lcs_len(a, b):\n    L = np.zeros((len(a) + 1, len(b) + 1), dtype=int)\n    for i, x in enumerate(a, 1):\n        for j, y in enumerate(b, 1):\n            L[i, j] = (L[i-1, j-1] + 1 if x == y\n                       else max(L[i-1, j], L[i, j-1]))\n    return L[-1, -1]\n\ndef rouge_l(hyp, ref):\n    return prf(lcs_len(hyp, ref), len(hyp), len(ref))",
+   "keyLines": [
+    14,
+    21,
+    22
+   ],
+   "dryRun": [
+    "overlap = Σ_g min(count_cand(g), count_ref(g))  over n-grams g",
+    "P = overlap / (n-grams in candidate)",
+    "R = overlap / (n-grams in reference)",
+    "F₁ = 2PR / (P + R)",
+    "LCS DP: L[i,j] = L[i−1,j−1] + 1 if aᵢ = bⱼ",
+    "        else max(L[i−1,j], L[i,j−1])",
+    "ROUGE-L: overlap = L[|cand|, |ref|], then P, R, F₁ as above"
+   ],
+   "description": "Comparing summarisation or headline-generation systems when a reference is available, using a standard package so tokenisation and stemming match published numbers.",
+   "examples": [
+    {
+     "input": "Why is ROUGE recall-oriented while BLEU is precision-oriented?",
+     "output": "Summarisation asks whether the key reference content was captured, which is recall. Translation asks whether what was produced is correct, which is precision, with a brevity penalty. Modern ROUGE reports all three.",
+     "explanation": ""
+    },
+    {
+     "input": "How does ROUGE-L differ from ROUGE-2?",
+     "output": "ROUGE-2 needs adjacent word pairs to match exactly. ROUGE-L uses the longest common subsequence, so matched words must be in the same order but may have other words between them.",
+     "explanation": ""
+    },
+    {
+     "input": "How is the longest common subsequence computed?",
+     "output": "Dynamic programming over prefixes: if the last words match, extend the diagonal cell by one; otherwise take the larger of dropping the last word of either sequence.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "N-gram order N (ROUGE-1 and ROUGE-2 are most common)",
+    "Variant (ROUGE-N, ROUGE-L sentence level, ROUGE-Lsum summary level)",
+    "Stemming and stop-word handling",
+    "Which statistic to report: precision, recall or F1"
+   ],
+   "edgeCases": [
+    "Tokenisation and stemming change the score; use one package for all systems",
+    "This ROUGE-L is sentence level; the summary-level ROUGE-Lsum splits sentences and unions LCS matches",
+    "This code takes one reference and tokens already split, lower-cased and unstemmed",
+    "High overlap does not imply factual correctness or fluency"
+   ],
+   "related": [
+    "bleu-score",
+    "precision-recall-f1",
+    "tf-idf"
+   ],
+   "diagram": []
   },
   {
    "slug": "self-attention",
@@ -5581,7 +7993,94 @@
     "softmax-cross-entropy",
     "mlp-forward-pass",
     "backpropagation"
+   ],
+   "diagram": [
+    "x ─► Wq ─► Q ─┐",
+    "x ─► Wk ─► K ─┴─► A = softmax(QKᵀ/√d)",
+    "x ─► Wv ─► V ─────────► out = A · V",
+    "",
+    "A[i, j] = how much position i reads from j"
    ]
+  },
+  {
+   "slug": "silhouette-clustering-metrics",
+   "title": "Silhouette, ARI and NMI",
+   "platform": "Classical ML",
+   "url": "https://scikit-learn.org/stable/modules/clustering.html#clustering-performance-evaluation",
+   "difficulty": "Medium",
+   "topics": [
+    "Clustering",
+    "Evaluation",
+    "Unsupervised",
+    "Information Theory"
+   ],
+   "patterns": [
+    "Distance and clustering"
+   ],
+   "summary": "Three ways to score a clustering. The silhouette needs only the data and the labels and measures cohesion against separation; the adjusted Rand index and normalised mutual information compare two labelings, for example clusters against ground truth.",
+   "bruteForce": "Skip silhouette for non-convex clusters such as rings, where it favours convex shapes; NMI is biased toward many clusters unless adjusted, and none of these show whether clusters are useful for your task.",
+   "intuition": "Cluster labels are arbitrary names, so a good score must not depend on which number is called which. The silhouette asks whether each point is closer to its own cluster than to the next one; ARI and NMI ask whether two labelings group the same pairs together, after subtracting what random labelings would score by chance (ARI) or normalising the shared information (NMI).",
+   "whyItWorks": "Both external scores are computed from the contingency table of label pairs, which is invariant to renaming clusters. ARI corrects the pair counting for chance agreement so random labelings score near zero, and NMI divides the mutual information by the entropies so the scale is fixed between 0 and 1.",
+   "approach": [
+    "Silhouette: take all pairwise distances — every score is built from them",
+    "For each point average the distance to its own cluster and to each other cluster — cohesion a and separation b",
+    "Combine as (b − a) / max(a, b) and average — near 1 well separated, near 0 on a boundary, negative misassigned",
+    "ARI and NMI: build the contingency table of the two labelings — the only thing both scores depend on",
+    "ARI counts agreeing pairs and subtracts the chance expectation — chance labelings score about zero",
+    "NMI computes mutual information and divides by the average entropy — a bounded, label-name-free score"
+   ],
+   "time": "O(n²·d) for the silhouette, O(n + kᵤ·kᵥ) for ARI and NMI once the table is built",
+   "space": "O(n²) for the distance matrix, O(kᵤ·kᵥ) for the contingency table",
+   "solution": "import numpy as np\n\ndef silhouette(X, y):\n    D = np.sqrt(((X[:, None] - X[None]) ** 2).sum(-1))\n    s = []\n    for i in range(len(X)):\n        own = y == y[i]\n        if own.sum() == 1:\n            s.append(0.0)\n            continue\n        a = D[i, own].sum() / (own.sum() - 1)\n        b = min(D[i, y == c].mean() for c in set(y) - {y[i]})\n        s.append((b - a) / max(a, b))\n    return np.mean(s)\n\ndef table(u, v):\n    iu = np.unique(u, return_inverse=True)[1]\n    iv = np.unique(v, return_inverse=True)[1]\n    C = np.zeros((iu.max() + 1, iv.max() + 1))\n    np.add.at(C, (iu, iv), 1)\n    return C\n\ndef ari(u, v):\n    C, n = table(u, v), len(u)\n    c2 = lambda x: (x * (x - 1) / 2).sum()\n    s, sa, sb = c2(C), c2(C.sum(1)), c2(C.sum(0))\n    e = sa * sb / c2(np.array(n))\n    return (s - e) / ((sa + sb) / 2 - e)\n\ndef nmi(u, v):\n    P = table(u, v) / len(u)\n    pa, pb = P.sum(1), P.sum(0)\n    nz = P > 0\n    mi = (P[nz] * np.log(P[nz] / np.outer(pa, pb)[nz])).sum()\n    h = lambda p: -(p[p > 0] * np.log(p[p > 0])).sum()\n    return mi / ((h(pa) + h(pb)) / 2)",
+   "keyLines": [
+    12,
+    28,
+    34
+   ],
+   "dryRun": [
+    "aᵢ = mean distance to the other points in i's cluster",
+    "bᵢ = smallest mean distance from i to another cluster",
+    "sᵢ = (bᵢ − aᵢ) / max(aᵢ, bᵢ),  score = mean of sᵢ",
+    "Contingency nᵢⱼ = #points in cluster i of U and j of V",
+    "ARI = (Σ C(nᵢⱼ,2) − E) / (½[ΣC(aᵢ,2) + ΣC(bⱼ,2)] − E)",
+    "E = ΣC(aᵢ,2) · ΣC(bⱼ,2) / C(n,2)",
+    "MI = Σ pᵢⱼ log(pᵢⱼ / (pᵢ pⱼ)),  NMI = MI / ((H(U) + H(V)) / 2)"
+   ],
+   "description": "Silhouette to compare values of k or algorithms without labels, ARI and NMI when reference classes exist, and benchmarking clustering methods on labelled datasets.",
+   "examples": [
+    {
+     "input": "How do you read a silhouette value?",
+     "output": "Near +1 the point is far from other clusters and close to its own, near 0 it sits between two clusters, and negative values suggest it was assigned to the wrong cluster.",
+     "explanation": ""
+    },
+    {
+     "input": "Why use ARI instead of the plain Rand index?",
+     "output": "The Rand index is high even for random labelings when there are many clusters; ARI subtracts the expected chance agreement so random labelings score near zero.",
+     "explanation": ""
+    },
+    {
+     "input": "How is NMI different from accuracy for clustering?",
+     "output": "NMI does not need cluster ids to match class ids; it measures shared information between the two partitions, so permuting cluster names leaves it unchanged.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Distance metric for the silhouette — Euclidean by default, must match the clustering",
+    "NMI normaliser — arithmetic, geometric, min or max of the two entropies",
+    "Sampling — compute the silhouette on a subsample for large n"
+   ],
+   "edgeCases": [
+    "Silhouette is undefined for a single cluster and this code assumes at least two",
+    "Silhouette prefers convex, evenly dense clusters and can rank a poor k-means above a correct density clustering",
+    "NMI (unadjusted) tends to rise as the number of clusters grows",
+    "ARI and NMI assume the ground-truth classes are the right notion of cluster"
+   ],
+   "related": [
+    "k-means",
+    "dbscan",
+    "entropy-kl-divergence"
+   ],
+   "diagram": []
   },
   {
    "slug": "softmax-cross-entropy",
@@ -5654,7 +8153,8 @@
    "related": [
     "logistic-regression",
     "gradient-descent"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "stratified-split",
@@ -5735,7 +8235,8 @@
     "cross-validation",
     "class-imbalance",
     "data-leakage"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "svd",
@@ -5816,7 +8317,8 @@
     "pca",
     "linear-regression",
     "ridge-lasso-regularization"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "svm",
@@ -5896,7 +8398,8 @@
     "logistic-regression",
     "gradient-descent",
     "softmax-cross-entropy"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "tf-idf",
@@ -5973,7 +8476,8 @@
    "related": [
     "naive-bayes",
     "word2vec-skipgram"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "top-k-top-p-sampling",
@@ -6048,7 +8552,8 @@
     "beam-search",
     "softmax-cross-entropy",
     "entropy-kl-divergence"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "transfer-learning-fine-tuning",
@@ -6124,7 +8629,8 @@
     "backpropagation",
     "mlp-forward-pass",
     "early-stopping"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "transformer-block",
@@ -6199,6 +8705,20 @@
     "multi-head-attention",
     "layer-normalization",
     "residual-connections"
+   ],
+   "diagram": [
+    "x ────────────┐",
+    "│             │",
+    "LayerNorm     │",
+    "Self-attention│",
+    "│             │",
+    "(+) ◄─────────┘  = x1",
+    "x1 ───────────┐",
+    "│             │",
+    "LayerNorm     │",
+    "MLP (GELU)    │",
+    "│             │",
+    "(+) ◄─────────┘  = out"
    ]
   },
   {
@@ -6273,7 +8793,8 @@
     "convolution-2d",
     "autoencoder",
     "receptive-field"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "vae-reparameterization",
@@ -6353,6 +8874,15 @@
     "autoencoder",
     "entropy-kl-divergence",
     "backpropagation"
+   ],
+   "diagram": [
+    "x ─► encoder ─► μ, log σ²",
+    "                  │",
+    "         z = μ + σ ⊙ ε,  ε ~ N(0, I)",
+    "                  │",
+    "z ─► decoder ─► x̂",
+    "",
+    "loss = ‖x − x̂‖² + KL(N(μ,σ²) ‖ N(0,I))"
    ]
   },
   {
@@ -6435,7 +8965,90 @@
     "q-learning",
     "bayes-theorem",
     "gradient-descent"
-   ]
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "vision-transformer-patch-embed",
+   "title": "ViT Patch Embedding and CLS Token",
+   "platform": "Vision",
+   "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/vision-transformer.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Vision Transformers",
+    "Patch Embedding",
+    "Positional Embedding"
+   ],
+   "patterns": [
+    "Convolution and vision"
+   ],
+   "summary": "Cut an image into non-overlapping patches, project each flattened patch to a token, prepend a learnable CLS token and add position embeddings.",
+   "bruteForce": "Small datasets where a convolutional prior helps more, or tasks needing fine detail at pixel level, where large patches lose information before attention starts.",
+   "intuition": "A transformer expects a sequence of vectors, so ViT turns the image into one by treating every P×P patch as a \"word\". The patch projection is exactly a convolution whose stride equals its kernel size. Because attention ignores order, learned position embeddings tell the model where each patch came from, and the CLS token is an extra slot that can gather a global summary for classification.",
+   "whyItWorks": "Non-overlapping patches keep local pixel structure inside each token while shrinking the sequence from H·W to HW/P², which makes global self-attention affordable. A shared linear projection is a convolution with kernel and stride P, so the same filters are applied at every location. Position embeddings put back the order that attention itself discards.",
+   "approach": [
+    "Split the image into a grid of P×P patches — turns H×W pixels into N = HW/P² tokens",
+    "Flatten each patch to a vector of length C·P² — makes every patch a plain feature vector",
+    "Multiply by a shared matrix W and add a bias — linear projection to model width D",
+    "Prepend a learnable CLS vector — an extra token whose final state represents the whole image",
+    "Add a learned position embedding to every token — restores the spatial order attention cannot see"
+   ],
+   "time": "O(N·C·P²·D) for the projection, N = HW/P²",
+   "space": "O((N + 1)·D) for the token sequence plus C·P²·D weights",
+   "solution": "import numpy as np\n\ndef patchify(img, P):\n    C, H, W = img.shape\n    x = img.reshape(C, H // P, P, W // P, P)\n    x = x.transpose(1, 3, 0, 2, 4)      # (gh, gw, C, P, P)\n    return x.reshape(-1, C * P * P)     # (N, C*P*P)\n\ndef patch_embed(img, P, W, b, cls, pos):\n    tokens = patchify(img, P) @ W + b   # (N, D)\n    return np.vstack([cls, tokens]) + pos",
+   "keyLines": [
+    6,
+    10,
+    11
+   ],
+   "dryRun": [
+    "N = (H/P)(W/P);  patch xₚ ∈ ℝ^(C·P²)  (flattened C, P, P)",
+    "zᵢ = xₚ⁽ⁱ⁾ W + b,   W ∈ ℝ^(C·P² × D)",
+    "z₀ = [x_cls; z₁; …; z_N] + E_pos,   E_pos ∈ ℝ^((N+1) × D)",
+    "Equivalent: Conv2d(C, D, kernel = P, stride = P)",
+    "Classification head reads the final CLS token: ŷ = softmax(W_h z_L⁰)"
+   ],
+   "description": "The input stage of vision transformers (ViT, DeiT, CLIP image encoders) and any model that turns a grid of pixels or a spectrogram into a token sequence.",
+   "examples": [
+    {
+     "input": "Why is patch embedding the same as a strided convolution?",
+     "output": "Each output token is a dot product of one P×P×C block with the same filters, with the stride P making blocks non-overlapping, which is exactly what flatten-and-project does.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the CLS token do?",
+     "output": "It is a learned extra token that attends to all patches through the layers, so its final state is used as the image representation for the classifier.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does ViT need position embeddings?",
+     "output": "Self-attention is permutation-equivariant, so without them the model would not know which patch is where.",
+     "explanation": ""
+    },
+    {
+     "input": "What happens to compute when the patch size is halved?",
+     "output": "The token count N grows 4×, and attention cost grows roughly 16×.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Patch size P",
+    "Embedding width D",
+    "Position embedding type (learned, sinusoidal, 2D-aware)",
+    "Use of a CLS token versus average pooling"
+   ],
+   "edgeCases": [
+    "H and W must be divisible by P here; real code pads or resizes",
+    "Flatten order must match the weights you load (C, P, P versus P, P, C)",
+    "Learned position embeddings are tied to one grid size; other resolutions need interpolation",
+    "This sketch has no dropout, layer norm or transformer blocks after the embedding"
+   ],
+   "related": [
+    "self-attention",
+    "positional-encoding",
+    "convolution-2d"
+   ],
+   "diagram": []
   },
   {
    "slug": "weight-initialization",
@@ -6509,7 +9122,8 @@
     "activation-functions",
     "backpropagation",
     "batch-normalization"
-   ]
+   ],
+   "diagram": []
   },
   {
    "slug": "word2vec-skipgram",
@@ -6588,7 +9202,8 @@
    "related": [
     "softmax-cross-entropy",
     "tf-idf"
-   ]
+   ],
+   "diagram": []
   }
  ],
  "sheets": [
@@ -6643,114 +9258,154 @@
      "order": 9
     },
     {
-     "slug": "batch-normalization",
-     "section": "Normalisation and regularisation",
+     "slug": "rmsprop-adagrad",
+     "section": "Training setup",
      "order": 10
     },
     {
-     "slug": "layer-normalization",
+     "slug": "batch-normalization",
      "section": "Normalisation and regularisation",
      "order": 11
     },
     {
-     "slug": "dropout",
+     "slug": "layer-normalization",
      "section": "Normalisation and regularisation",
      "order": 12
     },
     {
-     "slug": "early-stopping",
+     "slug": "dropout",
      "section": "Normalisation and regularisation",
      "order": 13
     },
     {
-     "slug": "residual-connections",
+     "slug": "early-stopping",
      "section": "Normalisation and regularisation",
      "order": 14
     },
     {
-     "slug": "data-augmentation",
+     "slug": "residual-connections",
      "section": "Normalisation and regularisation",
      "order": 15
     },
     {
-     "slug": "label-smoothing",
+     "slug": "data-augmentation",
      "section": "Normalisation and regularisation",
      "order": 16
     },
     {
-     "slug": "focal-loss",
-     "section": "Loss design and compression",
+     "slug": "label-smoothing",
+     "section": "Normalisation and regularisation",
      "order": 17
     },
     {
-     "slug": "knowledge-distillation",
+     "slug": "focal-loss",
      "section": "Loss design and compression",
      "order": 18
     },
     {
+     "slug": "knowledge-distillation",
+     "section": "Loss design and compression",
+     "order": 19
+    },
+    {
+     "slug": "clip-contrastive-loss",
+     "section": "Loss design and compression",
+     "order": 20
+    },
+    {
      "slug": "transfer-learning-fine-tuning",
      "section": "Transfer and adaptation",
-     "order": 19
+     "order": 21
     },
     {
      "slug": "lora-low-rank-adaptation",
      "section": "Transfer and adaptation",
-     "order": 20
+     "order": 22
     },
     {
      "slug": "rnn-cell",
      "section": "Sequence models",
-     "order": 21
+     "order": 23
     },
     {
      "slug": "lstm-cell",
      "section": "Sequence models",
-     "order": 22
+     "order": 24
+    },
+    {
+     "slug": "gru-cell",
+     "section": "Sequence models",
+     "order": 25
+    },
+    {
+     "slug": "bidirectional-rnn",
+     "section": "Sequence models",
+     "order": 26
     },
     {
      "slug": "convolution-2d",
      "section": "Architectures",
-     "order": 23
+     "order": 27
     },
     {
      "slug": "max-pooling",
      "section": "Architectures",
-     "order": 24
+     "order": 28
     },
     {
      "slug": "self-attention",
      "section": "Architectures",
-     "order": 25
+     "order": 29
     },
     {
      "slug": "multi-head-attention",
      "section": "Architectures",
-     "order": 26
+     "order": 30
     },
     {
      "slug": "positional-encoding",
      "section": "Architectures",
-     "order": 27
+     "order": 31
+    },
+    {
+     "slug": "resnet-basic-block",
+     "section": "Architectures",
+     "order": 32
+    },
+    {
+     "slug": "vision-transformer-patch-embed",
+     "section": "Architectures",
+     "order": 33
     },
     {
      "slug": "autoencoder",
      "section": "Generative models",
-     "order": 28
+     "order": 34
     },
     {
      "slug": "vae-reparameterization",
      "section": "Generative models",
-     "order": 29
+     "order": 35
     },
     {
      "slug": "gan-minimax-loss",
      "section": "Generative models",
-     "order": 30
+     "order": 36
     },
     {
      "slug": "diffusion-forward-process",
      "section": "Generative models",
-     "order": 31
+     "order": 37
+    },
+    {
+     "slug": "gnn-message-passing",
+     "section": "Graph neural networks",
+     "order": 38
+    },
+    {
+     "slug": "graph-attention-layer",
+     "section": "Graph neural networks",
+     "order": 39
     }
    ]
   },
@@ -6795,154 +9450,204 @@
      "order": 7
     },
     {
-     "slug": "logistic-regression",
-     "section": "Classification",
+     "slug": "gaussian-process-regression",
+     "section": "Regression",
      "order": 8
     },
     {
-     "slug": "naive-bayes",
-     "section": "Classification",
+     "slug": "elastic-net-coordinate-descent",
+     "section": "Regression",
      "order": 9
     },
     {
-     "slug": "knn",
+     "slug": "logistic-regression",
      "section": "Classification",
      "order": 10
     },
     {
-     "slug": "svm",
+     "slug": "naive-bayes",
      "section": "Classification",
      "order": 11
     },
     {
-     "slug": "decision-tree",
+     "slug": "knn",
      "section": "Classification",
      "order": 12
     },
     {
-     "slug": "linear-discriminant-analysis",
+     "slug": "svm",
      "section": "Classification",
      "order": 13
     },
     {
-     "slug": "kernel-trick-rbf",
+     "slug": "decision-tree",
      "section": "Classification",
      "order": 14
     },
     {
-     "slug": "random-forest",
-     "section": "Ensembles",
+     "slug": "linear-discriminant-analysis",
+     "section": "Classification",
      "order": 15
     },
     {
-     "slug": "gradient-boosting",
-     "section": "Ensembles",
+     "slug": "kernel-trick-rbf",
+     "section": "Classification",
      "order": 16
     },
     {
-     "slug": "adaboost",
+     "slug": "random-forest",
      "section": "Ensembles",
      "order": 17
     },
     {
+     "slug": "gradient-boosting",
+     "section": "Ensembles",
+     "order": 18
+    },
+    {
+     "slug": "adaboost",
+     "section": "Ensembles",
+     "order": 19
+    },
+    {
      "slug": "hidden-markov-forward",
      "section": "Sequences and recommenders",
-     "order": 18
+     "order": 20
     },
     {
      "slug": "matrix-factorization-recommender",
      "section": "Sequences and recommenders",
-     "order": 19
+     "order": 21
     },
     {
      "slug": "k-means",
      "section": "Unsupervised",
-     "order": 20
+     "order": 22
     },
     {
      "slug": "gaussian-mixture-em",
      "section": "Unsupervised",
-     "order": 21
+     "order": 23
     },
     {
      "slug": "dbscan",
      "section": "Unsupervised",
-     "order": 22
+     "order": 24
     },
     {
      "slug": "pca",
      "section": "Unsupervised",
-     "order": 23
+     "order": 25
+    },
+    {
+     "slug": "hierarchical-clustering",
+     "section": "Unsupervised",
+     "order": 26
+    },
+    {
+     "slug": "local-outlier-factor",
+     "section": "Unsupervised",
+     "order": 27
+    },
+    {
+     "slug": "nmf-multiplicative-updates",
+     "section": "Unsupervised",
+     "order": 28
     },
     {
      "slug": "feature-scaling",
      "section": "Preprocessing and linear algebra",
-     "order": 24
+     "order": 29
     },
     {
      "slug": "svd",
      "section": "Preprocessing and linear algebra",
-     "order": 25
+     "order": 30
     },
     {
      "slug": "bias-variance-tradeoff",
      "section": "Evaluation and generalisation",
-     "order": 26
+     "order": 31
     },
     {
      "slug": "cross-validation",
      "section": "Evaluation and generalisation",
-     "order": 27
+     "order": 32
     },
     {
      "slug": "precision-recall-f1",
      "section": "Evaluation and generalisation",
-     "order": 28
+     "order": 33
     },
     {
      "slug": "roc-auc",
      "section": "Evaluation and generalisation",
-     "order": 29
+     "order": 34
     },
     {
      "slug": "class-imbalance",
      "section": "Evaluation and generalisation",
-     "order": 30
+     "order": 35
     },
     {
      "slug": "probability-calibration",
      "section": "Evaluation and generalisation",
-     "order": 31
+     "order": 36
     },
     {
      "slug": "hyperparameter-search",
      "section": "Evaluation and generalisation",
-     "order": 32
+     "order": 37
     },
     {
      "slug": "data-leakage",
      "section": "Evaluation and generalisation",
-     "order": 33
+     "order": 38
     },
     {
      "slug": "multiclass-metrics",
      "section": "Evaluation and generalisation",
-     "order": 34
+     "order": 39
     },
     {
      "slug": "stratified-split",
      "section": "Evaluation and generalisation",
-     "order": 35
+     "order": 40
     },
     {
      "slug": "ab-test-significance",
      "section": "Evaluation and generalisation",
-     "order": 36
+     "order": 41
+    },
+    {
+     "slug": "silhouette-clustering-metrics",
+     "section": "Evaluation and generalisation",
+     "order": 42
+    },
+    {
+     "slug": "isotonic-regression-pava",
+     "section": "Evaluation and generalisation",
+     "order": 43
     },
     {
      "slug": "concept-drift",
      "section": "Production monitoring",
-     "order": 37
+     "order": 44
+    },
+    {
+     "slug": "exponential-smoothing",
+     "section": "Time series",
+     "order": 45
+    },
+    {
+     "slug": "autocorrelation-acf-pacf",
+     "section": "Time series",
+     "order": 46
+    },
+    {
+     "slug": "arima-model",
+     "section": "Time series",
+     "order": 47
     }
    ]
   },
@@ -7022,54 +9727,124 @@
      "order": 14
     },
     {
-     "slug": "convolution-2d",
-     "section": "Vision",
+     "slug": "bahdanau-additive-attention",
+     "section": "NLP",
      "order": 15
     },
     {
-     "slug": "max-pooling",
-     "section": "Vision",
+     "slug": "cross-attention-encoder-decoder",
+     "section": "NLP",
      "order": 16
     },
     {
-     "slug": "iou-and-nms",
-     "section": "Vision",
+     "slug": "bert-masked-lm",
+     "section": "NLP",
      "order": 17
     },
     {
-     "slug": "receptive-field",
+     "slug": "convolution-2d",
      "section": "Vision",
      "order": 18
     },
     {
-     "slug": "depthwise-separable-convolution",
+     "slug": "max-pooling",
      "section": "Vision",
      "order": 19
     },
     {
-     "slug": "transposed-convolution",
+     "slug": "iou-and-nms",
      "section": "Vision",
      "order": 20
     },
     {
-     "slug": "data-augmentation",
+     "slug": "receptive-field",
      "section": "Vision",
      "order": 21
     },
     {
+     "slug": "depthwise-separable-convolution",
+     "section": "Vision",
+     "order": 22
+    },
+    {
+     "slug": "transposed-convolution",
+     "section": "Vision",
+     "order": 23
+    },
+    {
+     "slug": "data-augmentation",
+     "section": "Vision",
+     "order": 24
+    },
+    {
+     "slug": "resnet-basic-block",
+     "section": "Vision",
+     "order": 25
+    },
+    {
+     "slug": "vision-transformer-patch-embed",
+     "section": "Vision",
+     "order": 26
+    },
+    {
+     "slug": "mean-average-precision",
+     "section": "Vision",
+     "order": 27
+    },
+    {
      "slug": "q-learning",
      "section": "Reinforcement learning",
-     "order": 22
+     "order": 28
     },
     {
      "slug": "reinforce-policy-gradient",
      "section": "Reinforcement learning",
-     "order": 23
+     "order": 29
     },
     {
      "slug": "value-iteration",
      "section": "Reinforcement learning",
-     "order": 24
+     "order": 30
+    },
+    {
+     "slug": "ppo-clipped-objective",
+     "section": "Reinforcement learning",
+     "order": 31
+    },
+    {
+     "slug": "gae-advantage",
+     "section": "Reinforcement learning",
+     "order": 32
+    },
+    {
+     "slug": "reward-model-bradley-terry",
+     "section": "LLM alignment",
+     "order": 33
+    },
+    {
+     "slug": "dpo-loss",
+     "section": "LLM alignment",
+     "order": 34
+    },
+    {
+     "slug": "bleu-score",
+     "section": "Text evaluation and retrieval",
+     "order": 35
+    },
+    {
+     "slug": "rouge-score",
+     "section": "Text evaluation and retrieval",
+     "order": 36
+    },
+    {
+     "slug": "retrieval-metrics-recall-at-k",
+     "section": "Text evaluation and retrieval",
+     "order": 37
+    },
+    {
+     "slug": "rag-dense-retrieval",
+     "section": "Text evaluation and retrieval",
+     "order": 38
     }
    ]
   }
@@ -7096,7 +9871,8 @@
     "logistic-regression",
     "svm",
     "ridge-lasso-regularization",
-    "kernel-trick-rbf"
+    "kernel-trick-rbf",
+    "elastic-net-coordinate-descent"
    ],
    "aliases": [
     "Linear models"
@@ -7124,7 +9900,8 @@
     "early-stopping",
     "bias-variance-tradeoff",
     "data-augmentation",
-    "label-smoothing"
+    "label-smoothing",
+    "elastic-net-coordinate-descent"
    ],
    "aliases": [
     "Regularisation"
@@ -7153,7 +9930,8 @@
     "backpropagation",
     "weight-initialization",
     "gradient-clipping",
-    "momentum-sgd"
+    "momentum-sgd",
+    "rmsprop-adagrad"
    ],
    "aliases": [
     "Gradient-based optimisation"
@@ -7208,7 +9986,8 @@
     "gaussian-mixture-em",
     "linear-discriminant-analysis",
     "hidden-markov-forward",
-    "metropolis-hastings"
+    "metropolis-hastings",
+    "gaussian-process-regression"
    ],
    "aliases": [
     "Probabilistic models"
@@ -7233,7 +10012,10 @@
    "problems": [
     "knn",
     "k-means",
-    "dbscan"
+    "dbscan",
+    "hierarchical-clustering",
+    "local-outlier-factor",
+    "silhouette-clustering-metrics"
    ],
    "aliases": [
     "Distance and clustering"
@@ -7260,7 +10042,8 @@
     "roc-auc",
     "probability-calibration",
     "class-imbalance",
-    "multiclass-metrics"
+    "multiclass-metrics",
+    "isotonic-regression-pava"
    ],
    "aliases": [
     "Classification metrics"
@@ -7345,7 +10128,11 @@
     "transformer-block",
     "rotary-position-embedding",
     "kv-cache",
-    "hidden-markov-forward"
+    "hidden-markov-forward",
+    "bahdanau-additive-attention",
+    "cross-attention-encoder-decoder",
+    "gru-cell",
+    "bidirectional-rnn"
    ],
    "aliases": [
     "Attention and sequences"
@@ -7371,7 +10158,8 @@
     "pca",
     "svd",
     "autoencoder",
-    "matrix-factorization-recommender"
+    "matrix-factorization-recommender",
+    "nmf-multiplicative-updates"
    ],
    "aliases": [
     "Dimensionality reduction"
@@ -7399,7 +10187,8 @@
     "maximum-likelihood",
     "vae-reparameterization",
     "focal-loss",
-    "label-smoothing"
+    "label-smoothing",
+    "clip-contrastive-loss"
    ],
    "aliases": [
     "Information-theoretic losses"
@@ -7453,7 +10242,10 @@
     "receptive-field",
     "depthwise-separable-convolution",
     "transposed-convolution",
-    "data-augmentation"
+    "data-augmentation",
+    "resnet-basic-block",
+    "vision-transformer-patch-embed",
+    "mean-average-precision"
    ],
    "aliases": [
     "Convolution and vision"
@@ -7482,7 +10274,8 @@
     "beam-search",
     "top-k-top-p-sampling",
     "perplexity",
-    "cosine-similarity-embeddings"
+    "cosine-similarity-embeddings",
+    "bert-masked-lm"
    ],
    "aliases": [
     "Text processing"
@@ -7507,7 +10300,9 @@
    "problems": [
     "q-learning",
     "reinforce-policy-gradient",
-    "value-iteration"
+    "value-iteration",
+    "ppo-clipped-objective",
+    "gae-advantage"
    ],
    "aliases": [
     "Reinforcement learning"
@@ -7562,6 +10357,107 @@
    ],
    "aliases": [
     "Transfer and adaptation"
+   ]
+  },
+  {
+   "id": "time-series",
+   "name": "Time series",
+   "summary": "Forecast ordered data by smoothing the past, measuring how it correlates with itself, and modelling it autoregressively.",
+   "whenToUse": [
+    "Observations are ordered in time and neighbours are related.",
+    "You need a quick baseline forecast before anything complex.",
+    "You want to know how many past steps still carry information."
+   ],
+   "keyIdea": "Time series break the independence assumption, so we model the memory directly. Exponential smoothing keeps a decaying average, autocorrelation measures how far back the memory reaches, and ARIMA turns that memory into a regression on past values after differencing away trends.",
+   "template": "import numpy as np\n\ndef ses(x, alpha):\n    level, out = x[0], []\n    for v in x:\n        out.append(level)             # forecast before seeing v\n        level = alpha * v + (1 - alpha) * level\n    return np.array(out), level\n\ndef acf(x, k):\n    x = x - x.mean()\n    return (x[:-k] * x[k:]).sum() / (x * x).sum()",
+   "complexity": "O(n) per pass for smoothing and per lag for autocorrelation.",
+   "pitfalls": [
+    "Shuffled train and test splits leak the future; split by time.",
+    "Trends and seasonality must be removed or modelled before assuming stationarity."
+   ],
+   "problems": [
+    "exponential-smoothing",
+    "autocorrelation-acf-pacf",
+    "arima-model"
+   ],
+   "aliases": [
+    "Time series"
+   ]
+  },
+  {
+   "id": "graph-neural-networks",
+   "name": "Graph neural networks",
+   "summary": "Learn on graphs by letting every node repeatedly combine its neighbours' features.",
+   "whenToUse": [
+    "Data is a graph such as molecules, social networks or citations.",
+    "A node's label depends on its neighbourhood.",
+    "The number of neighbours varies from node to node."
+   ],
+   "keyIdea": "One layer aggregates each node's neighbours (a normalised sum, or an attention-weighted sum) and then transforms the result with shared weights. Stacking k layers lets information travel k hops, but too many layers blur all nodes together.",
+   "template": "import numpy as np\n\ndef gcn_layer(A, X, W):\n    A = A + np.eye(len(A))               # add self-loops\n    d = A.sum(1) ** -0.5\n    A_hat = d[:, None] * A * d[None]       # D^-1/2 A D^-1/2\n    return np.maximum(A_hat @ X @ W, 0)    # aggregate, then transform",
+   "complexity": "O(edges·d) with a sparse adjacency; the dense version here is O(n²·d).",
+   "pitfalls": [
+    "Deep stacks over-smooth: node features become nearly identical.",
+    "A dense adjacency does not scale to large graphs."
+   ],
+   "problems": [
+    "gnn-message-passing",
+    "graph-attention-layer"
+   ],
+   "aliases": [
+    "Graph neural networks"
+   ]
+  },
+  {
+   "id": "preference-alignment",
+   "name": "Preference alignment and policy gradients",
+   "summary": "Steer a model with comparisons or rewards: learn a reward from preferences, or optimise the policy directly.",
+   "whenToUse": [
+    "Quality is easier to compare than to label.",
+    "You fine-tune a language model toward human preferences.",
+    "An agent must improve a stochastic policy from rewards."
+   ],
+   "keyIdea": "A pairwise Bradley-Terry loss turns preferences into a reward score. DPO folds that reward into the policy's own log-ratios, so no separate reward model or sampling loop is needed. PPO and advantage estimation do the reinforcement-learning version, clipping how far each update can move the policy.",
+   "template": "import numpy as np\n\ndef log_sigmoid(z):\n    return -np.logaddexp(0, -z)\n\ndef bradley_terry_loss(r_chosen, r_rejected):\n    return -log_sigmoid(r_chosen - r_rejected).mean()\n\ndef dpo_loss(pc, pr, rc, rr, beta=0.1):\n    margin = (pc - rc) - (pr - rr)      # vs reference\n    return -log_sigmoid(beta * margin).mean()",
+   "complexity": "O(batch) once log-probabilities are computed; the cost is in running the language model.",
+   "pitfalls": [
+    "Preference data is noisy and can encode annotator bias.",
+    "Pushing the policy far from the reference can hurt fluency."
+   ],
+   "problems": [
+    "dpo-loss",
+    "reward-model-bradley-terry",
+    "ppo-clipped-objective",
+    "gae-advantage"
+   ],
+   "aliases": [
+    "Preference alignment and policy gradients"
+   ]
+  },
+  {
+   "id": "text-evaluation-retrieval",
+   "name": "Text evaluation and retrieval",
+   "summary": "Score generated text against references and measure how well search puts relevant documents first.",
+   "whenToUse": [
+    "You compare machine translation or summaries with references.",
+    "You build search or retrieval-augmented generation.",
+    "You need to rank documents and report a single quality number."
+   ],
+   "keyIdea": "Overlap metrics such as BLEU and ROUGE count shared n-grams, so they are cheap but blind to meaning. Retrieval metrics judge the ranked list: recall at k asks whether the answer was found, MRR rewards finding it early, and nDCG also values graded relevance.",
+   "template": "import numpy as np\n\ndef recall_at_k(ranked, relevant, k):\n    return len(set(ranked[:k]) & set(relevant)) / len(relevant)\n\ndef mrr(ranked, relevant):\n    for i, d in enumerate(ranked, 1):\n        if d in relevant:\n            return 1 / i\n    return 0.0",
+   "complexity": "O(k) per query for recall and O(n) for MRR.",
+   "pitfalls": [
+    "High n-gram overlap does not guarantee a correct or fluent answer.",
+    "Retrieval scores depend on the quality of the relevance labels."
+   ],
+   "problems": [
+    "bleu-score",
+    "rouge-score",
+    "retrieval-metrics-recall-at-k",
+    "rag-dense-retrieval"
+   ],
+   "aliases": [
+    "Text evaluation and retrieval"
    ]
   },
   {

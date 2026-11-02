@@ -5,8 +5,8 @@ spaced repetition. Built from the Revise (DSA) app's architecture.
 
 - **Stack:** Kotlin + Jetpack Compose, Room, WorkManager. Built only in GitHub Actions
   (`.github/workflows/build.yml`); the APK is the `quickml-apk` artifact.
-- **Content:** YAML in `content/` (see `content/README.md`): 86 concept cards, 3 sheets,
-  18 technique families and 12 "Compare: A vs B" cards. Every card's code is checked against
+- **Content:** YAML in `content/` (see `content/README.md`): 116 concept cards, 3 sheets,
+  22 technique families and 12 "Compare: A vs B" cards. Every card's code is checked against
   sklearn or PyTorch by `content/tests/`.
 - **Features:** feed modes (Learn, Shuffle, Revise, Quiz, Families, Bookmarks), notes, own
   implementations, dashboard, backup/restore, read-aloud, reminders, widget, optional AI "Ask" tab

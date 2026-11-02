@@ -4,11 +4,11 @@ import android.content.Context
 import android.net.Uri
 import androidx.room.withTransaction
 import com.parthdeuri.quickml.data.db.ActivityLogEntity
-import com.parthdeuri.quickml.data.db.ProblemEntity
+import com.parthdeuri.quickml.data.db.ConceptEntity
 import com.parthdeuri.quickml.data.db.ReviewStateEntity
 import com.parthdeuri.quickml.data.db.QuickMLDatabase
 import com.parthdeuri.quickml.data.db.UserProgressEntity
-import com.parthdeuri.quickml.data.repo.ProblemRepository
+import com.parthdeuri.quickml.data.repo.ConceptRepository
 import com.parthdeuri.quickml.data.settings.StudySettings
 import com.parthdeuri.quickml.reminder.ReminderScheduler
 import com.parthdeuri.quickml.reminder.ReminderSettings
@@ -30,14 +30,14 @@ data class BackupFile(
     val reviewState: List<BackupReview> = emptyList(),
     val activityLog: List<BackupActivity> = emptyList(),
     /** Full rows of the user's own problems. */
-    val userProblems: List<BackupProblem> = emptyList(),
+    val userConcepts: List<BackupConcept> = emptyList(),
     val settings: BackupSettings = BackupSettings()
 )
 
 @Serializable
 data class BackupProgress(
     val slug: String,
-    val status: String = ProblemRepository.STATUS_UNSOLVED,
+    val status: String = ConceptRepository.STATUS_UNSOLVED,
     val bookmarked: Boolean = false,
     val note: String? = null,
     val updatedAt: Long = 0L,
@@ -67,7 +67,7 @@ data class BackupActivity(
 )
 
 @Serializable
-data class BackupProblem(
+data class BackupConcept(
     val slug: String,
     val title: String,
     val platform: String = "other",
@@ -110,13 +110,13 @@ data class BackupSummary(
     val reviews: Int,
     val activity: Int,
     val notes: Int,
-    val ownProblems: Int
+    val ownConcepts: Int
 ) {
     fun describe(): String = buildList {
         add(plural(solved, "learned card", "learned cards"))
         add(plural(reviews, "review schedule", "review schedules"))
         if (notes > 0) add(plural(notes, "note", "notes"))
-        if (ownProblems > 0) add(plural(ownProblems, "own card", "own cards"))
+        if (ownConcepts > 0) add(plural(ownConcepts, "own card", "own cards"))
         add(plural(activity, "activity entry", "activity entries"))
     }.joinToString(", ")
 
@@ -186,11 +186,11 @@ class BackupManager(
     }
 
     fun summaryOf(backup: BackupFile): BackupSummary = BackupSummary(
-        solved = backup.userProgress.count { it.status == ProblemRepository.STATUS_SOLVED },
+        solved = backup.userProgress.count { it.status == ConceptRepository.STATUS_SOLVED },
         reviews = backup.reviewState.size,
         activity = backup.activityLog.size,
         notes = backup.userProgress.count { !it.note.isNullOrBlank() },
-        ownProblems = backup.userProblems.size
+        ownConcepts = backup.userConcepts.size
     )
 
     /**
@@ -212,8 +212,8 @@ class BackupManager(
                 .filter { it.slug.isNotBlank() && it.type.isNotBlank() }
                 .map { it.toEntity() }
             // Only own problems: a backup can never overwrite bundled content.
-            val problems = backup.userProblems
-                .filter { it.slug.startsWith(ProblemRepository.USER_SLUG_PREFIX) && it.title.isNotBlank() }
+            val problems = backup.userConcepts
+                .filter { it.slug.startsWith(ConceptRepository.USER_SLUG_PREFIX) && it.title.isNotBlank() }
                 .distinctBy { it.slug }
                 .map { it.toEntity() }
             try {
@@ -224,7 +224,7 @@ class BackupManager(
                     progressDao.clearAll()
                     reviewDao.clearAll()
                     activityDao.clearAll()
-                    db.contentDao().insertProblems(problems)
+                    db.contentDao().insertConcepts(problems)
                     progressDao.insertAll(progress)
                     reviewDao.insertAll(reviews)
                     activityDao.insertAll(activity)
@@ -259,7 +259,7 @@ class BackupManager(
         val progress = db.progressDao().getAll()
         val reviews = db.reviewDao().getAll()
         val activity = db.activityDao().getAll()
-        val problems = db.contentDao().getUserProblems()
+        val problems = db.contentDao().getUserConcepts()
         val card = studySettings.cardPrefs.value
         return BackupFile(
             app = APP_ID,
@@ -269,7 +269,7 @@ class BackupManager(
             userProgress = progress.map { it.toBackup() },
             reviewState = reviews.map { it.toBackup() },
             activityLog = activity.map { it.toBackup() },
-            userProblems = problems.map { it.toBackup() },
+            userConcepts = problems.map { it.toBackup() },
             settings = BackupSettings(
                 selectedSheetId = studySettings.selectedSheetId.value,
                 quizBeforeReveal = card.quizBeforeReveal,
@@ -307,10 +307,10 @@ private fun UserProgressEntity.toBackup() = BackupProgress(
 
 private fun BackupProgress.toEntity() = UserProgressEntity(
     slug = slug,
-    status = if (status == ProblemRepository.STATUS_SOLVED) {
-        ProblemRepository.STATUS_SOLVED
+    status = if (status == ConceptRepository.STATUS_SOLVED) {
+        ConceptRepository.STATUS_SOLVED
     } else {
-        ProblemRepository.STATUS_UNSOLVED
+        ConceptRepository.STATUS_UNSOLVED
     },
     bookmarked = bookmarked,
     note = note,
@@ -359,7 +359,7 @@ private fun BackupActivity.toEntity() = ActivityLogEntity(
     rating = rating
 )
 
-private fun ProblemEntity.toBackup() = BackupProblem(
+private fun ConceptEntity.toBackup() = BackupConcept(
     slug = slug,
     title = title,
     platform = platform,
@@ -384,7 +384,7 @@ private fun ProblemEntity.toBackup() = BackupProblem(
     keyLinesJson = keyLinesJson
 )
 
-private fun BackupProblem.toEntity() = ProblemEntity(
+private fun BackupConcept.toEntity() = ConceptEntity(
     slug = slug,
     title = title,
     platform = platform,

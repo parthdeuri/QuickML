@@ -1,0 +1,83 @@
+slug: rmsprop-adagrad
+title: Adagrad and RMSProp
+url: https://d2l.ai/chapter_optimization/adagrad.html
+difficulty: Medium
+area: Deep Learning
+topics: [Optimizers, Adaptive Learning Rates, Gradient Descent]
+summary: |
+  Give every parameter its own step size by dividing the gradient by the
+  root of a running sum (Adagrad) or running average (RMSProp) of its
+  squared past gradients.
+intuition: |
+  Parameters with consistently large gradients get their step shrunk and
+  rarely updated ones keep large steps, so one global learning rate no
+  longer has to suit every direction. Adagrad sums squared gradients
+  forever, so its steps only ever shrink and can stall. RMSProp swaps the
+  sum for an exponential average, so old gradients are forgotten and the
+  step size stays usable on long, non-convex runs.
+approach:
+  - "Keep one accumulator per parameter, started at zero — stores gradient scale history"
+  - "Adagrad adds g² each step; RMSProp sets v = αv + (1 − α)g² — sum versus forgetting average"
+  - "Take the square root of the accumulator and add ε — per-parameter scale, ε avoids dividing by zero"
+  - "Divide the gradient by that scale — normalises the step so each coordinate moves a comparable amount"
+  - "Scale by the learning rate and subtract from the weights — the actual update"
+code: |
+  import numpy as np
+
+  def adagrad_step(w, g, G, lr=0.1, eps=1e-10):
+      G = G + g * g
+      return w - lr * g / (np.sqrt(G) + eps), G
+
+  def rmsprop_step(w, g, v, lr=0.01, alpha=0.99, eps=1e-8):
+      v = alpha * v + (1 - alpha) * g * g
+      return w - lr * g / (np.sqrt(v) + eps), v
+
+  def minimize(step, grad, w, n=50, **kw):
+      state = np.zeros_like(w)
+      for _ in range(n):
+          w, state = step(w, grad(w), state, **kw)
+      return w
+key_lines: [4, 8, 9]
+time: "O(P) per step for P parameters"
+space: "O(P) for one extra accumulator"
+when_to_use: |
+  Adagrad for sparse features (embeddings, bag-of-words) with convex-ish
+  problems. RMSProp for non-stationary or non-convex training such as
+  RNNs, and as the base of Adam.
+when_not_to_use: |
+  Adagrad on long non-convex training, where its steps decay too far.
+  Neither is ideal when you need best final generalisation, where
+  SGD with momentum often wins.
+why_it_works: |
+  Dividing by √v rescales each coordinate by its typical gradient size,
+  acting like a diagonal preconditioner. Steep directions get smaller
+  steps and flat directions larger ones, so progress is more even on
+  badly scaled problems. The exponential average in RMSProp keeps the
+  scale tied to recent gradients instead of the whole history.
+math:
+  - "Adagrad:  Gₜ = Gₜ₋₁ + gₜ²"
+  - "wₜ₊₁ = wₜ − η · gₜ / (√Gₜ + ε)"
+  - "RMSProp:  vₜ = α vₜ₋₁ + (1 − α) gₜ²"
+  - "wₜ₊₁ = wₜ − η · gₜ / (√vₜ + ε)"
+  - "All operations are element-wise; ε is added outside the root"
+interview_qa:
+  - q: "Why does Adagrad's learning rate decay?"
+    a: "Its accumulator is a sum of squares that only grows, so the effective step η/√G keeps shrinking and training can stall."
+  - q: "How does RMSProp fix that?"
+    a: "It uses an exponential moving average of squared gradients, so old values fade and the scale tracks recent gradients."
+  - q: "How does RMSProp relate to Adam?"
+    a: "Adam is RMSProp-style scaling plus momentum on the gradient and bias correction of both averages."
+  - q: "Where does ε go and why does it matter?"
+    a: "PyTorch adds it after the square root, √v + ε; putting it inside the root, √(v + ε), is a different update, which matters when v is tiny."
+hyperparameters:
+  - "Learning rate η"
+  - "Decay rate α for RMSProp (commonly 0.9 to 0.99)"
+  - "ε for numerical stability"
+  - "Initial accumulator value (Adagrad)"
+pitfalls:
+  - "The first RMSProp step is large because v starts at zero and is biased low"
+  - "ε placement (inside versus outside the root) differs between libraries"
+  - "Adagrad needs a larger learning rate than RMSProp because the accumulator grows"
+  - "No momentum, weight decay or centring here; PyTorch offers them as options"
+related: [adam-optimizer, momentum-sgd, gradient-descent]
+patterns: ["Gradient-based optimisation"]

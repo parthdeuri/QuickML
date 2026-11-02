@@ -1,0 +1,80 @@
+slug: bahdanau-additive-attention
+title: Additive (Bahdanau) Attention
+url: https://d2l.ai/chapter_attention-mechanisms-and-transformers/bahdanau-attention.html
+difficulty: Medium
+area: NLP
+topics: [Attention, Sequence-to-Sequence, Machine Translation]
+summary: |
+  Score each encoder state against the current decoder state with a small
+  one-hidden-layer network, softmax the scores, and return the weighted
+  sum of encoder states as the context vector.
+intuition: |
+  A sequence-to-sequence decoder that sees only one fixed summary of the
+  source must squeeze a whole sentence into one vector. Additive attention
+  lets the decoder look back at every encoder state at each step and
+  decide which ones matter now. The relevance score comes from a learned
+  tanh network over both vectors, so the two sides need not have the
+  same size.
+approach:
+  - "Project the decoder state with W_s and every encoder state with W_h — maps both into a shared scoring space"
+  - "Add them (broadcast over positions) and apply tanh — lets query and key interact nonlinearly"
+  - "Dot with a learned vector v — reduces each position to one scalar score"
+  - "Softmax over source positions — turns scores into weights that sum to one"
+  - "Weighted sum of the encoder states — the context vector fed to the decoder"
+code: |
+  import numpy as np
+
+  def softmax(s):
+      e = np.exp(s - s.max())
+      return e / e.sum()
+
+  def additive_attention(s, H, Ws, Wh, v):
+      # s: decoder state (ds,), H: encoder states (T, dh)
+      e = np.tanh(s @ Ws + H @ Wh) @ v      # (T,) scores
+      a = softmax(e)
+      return a @ H, a
+key_lines: [9, 10, 11]
+time: "O(T·(d_s + d_h)·d_a) per decoder step for T source positions"
+space: "O(T) for the weights"
+when_to_use: |
+  RNN encoder-decoder models for translation, summarisation or speech,
+  and whenever query and key have different dimensions or you need a
+  small, parametrised scorer.
+when_not_to_use: |
+  Large transformer-style models where scaled dot-product attention is
+  faster because it is a single matrix multiplication and parallelises
+  well over positions.
+why_it_works: |
+  The tanh network can represent a learned relevance function between a
+  query and each key, rather than just a dot product, and sees both
+  vectors jointly. Softmax weighting is differentiable, so the model
+  learns an alignment end to end from translation loss alone, and the
+  decoder gets direct access to any source position instead of one
+  compressed summary.
+math:
+  - "eₜ = vᵀ tanh(W_s s + W_h hₜ)     (t = 1 … T)"
+  - "αₜ = exp(eₜ) / Σⱼ exp(eⱼ)"
+  - "c = Σₜ αₜ hₜ"
+  - "s ∈ ℝ^(d_s), hₜ ∈ ℝ^(d_h), W_s ∈ ℝ^(d_s×d_a), W_h ∈ ℝ^(d_h×d_a)"
+  - "Decoder update: s' = RNN(s, [y_prev ; c])"
+interview_qa:
+  - q: "Why is it called additive attention?"
+    a: "The query and key projections are added before the tanh and scoring vector, unlike the multiplicative dot-product form."
+  - q: "What problem does attention solve in seq2seq?"
+    a: "It removes the fixed-size bottleneck by letting the decoder read all encoder states with a different weighting at each output step."
+  - q: "How does it differ from scaled dot-product attention?"
+    a: "It uses a learned one-hidden-layer scorer and works with different query and key sizes; dot-product is cheaper and parallelises but needs matching dimensions or a projection."
+  - q: "What are the shapes of the attention weights and context?"
+    a: "One weight per source position (T,) and a context vector of the encoder width d_h."
+hyperparameters:
+  - "Attention hidden width d_a"
+  - "Encoder and decoder state sizes"
+  - "Whether encoder states are bidirectional"
+  - "Attention dropout"
+pitfalls:
+  - "Padded source positions need masking before the softmax"
+  - "Original Bahdanau attention uses the previous decoder state; some variants use the current one"
+  - "Costs more than dot-product attention since scoring has its own hidden layer"
+  - "This sketch is one query and has no mask, bias or batching"
+related: [self-attention, rnn-cell, lstm-cell]
+patterns: ["Attention and sequences"]

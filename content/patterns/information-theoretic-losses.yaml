@@ -31,5 +31,6 @@ problems:
 - vae-reparameterization
 - focal-loss
 - label-smoothing
+- clip-contrastive-loss
 aliases:
 - Information-theoretic losses

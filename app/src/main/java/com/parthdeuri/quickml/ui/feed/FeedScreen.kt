@@ -55,11 +55,11 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.parthdeuri.quickml.QuickMLApp
 import com.parthdeuri.quickml.data.repo.FeedItem
-import com.parthdeuri.quickml.data.repo.ProblemRepository
+import com.parthdeuri.quickml.data.repo.ConceptRepository
 import com.parthdeuri.quickml.data.repo.SheetInfo
 import com.parthdeuri.quickml.data.repo.toDraft
 import com.parthdeuri.quickml.speech.LocalSpeaker
-import com.parthdeuri.quickml.ui.common.UserProblemDialog
+import com.parthdeuri.quickml.ui.common.UserConceptDialog
 import com.parthdeuri.quickml.ui.sheet.SheetPicker
 import com.parthdeuri.quickml.ui.theme.QuickMLTheme
 import kotlinx.coroutines.launch
@@ -209,7 +209,7 @@ private fun FeedContent(
                 ) { page ->
                     val item = items.getOrNull(page)
                     if (item != null) {
-                        ProblemCard(
+                        ConceptCard(
                             item = item,
                             titles = titles,
                             quizEnabled = quizEnabled,
@@ -256,8 +256,8 @@ private fun FeedContent(
                             onSaveMySolution = { code ->
                                 viewModel.saveMySolution(item.problem.slug, code)
                             },
-                            onEditProblem = { editing = item },
-                            onDeleteProblem = { deleting = item },
+                            onEditConcept = { editing = item },
+                            onDeleteConcept = { deleting = item },
                             aiEnabled = aiEnabled,
                             onOpenSettings = onOpenSettings
                         )
@@ -270,10 +270,10 @@ private fun FeedContent(
 
     val edit = editing
     if (edit != null) {
-        UserProblemDialog(
+        UserConceptDialog(
             initial = remember(edit.problem.slug) { edit.problem.toDraft(edit.note) },
             onSave = { draft ->
-                viewModel.saveUserProblem(edit.problem.slug, draft)
+                viewModel.saveUserConcept(edit.problem.slug, draft)
                 editing = null
             },
             onDismiss = { editing = null }
@@ -290,7 +290,7 @@ private fun FeedContent(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.deleteUserProblem(delete.problem.slug)
+                        viewModel.deleteUserConcept(delete.problem.slug)
                         deleting = null
                     }
                 ) { Text("Delete") }
@@ -348,7 +348,7 @@ private fun PatternsContent(state: FeedUiState, viewModel: FeedViewModel) {
                     if (card != null) {
                         PatternCard(
                             card = card,
-                            onOpenProblem = { slug -> viewModel.openProblemAnywhere(slug) }
+                            onOpenConcept = { slug -> viewModel.openConceptAnywhere(slug) }
                         )
                     }
                 }
@@ -535,7 +535,7 @@ private fun EmptyState(
             state.mode == FeedMode.QUIZ -> "No cards with full notes to quiz on yet."
             state.mode == FeedMode.PATTERNS -> "No technique families in this version of the content yet."
             (state.mode == FeedMode.LEARN || state.mode == FeedMode.SHUFFLE) &&
-                state.sheetId == ProblemRepository.MINE_SHEET_ID ->
+                state.sheetId == ConceptRepository.MINE_SHEET_ID ->
                 "No cards of your own yet. Add one from the Sheet tab with +."
             else -> "No cards found."
         }

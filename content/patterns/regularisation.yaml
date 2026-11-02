@@ -33,5 +33,6 @@ problems:
 - bias-variance-tradeoff
 - data-augmentation
 - label-smoothing
+- elastic-net-coordinate-descent
 aliases:
 - Regularisation

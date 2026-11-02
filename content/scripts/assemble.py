@@ -58,6 +58,39 @@ SHEETS = {
 }
 
 
+def _extend():
+    def add(sid, sec, slugs):
+        for name, lst in SHEETS[sid][2]:
+            if name == sec:
+                lst.extend(x for x in slugs if x not in lst)
+                return
+        SHEETS[sid][2].append((sec, list(slugs)))
+
+    add("ml-core", "Regression", ["gaussian-process-regression", "elastic-net-coordinate-descent"])
+    add("ml-core", "Unsupervised", ["hierarchical-clustering", "local-outlier-factor",
+                                    "nmf-multiplicative-updates"])
+    add("ml-core", "Evaluation and generalisation", ["silhouette-clustering-metrics",
+                                                     "isotonic-regression-pava"])
+    add("ml-core", "Time series", ["exponential-smoothing", "autocorrelation-acf-pacf", "arima-model"])
+    add("dl-core", "Training setup", ["rmsprop-adagrad"])
+    add("dl-core", "Loss design and compression", ["clip-contrastive-loss"])
+    add("dl-core", "Sequence models", ["gru-cell", "bidirectional-rnn"])
+    add("dl-core", "Architectures", ["resnet-basic-block", "vision-transformer-patch-embed"])
+    add("dl-core", "Graph neural networks", ["gnn-message-passing", "graph-attention-layer"])
+    add("nlp-vision-rl", "NLP", ["bahdanau-additive-attention", "cross-attention-encoder-decoder",
+                                 "bert-masked-lm"])
+    add("nlp-vision-rl", "LLM alignment", ["reward-model-bradley-terry", "dpo-loss"])
+    add("nlp-vision-rl", "Text evaluation and retrieval", ["bleu-score", "rouge-score",
+                                                           "retrieval-metrics-recall-at-k",
+                                                           "rag-dense-retrieval"])
+    add("nlp-vision-rl", "Vision", ["resnet-basic-block", "vision-transformer-patch-embed",
+                                    "mean-average-precision"])
+    add("nlp-vision-rl", "Reinforcement learning", ["ppo-clipped-objective", "gae-advantage"])
+
+
+_extend()
+
+
 def main():
     have = {p.stem for p in PROBLEMS.glob("*.yaml")}
     used = set()

@@ -30,7 +30,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.parthdeuri.quickml.data.repo.USER_DIFFICULTIES
-import com.parthdeuri.quickml.data.repo.UserProblemDraft
+import com.parthdeuri.quickml.data.repo.UserConceptDraft
 import com.parthdeuri.quickml.data.repo.detectPlatform
 import com.parthdeuri.quickml.data.repo.normalizeLink
 import com.parthdeuri.quickml.ui.theme.QuickMLTheme
@@ -51,12 +51,12 @@ val CodeKeyboard = KeyboardOptions(
 /** Add / edit form of an own problem ([initial] null = add). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun UserProblemDialog(
-    initial: UserProblemDraft?,
-    onSave: (UserProblemDraft) -> Unit,
+fun UserConceptDialog(
+    initial: UserConceptDraft?,
+    onSave: (UserConceptDraft) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var draft by remember { mutableStateOf(initial ?: UserProblemDraft()) }
+    var draft by remember { mutableStateOf(initial ?: UserConceptDraft()) }
     FullScreenDialog(
         title = if (initial == null) "Add card" else "Edit card",
         onDismiss = onDismiss,

@@ -1,0 +1,81 @@
+slug: graph-attention-layer
+title: Graph Attention (GAT) Layer
+url: https://arxiv.org/abs/1710.10903
+difficulty: Hard
+area: Deep Learning
+topics: [Graph Neural Networks, Attention, Message Passing]
+summary: |
+  Aggregate neighbour features with learned attention weights, computed
+  from the two endpoint features and normalised by a softmax over each
+  node's neighbourhood.
+intuition: |
+  A GCN weights every neighbour by a fixed function of node degrees,
+  while a GAT lets the data decide which neighbours matter for each
+  node. The score for an edge depends on both endpoints, a LeakyReLU
+  keeps it nonlinear, and the softmax is restricted to real neighbours
+  by masking out non-edges, so the model never attends outside the
+  graph.
+approach:
+  - "Project features H = XW — shared linear transform to the new width"
+  - "Score every edge e_ij = LeakyReLU(a_iᵀ h_i + a_jᵀ h_j) — splitting a into two halves avoids concatenating pairs"
+  - "Mask non-edges to −∞ (self-loops allowed) — restricts attention to the neighbourhood"
+  - "Softmax over each row — turns scores into attention weights α_ij that sum to one"
+  - "Output α H — attention-weighted sum of neighbour features"
+code: |
+  import numpy as np
+
+  def softmax(s):
+      e = np.exp(s - s.max(axis=-1, keepdims=True))
+      return e / e.sum(axis=-1, keepdims=True)
+
+  def gat_layer(A, X, W, a_i, a_j, slope=0.2):
+      H = X @ W
+      e = (H @ a_i)[:, None] + (H @ a_j)[None, :]
+      e = np.where(e > 0, e, slope * e)          # LeakyReLU
+      mask = (A + np.eye(len(A))) > 0            # edges + self loops
+      alpha = softmax(np.where(mask, e, -np.inf))
+      return alpha @ H, alpha
+key_lines: [9, 12, 13]
+time: "O(N·F·F' + E·F') with sparse edges; O(N²) for dense scores here"
+space: "O(N²) for dense attention; O(E) sparse"
+when_to_use: |
+  Graphs where neighbours differ in importance, such as citation or
+  protein-interaction networks, and when you want interpretable
+  attention per edge.
+when_not_to_use: |
+  Very large dense graphs where scoring every edge is costly, or when a
+  plain GCN already performs well and you want the simpler, faster
+  model.
+why_it_works: |
+  The attention weights make the aggregation operator depend on node
+  content instead of just graph structure, so each node can emphasise
+  the neighbours most useful for its task. Because the weights are a
+  softmax over a neighbourhood they are convex, which keeps the scale of
+  the output comparable to the input features regardless of degree.
+math:
+  - "hᵢ = W xᵢ   (H = XW)"
+  - "e_ij = LeakyReLU( aᵀ [hᵢ ‖ hⱼ] ) = LeakyReLU( a_iᵀ hᵢ + a_jᵀ hⱼ )"
+  - "α_ij = exp(e_ij) / Σ_{k∈N(i)∪{i}} exp(e_ik)"
+  - "hᵢ' = σ( Σ_{j∈N(i)∪{i}} α_ij · hⱼ )"
+  - "Multi-head: concatenate K heads, or average on the last layer"
+interview_qa:
+  - q: "How does GAT differ from GCN?"
+    a: "GCN uses fixed degree-based weights; GAT learns edge weights from node features through attention, so aggregation is content dependent."
+  - q: "Why mask before the softmax?"
+    a: "Setting non-edges to −∞ gives them zero weight, so attention is only over the real neighbourhood; skipping it would attend over the whole graph."
+  - q: "Why split the attention vector into two halves?"
+    a: "aᵀ[hᵢ‖hⱼ] = a_iᵀhᵢ + a_jᵀhⱼ, so scores for all pairs come from one broadcast sum instead of building N² concatenated vectors."
+  - q: "Why use multi-head attention in GAT?"
+    a: "Several independent attention heads stabilise learning and capture different notions of neighbour relevance."
+hyperparameters:
+  - "Number of attention heads"
+  - "Hidden width per head"
+  - "LeakyReLU negative slope (0.2 in the paper)"
+  - "Attention and feature dropout"
+pitfalls:
+  - "Rows with no allowed entries give NaN; self-loops guarantee at least one"
+  - "Attention scores here are not symmetric: α_ij differs from α_ji"
+  - "Single head, no output nonlinearity, bias or dropout in this sketch"
+  - "Dense N×N scoring does not scale to large graphs"
+related: [gnn-message-passing, self-attention, multi-head-attention]
+patterns: ["Graph neural networks"]

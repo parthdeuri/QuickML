@@ -25,5 +25,8 @@ problems:
 - knn
 - k-means
 - dbscan
+- hierarchical-clustering
+- local-outlier-factor
+- silhouette-clustering-metrics
 aliases:
 - Distance and clustering

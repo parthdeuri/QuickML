@@ -18,6 +18,9 @@ sections:
   - top-k-top-p-sampling
   - perplexity
   - cosine-similarity-embeddings
+  - bahdanau-additive-attention
+  - cross-attention-encoder-decoder
+  - bert-masked-lm
 - name: Vision
   problems:
   - convolution-2d
@@ -27,8 +30,23 @@ sections:
   - depthwise-separable-convolution
   - transposed-convolution
   - data-augmentation
+  - resnet-basic-block
+  - vision-transformer-patch-embed
+  - mean-average-precision
 - name: Reinforcement learning
   problems:
   - q-learning
   - reinforce-policy-gradient
   - value-iteration
+  - ppo-clipped-objective
+  - gae-advantage
+- name: LLM alignment
+  problems:
+  - reward-model-bradley-terry
+  - dpo-loss
+- name: Text evaluation and retrieval
+  problems:
+  - bleu-score
+  - rouge-score
+  - retrieval-metrics-recall-at-k
+  - rag-dense-retrieval

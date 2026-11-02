@@ -8,7 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [
-        ProblemEntity::class,
+        ConceptEntity::class,
         SheetEntity::class,
         SheetEntryEntity::class,
         UserProgressEntity::class,
@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PatternEntity::class,
         ChatEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -27,6 +27,16 @@ abstract class QuickMLDatabase : RoomDatabase() {
     abstract fun activityDao(): ActivityDao
     abstract fun reviewDao(): ReviewDao
     abstract fun chatDao(): ChatDao
+}
+
+/**
+ * v6 -> v7: optional box-art diagram per card. One nullable TEXT column, exactly what Room
+ * generates for ConceptEntity.diagramJson. Content is re-imported afterwards.
+ */
+val MIGRATION_6_7: Migration = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE problems ADD COLUMN diagramJson TEXT")
+    }
 }
 
 /**
@@ -53,7 +63,7 @@ val MIGRATION_5_6: Migration = object : Migration(5, 6) {
 /**
  * v4 -> v5: notes / own solution / own problems / pattern library. Nullable columns without
  * defaults and a patterns table, exactly what Room generates for UserProgressEntity.mySolution,
- * ProblemEntity.userAdded and PatternEntity. Existing rows are never touched (content is
+ * ConceptEntity.userAdded and PatternEntity. Existing rows are never touched (content is
  * re-imported afterwards; user tables keep everything).
  */
 val MIGRATION_4_5: Migration = object : Migration(4, 5) {
@@ -80,7 +90,7 @@ val MIGRATION_4_5: Migration = object : Migration(4, 5) {
 
 /**
  * v3 -> v4: key lines of the solution (Practice mode). Nullable TEXT without a default, exactly
- * what Room generates for ProblemEntity.keyLinesJson. Content is re-imported afterwards (the
+ * what Room generates for ConceptEntity.keyLinesJson. Content is re-imported afterwards (the
  * bundled contentVersion is newer); user tables are never touched.
  */
 val MIGRATION_3_4: Migration = object : Migration(3, 4) {

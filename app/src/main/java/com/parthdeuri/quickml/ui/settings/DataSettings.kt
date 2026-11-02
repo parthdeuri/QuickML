@@ -33,7 +33,7 @@ import com.parthdeuri.quickml.AppContainer
 import com.parthdeuri.quickml.data.backup.BackupException
 import com.parthdeuri.quickml.data.backup.BackupFile
 import com.parthdeuri.quickml.data.repo.ImportPreview
-import com.parthdeuri.quickml.data.repo.ProblemRepository
+import com.parthdeuri.quickml.data.repo.ConceptRepository
 import com.parthdeuri.quickml.ui.theme.QuickMLTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -226,7 +226,7 @@ private fun ActionRow(title: String, subtitle: String, enabled: Boolean, onClick
 /** Paste -> preview (matched / already solved / not found) -> mark the matches solved. */
 @Composable
 private fun ImportSolvedDialog(
-    repository: ProblemRepository,
+    repository: ConceptRepository,
     onDone: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -269,10 +269,10 @@ private fun ImportSolvedDialog(
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold
                     )
-                    if (current.toMark.size >= ProblemRepository.SPREAD_MIN_COUNT) {
+                    if (current.toMark.size >= ConceptRepository.SPREAD_MIN_COUNT) {
                         Text(
                             text = "Their first reviews will be spread over the next " +
-                                ProblemRepository.SPREAD_DAYS + " days.",
+                                ConceptRepository.SPREAD_DAYS + " days.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

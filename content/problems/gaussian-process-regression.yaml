@@ -1,0 +1,86 @@
+slug: gaussian-process-regression
+title: Gaussian Process Regression
+url: https://scikit-learn.org/stable/modules/gaussian_process.html
+difficulty: Hard
+area: Classical ML
+topics: [Regression, Probabilistic, Kernel Methods, Bayesian]
+summary: |
+  Place a Gaussian process prior over functions, condition it on noisy
+  observations, and get a predictive mean and variance at any new input in
+  closed form. The kernel decides what kind of functions are plausible.
+intuition: |
+  Instead of fitting parameters, keep every training point and let the
+  kernel say how strongly nearby inputs share their outputs. Close to data
+  the prediction is pinned down and the variance is small; far from data
+  it falls back to the prior mean with the prior variance, so the model
+  knows what it does not know.
+why_it_works: |
+  Any finite set of function values under the prior is a multivariate
+  Gaussian, and a joint Gaussian conditioned on some coordinates is again
+  Gaussian with a mean and covariance given by linear algebra. The
+  posterior mean is a kernel-weighted sum of the training targets, the
+  same form as kernel ridge regression with the noise as the ridge.
+when_to_use: |
+  Small or medium datasets where calibrated uncertainty matters, Bayesian
+  optimisation surrogates, smooth interpolation of expensive simulations,
+  and regression where a kernel encodes domain knowledge.
+when_not_to_use: |
+  Skip it for large n, since training cubes and memory squares with the
+  number of points, for high dimensional inputs with weak structure, or
+  when a fast approximate model is enough.
+math:
+  - "Prior: f ~ GP(0, k),  k(x, x′) = s² exp(−‖x − x′‖² / 2ℓ²)"
+  - "Noisy targets: y = f(x) + ε,  ε ~ N(0, σₙ²)"
+  - "K = k(X, X) + σₙ² I,  K = L Lᵀ (Cholesky)"
+  - "α = K⁻¹ y = Lᵀ \\ (L \\ y)"
+  - "Mean: μ* = k(X*, X) α"
+  - "Variance of f: σ*² = k(x*, x*) − ‖L⁻¹ k(X, x*)‖²"
+  - "log p(y) = −½ yᵀα − Σᵢ log Lᵢᵢ − (n/2) log 2π"
+approach:
+  - "Build the kernel matrix on the training inputs and add the noise variance to its diagonal — noise makes it positive definite and stops exact interpolation"
+  - "Factor it with a Cholesky decomposition — cheaper and more stable than inverting"
+  - "Solve for α = K⁻¹y with two triangular solves — the prediction weights on the training targets"
+  - "Compute the cross kernel between test and train points and form the mean as a weighted sum — predictions"
+  - "Solve L v = k* and subtract vᵀv from the prior variance — uncertainty shrinks where data is nearby"
+  - "Evaluate the log marginal likelihood from the same factor — the score used to tune ℓ, s² and noise"
+code: |
+  import numpy as np
+
+  def rbf(A, B, ell, s2):
+      d2 = ((A[:, None, :] - B[None, :, :]) ** 2).sum(-1)
+      return s2 * np.exp(-d2 / (2 * ell ** 2))
+
+  def gp(X, y, Xs, ell, s2, noise):
+      K = rbf(X, X, ell, s2) + noise * np.eye(len(X))
+      L = np.linalg.cholesky(K)
+      a = np.linalg.solve(L.T, np.linalg.solve(L, y))
+      Ks = rbf(X, Xs, ell, s2)
+      v = np.linalg.solve(L, Ks)
+      mean = Ks.T @ a
+      var = s2 - (v ** 2).sum(0)
+      lml = (-0.5 * y @ a - np.log(np.diag(L)).sum()
+             - 0.5 * len(X) * np.log(2 * np.pi))
+      return mean, var, lml
+key_lines: [10, 13, 14]
+time: "O(n³) for the Cholesky factor, O(n·m) per extra test point for the mean and O(n²·m) for variances"
+space: "O(n²) for the kernel matrix"
+hyperparameters:
+  - "Length scale ℓ — how far apart inputs can be and still be correlated"
+  - "Signal variance s² — prior amplitude of the function"
+  - "Noise variance σₙ² — observation noise, also acts as a jitter for stability"
+  - "Kernel family — RBF, Matérn, periodic, or sums and products of them"
+  - "Optimiser restarts — the marginal likelihood is non-convex in the hyperparameters"
+pitfalls:
+  - "Training cost grows as n cubed, so thousands of points need sparse or inducing-point approximations"
+  - "Tiny noise makes the kernel matrix near singular and the Cholesky fail; add jitter"
+  - "The variance returned here is for the latent function; add the noise variance for a new observation"
+  - "A zero prior mean pulls predictions to zero away from data; centre or normalise the targets"
+interview_qa:
+  - q: "How is a GP different from kernel ridge regression?"
+    a: "The posterior mean has the same form as kernel ridge with the noise variance as the ridge, but a GP also returns a predictive variance and tunes the kernel by marginal likelihood."
+  - q: "What does the length scale control?"
+    a: "How quickly the function varies: a short length scale gives wiggly fits that revert to the prior quickly, a long one gives smooth, slowly varying fits."
+  - q: "Why use a Cholesky factor instead of a matrix inverse?"
+    a: "It is faster and numerically stable for symmetric positive definite matrices and gives the log-determinant needed for the marginal likelihood for free."
+related: [kernel-trick-rbf, linear-regression, ridge-lasso-regularization]
+patterns: ["Probabilistic models"]

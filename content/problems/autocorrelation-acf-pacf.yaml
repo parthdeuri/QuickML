@@ -1,0 +1,83 @@
+slug: autocorrelation-acf-pacf
+title: Autocorrelation (ACF and PACF)
+url: https://otexts.com/fpp3/acf.html
+difficulty: Medium
+area: Math
+topics: [Time Series, Correlation, Yule-Walker, Durbin-Levinson]
+summary: |
+  The ACF is the correlation of a series with a lagged copy of itself.
+  The PACF is the correlation at each lag after removing the effect of
+  the shorter lags, computed from the ACF with the Durbin-Levinson
+  recursion.
+intuition: |
+  If today resembles yesterday, the lag-1 correlation is high, but it also
+  makes today resemble two days ago through yesterday. The ACF mixes
+  direct and relayed dependence; the PACF strips the relayed part, so an
+  AR(p) process shows a PACF that cuts off after lag p while its ACF
+  decays.
+why_it_works: |
+  For an autoregression the Yule-Walker equations link the ACF to the
+  coefficients through a Toeplitz system. The PACF at lag k is the last
+  coefficient φₖₖ of the best order-k autoregression, and the
+  Durbin-Levinson recursion builds order k from order k − 1 in O(k)
+  work instead of solving a fresh system.
+when_to_use: |
+  Choosing AR and MA orders for ARIMA, spotting seasonality and trend
+  from slowly decaying or periodic spikes, and checking that model
+  residuals look like white noise.
+when_not_to_use: |
+  Skip it on non-stationary data without differencing first, for
+  strongly nonlinear dependence that correlation misses, and for very
+  short series where lag estimates are too noisy.
+math:
+  - "Autocovariance: cₖ = (1/n) Σₜ (yₜ − ȳ)(yₜ₊ₖ − ȳ)"
+  - "ACF: ρₖ = cₖ / c₀"
+  - "Yule-Walker: ρⱼ = Σᵢ φₖᵢ ρ|ⱼ−ᵢ|  for j = 1..k"
+  - "PACF: αₖ = φₖₖ (last coefficient of the order-k fit)"
+  - "φₖₖ = (ρₖ − Σⱼ φₖ₋₁,ⱼ ρₖ₋ⱼ) / (1 − Σⱼ φₖ₋₁,ⱼ ρⱼ)"
+  - "φₖⱼ = φₖ₋₁,ⱼ − φₖₖ φₖ₋₁,ₖ₋ⱼ  for j < k"
+  - "Approximate 95% band: ± 1.96 / √n"
+approach:
+  - "Centre the series — correlation is about deviations from the mean"
+  - "Compute autocovariances with a divisor of n at every lag — keeps the covariance matrix positive semi-definite"
+  - "Divide by lag zero to get the ACF — makes it scale free in [−1, 1]"
+  - "Run Durbin-Levinson on the ACF — gives each order's last coefficient without solving a linear system per lag"
+  - "Compare each lag with the band of about two over root n — spikes outside are unlikely to be noise"
+code: |
+  import numpy as np
+
+  def acf(x, K):
+      x = x - x.mean()
+      c = np.array([x[: len(x) - k] @ x[k:] for k in range(K + 1)])
+      return c / c[0]
+
+  def pacf(r, K):
+      phi, out = np.zeros(0), [1.0]
+      for k in range(1, K + 1):
+          num = r[k] - phi @ r[k - 1:0:-1]
+          den = 1 - phi @ r[1:k]
+          c = num / den
+          phi = np.append(phi - c * phi[::-1], c)
+          out.append(c)
+      return np.array(out)
+key_lines: [5, 13, 14]
+time: "O(n·K) for the ACF directly, O(K²) for Durbin-Levinson"
+space: "O(K) for the recursion state"
+hyperparameters:
+  - "max lag K — a common rule is a fraction of n, such as n/4"
+  - "Divisor n versus n − k — n keeps a valid covariance sequence and is the usual default"
+  - "Differencing order — applied before computing so the series is near stationary"
+pitfalls:
+  - "Trending series give an ACF that decays very slowly and hides the real structure; difference first"
+  - "Many lags are tested at once, so a few spikes outside the band are expected by chance"
+  - "Seasonal data needs a lag at the season length, not just short lags"
+  - "Different libraries estimate the PACF differently (Yule-Walker, OLS, Burg), so small numeric differences are normal"
+interview_qa:
+  - q: "How do ACF and PACF identify an AR or MA model?"
+    a: "An AR(p) has a PACF that cuts off after lag p and an ACF that decays; an MA(q) has an ACF that cuts off after lag q and a PACF that decays."
+  - q: "What does the PACF at lag k measure?"
+    a: "The correlation between yₜ and yₜ₋ₖ after linearly removing the effect of the lags in between, equal to the last coefficient of an order-k autoregression."
+  - q: "Why divide by n and not n − k in the autocovariance?"
+    a: "Dividing by n guarantees the estimated autocovariance sequence is positive semi-definite, which the Yule-Walker system needs; n − k is less biased but can give invalid values."
+related: [linear-regression, maximum-likelihood]
+patterns: ["Time series"]

@@ -1,0 +1,100 @@
+slug: hierarchical-clustering
+title: Agglomerative Hierarchical Clustering
+url: https://scikit-learn.org/stable/modules/clustering.html#hierarchical-clustering
+difficulty: Medium
+area: Classical ML
+topics: [Clustering, Unsupervised, Dendrogram, Linkage]
+summary: |
+  Start with every point as its own cluster and repeatedly merge the two
+  closest clusters, recording the merge distances. Cutting the resulting
+  tree at any height gives a clustering, so k need not be fixed in advance.
+intuition: |
+  Merging order encodes the whole nested structure of the data: points
+  that join early are tightly packed, and the heights at which groups join
+  show how separated they are. The linkage rule defines what close means
+  between groups, and that choice, not the algorithm, decides the shapes
+  you find.
+why_it_works: |
+  Single, average and ward linkage distances can all be updated from the
+  old row distances after a merge by the Lance-Williams formula, so the
+  data is never revisited. Ward chooses the merge with the smallest
+  increase in within-cluster sum of squares, which links it to k-means.
+when_to_use: |
+  A dendrogram for exploration, small to medium datasets, clusters of
+  different scales, a cut chosen after seeing the merge heights, and
+  non-Euclidean distances (except ward).
+when_not_to_use: |
+  Skip it for large n because the naive method is cubic and needs a
+  distance matrix, for data with heavy noise (single linkage chains
+  through it), or when you need to assign new points.
+math:
+  - "Single: d(A, B) = min over a∈A, b∈B of ‖a − b‖"
+  - "Average: d(A, B) = (1/|A||B|) Σₐ Σ_b ‖a − b‖"
+  - "Ward: Δ(A, B) = |A||B| / (|A| + |B|) · ‖μ_A − μ_B‖²"
+  - "Lance-Williams: d(k, i∪j) = αᵢ d(k,i) + αⱼ d(k,j) + β d(i,j)"
+  - "  (+ γ|d(k,i) − d(k,j)|: γ = −½ single, 0 average/ward)"
+  - "Average: αᵢ = nᵢ / (nᵢ + nⱼ), β = γ = 0"
+  - "Ward (squared d): αᵢ = (nₖ + nᵢ) / N,  β = −nₖ / N"
+  - "  with N = nₖ + nᵢ + nⱼ"
+approach:
+  - "Compute all pairwise distances (squared for ward) — the only place the raw data is used"
+  - "Find the closest pair of active clusters — the next merge in the hierarchy"
+  - "Record both ids, the merge height and the new size — one row of the linkage matrix"
+  - "Overwrite one row and column with the Lance-Williams update and deactivate the other — keeps distances to the merged cluster correct without recomputing"
+  - "Repeat n − 1 times, then replay the first n − k merges to get k clusters — a cut of the tree"
+code: |
+  import numpy as np
+
+  def linkage(X, method="average"):
+      n = len(X)
+      D = np.sqrt(((X[:, None] - X[None]) ** 2).sum(-1))
+      D = D ** 2 if method == "ward" else D
+      np.fill_diagonal(D, np.inf)
+      size, ids, Z = np.ones(n), list(range(n)), []
+      for s in range(n - 1):
+          i, j = np.unravel_index(np.argmin(D), D.shape)
+          dij, ni, nj = D[i, j], size[i], size[j]
+          if method == "single":
+              new = np.minimum(D[i], D[j])
+          elif method == "average":
+              new = (ni * D[i] + nj * D[j]) / (ni + nj)
+          else:
+              t = size + ni + nj
+              new = ((size + ni) * D[i] + (size + nj) * D[j]
+                     - size * dij) / t
+          D[i], D[:, i], D[i, i] = new, new, np.inf
+          D[j], D[:, j] = np.inf, np.inf
+          h = np.sqrt(dij) if method == "ward" else dij
+          Z.append([ids[i], ids[j], h, ni + nj])
+          ids[i], size[i], size[j] = n + s, ni + nj, 0
+      return np.array(Z)
+
+  def cut(Z, n, k):
+      mem = {i: [i] for i in range(n)}
+      for s, (a, b, _, _) in enumerate(Z[: n - k]):
+          mem[n + s] = mem.pop(int(a)) + mem.pop(int(b))
+      lab = np.zeros(n, int)
+      for c, pts in enumerate(mem.values()):
+          lab[pts] = c
+      return lab
+key_lines: [10, 15, 20]
+time: "O(n³) time for this naive version; priority queues or nearest-neighbour chains give O(n²)"
+space: "O(n²) for the distance matrix"
+hyperparameters:
+  - "Linkage — single, complete, average or ward"
+  - "Number of clusters k, or a distance threshold at which to cut"
+  - "Distance metric — Euclidean for ward, any metric for the others"
+pitfalls:
+  - "Single linkage chains points through bridges of noise into one long cluster"
+  - "Ward assumes Euclidean distance and favours compact, similarly sized clusters"
+  - "Merges are never undone, so an early mistake stays in the tree"
+  - "Ties in the minimum distance make the tree depend on the tie-breaking order"
+interview_qa:
+  - q: "How do single, average and ward linkage differ?"
+    a: "Single uses the closest pair between clusters and can chain; average uses the mean pairwise distance and is a compromise; ward merges the pair that least increases within-cluster variance and favours compact, round clusters."
+  - q: "How do you choose the number of clusters from a dendrogram?"
+    a: "Cut where there is a large jump in merge height, meaning the next merge joins clusters that are far apart, or validate with a score such as the silhouette."
+  - q: "Why is agglomerative clustering expensive?"
+    a: "It stores all pairwise distances, which is quadratic in memory, and a naive search for the closest pair at each of n − 1 merges makes the time cubic."
+related: [k-means, dbscan, pca]
+patterns: ["Distance and clustering"]

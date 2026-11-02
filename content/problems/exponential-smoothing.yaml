@@ -1,0 +1,81 @@
+slug: exponential-smoothing
+title: Exponential Smoothing (Simple and Holt)
+url: https://otexts.com/fpp3/holt.html
+difficulty: Easy
+area: Classical ML
+topics: [Time Series, Forecasting, Smoothing, Recursive Estimation]
+summary: |
+  Forecast a series with a running level (and optionally a trend) that is
+  nudged toward each new observation by a smoothing weight. Simple
+  smoothing gives a flat forecast; Holt's method adds a linear trend.
+intuition: |
+  The newest observation is the best clue about where the series is now,
+  but a single value is noisy. Blending it with the previous estimate
+  gives weights on past values that decay geometrically, so recent data
+  matters most and old data fades without being stored.
+why_it_works: |
+  Unrolling the recursion ℓ = α y + (1 − α) ℓ shows the level is a
+  weighted average of all past observations with weights α(1 − α)ᵏ that
+  sum to one. It is the optimal one-step predictor for a random walk plus
+  noise, and Holt's method is the same idea applied to level and slope.
+when_to_use: |
+  Short-horizon forecasts of many series, a cheap and strong baseline,
+  demand or traffic with slowly drifting level, and online updating
+  where only the last state is kept.
+when_not_to_use: |
+  Skip it when the series has seasonality you have not modelled (use
+  Holt-Winters), when you need prediction intervals from a fitted
+  likelihood, or when external regressors drive the series.
+math:
+  - "Simple: ℓₜ = α yₜ + (1 − α) ℓₜ₋₁,  ŷₜ₊₁|ₜ = ℓₜ"
+  - "Unrolled: ℓₜ = Σₖ α(1−α)ᵏ yₜ₋ₖ + (1−α)ᵗ ℓ₀"
+  - "Holt level: ℓₜ = α yₜ + (1 − α)(ℓₜ₋₁ + bₜ₋₁)"
+  - "Holt trend: bₜ = β (ℓₜ − ℓₜ₋₁) + (1 − β) bₜ₋₁"
+  - "Forecast: ŷₜ₊ₕ|ₜ = ℓₜ + h bₜ"
+  - "Fit: minimise Σₜ (yₜ − ŷₜ|ₜ₋₁)² over α, β (and ℓ₀, b₀)"
+approach:
+  - "Choose a start level ℓ₀ (and slope b₀ for Holt) — the recursion needs a state before the first observation"
+  - "For each point, record the one-step prediction from the current state — these are the fitted values used to score the model"
+  - "Update the level as a blend of the observation and the predicted level — α sets how fast old data is forgotten"
+  - "For Holt, update the slope from the change in level — β sets how quickly the trend can change"
+  - "Forecast ahead from the final state, flat for simple and linear for Holt — no further data is available to update it"
+code: |
+  import numpy as np
+
+  def ses(y, a, l0):
+      l, fit = l0, []
+      for v in y:
+          fit.append(l)
+          l = a * v + (1 - a) * l
+      return np.array(fit), l
+
+  def holt(y, a, b, l0, b0, h=5):
+      l, t, fit = l0, b0, []
+      for v in y:
+          fit.append(l + t)
+          new = a * v + (1 - a) * (l + t)
+          t = b * (new - l) + (1 - b) * t
+          l = new
+      return np.array(fit), l + t * np.arange(1, h + 1)
+key_lines: [7, 14, 15]
+time: "O(n) per pass; fitting α and β with a numerical optimiser multiplies this by the number of evaluations"
+space: "O(1) state for forecasting, O(n) if the fitted values are stored"
+hyperparameters:
+  - "α level smoothing in (0, 1) — large reacts fast, small averages more"
+  - "β trend smoothing in (0, 1) — large lets the slope change quickly"
+  - "Initial level and slope — first value or a regression on the first few points"
+  - "Damping φ — optional factor that flattens a Holt trend over long horizons (not in this code)"
+pitfalls:
+  - "Undamped Holt trends extrapolate forever and overshoot at long horizons"
+  - "A high α on a noisy series chases noise; the fitted values lag turning points when α is small"
+  - "The start state matters for short series, so conventions differ between libraries"
+  - "Pick α and β by one-step error on held-out data, not by eye"
+interview_qa:
+  - q: "Why is it called exponential smoothing?"
+    a: "Unrolling the recursion gives each past observation a weight that shrinks by a constant factor (1 − α) per step back, an exponential decay that sums to one."
+  - q: "What do α near 0 and α near 1 mean?"
+    a: "α near 1 trusts the latest value and nearly copies it forward, a naive forecast; α near 0 keeps the initial level almost unchanged, close to a long-run average."
+  - q: "Why does simple smoothing fail on trending data?"
+    a: "Its forecast is a weighted average of past values, so it always lags behind a rising or falling series; Holt's slope term removes that lag."
+related: [linear-regression, bias-variance-tradeoff]
+patterns: ["Time series"]

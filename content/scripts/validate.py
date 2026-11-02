@@ -29,7 +29,10 @@ AREAS = {"Classical ML", "Deep Learning", "NLP", "Vision", "RL", "MLOps",
 REQUIRED_KEYS = ["slug", "title", "url", "difficulty", "topics", "area"]
 # Fields that make up a "full" card. All or none of them must be present.
 CONTENT_KEYS = ["summary", "intuition", "approach", "time", "space", "code"]
-OPTIONAL_KEYS = ["patterns", "pitfalls", "related"]
+OPTIONAL_KEYS = ["patterns", "pitfalls", "related", "diagram"]
+# Optional monospace box-art picture (architecture / data flow).
+DIAGRAM_LINES = (3, 16)
+MAX_DIAGRAM_WIDTH = 46  # fits a phone without sideways scrolling
 # 1-based line numbers of `code` holding the core idea. Required for full
 # cards, forbidden for metadata-only ones.
 KEY_LINES_KEY = "key_lines"
@@ -43,7 +46,7 @@ ALL_KEYS = set(REQUIRED_KEYS + CONTENT_KEYS + DETAIL_KEYS + EXPLAIN_KEYS
                + OPTIONAL_KEYS + [KEY_LINES_KEY])
 
 # Sheets whose size is fixed; the build fails if the count drifts.
-EXPECTED_SHEET_COUNTS = {"ml-core": 37, "dl-core": 31, "nlp-vision-rl": 24}
+EXPECTED_SHEET_COUNTS = {"ml-core": 47, "dl-core": 39, "nlp-vision-rl": 38}
 SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 MAX_CODE_LINE = 70  # only a warning: phone screens are narrow
@@ -222,6 +225,19 @@ def check_problem(path, p, errors, warnings):
     for k in ("patterns", "pitfalls", "related"):
         if k in p and p[k] is not None and not _is_text_list(p[k]):
             err(f"'{k}' must be a list of non-empty strings")
+
+    dg = p.get("diagram")
+    if dg is not None:
+        lo, hi = DIAGRAM_LINES
+        if not (isinstance(dg, list) and lo <= len(dg) <= hi
+                and all(isinstance(x, str) for x in dg)
+                and any(x.strip() for x in dg)):
+            err(f"'diagram' must be a list of {lo}-{hi} strings")
+        else:
+            for i, line in enumerate(dg, 1):
+                if len(line) > MAX_DIAGRAM_WIDTH:
+                    err(f"diagram line {i} is {len(line)} chars "
+                        f"(> {MAX_DIAGRAM_WIDTH})")
 
     # Full vs metadata-only: all or nothing.
     full_keys = CONTENT_KEYS + DETAIL_KEYS + EXPLAIN_KEYS

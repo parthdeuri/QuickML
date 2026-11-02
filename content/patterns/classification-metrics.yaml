@@ -30,5 +30,6 @@ problems:
 - probability-calibration
 - class-imbalance
 - multiclass-metrics
+- isotonic-regression-pava
 aliases:
 - Classification metrics

@@ -1,0 +1,87 @@
+slug: retrieval-metrics-recall-at-k
+title: Retrieval Metrics (Recall@k, MRR, nDCG)
+url: https://scikit-learn.org/stable/modules/generated/sklearn.metrics.ndcg_score.html
+difficulty: Medium
+area: NLP
+topics: [Information Retrieval, Evaluation, Ranking]
+summary: |
+  Judge a ranked list of documents against known relevance labels: did
+  the relevant ones appear in the top k, how high was the first one, and
+  how good is the whole ordering.
+intuition: |
+  A retriever returns an ordered list, so correctness depends on position
+  as well as membership. Recall@k asks what fraction of the relevant
+  items made the top k, MRR rewards putting the first relevant item
+  high, and nDCG discounts each item's relevance by the log of its rank
+  and divides by the best possible ordering, so a perfect ranking scores
+  one and graded relevance is handled.
+why_it_works: |
+  Users only look at the top of a list, so metrics weight early ranks
+  more. Recall@k suits a first-stage retriever that feeds a reranker or a
+  language model, because only missing a relevant item is unrecoverable.
+  The logarithmic discount in DCG decays smoothly, and normalising by the
+  ideal DCG makes scores comparable across queries with different numbers
+  of relevant documents.
+when_to_use: |
+  Evaluating search, recommender candidate generation and the retrieval
+  step of RAG systems when relevance labels exist for each query.
+when_not_to_use: |
+  When no relevance judgements are available, or when answer quality
+  rather than retrieval quality is the goal; a high Recall@k does not
+  guarantee a good generated answer. MRR ignores everything after the
+  first relevant hit.
+math:
+  - "Recall@k = |relevant ∩ top-k| / |relevant|"
+  - "RR = 1 / rank of first relevant item;  MRR = mean of RR over queries"
+  - "DCG@k = Σᵢ₌₁ᵏ relᵢ / log₂(i + 1)    (linear gain)"
+  - "nDCG@k = DCG@k / IDCG@k"
+  - "IDCG@k: DCG@k of the ideal ordering (labels sorted descending)"
+  - "Each metric is averaged over queries"
+approach:
+  - "Rank documents for each query by score, highest first — the ordering is what is being judged"
+  - "Look up each ranked document's relevance label — turns scores into a sequence of hits and misses"
+  - "Recall@k: relevant hits in the first k divided by all relevant — did the retriever find them"
+  - "MRR: reciprocal of the rank of the first hit — how soon does the user see something useful"
+  - "nDCG@k: discounted gain divided by the ideal discounted gain — position-aware and normalised to one"
+code: |
+  import numpy as np
+
+  def ranked_rel(scores, rel):
+      order = np.argsort(-scores, axis=1)
+      return np.take_along_axis(rel, order, axis=1)
+
+  def recall_at_k(scores, rel, k):
+      hit = ranked_rel(scores, rel) > 0
+      return np.mean(hit[:, :k].sum(1) / hit.sum(1))
+
+  def mrr(scores, rel):
+      hit = ranked_rel(scores, rel) > 0
+      return np.mean(1.0 / (hit.argmax(1) + 1))
+
+  def ndcg_at_k(scores, rel, k):
+      disc = 1 / np.log2(np.arange(2, k + 2))
+      dcg = (ranked_rel(scores, rel)[:, :k] * disc).sum(1)
+      ideal = (-np.sort(-rel, axis=1)[:, :k] * disc).sum(1)
+      return np.mean(dcg / ideal)
+key_lines: [9, 13, 18]
+time: "O(Q·D log D) to sort D documents for each of Q queries"
+space: "O(Q·D) for the score and label matrices"
+hyperparameters:
+  - "Cut-off k (match the number of items a downstream stage or user actually sees)"
+  - "Gain function (linear relevance here; 2^rel − 1 is also common)"
+  - "Relevance grades (binary or graded)"
+  - "Tie handling for equal scores"
+pitfalls:
+  - "Queries with no relevant document divide by zero here; drop them or define them as zero"
+  - "Gain choice matters: this code uses linear gain, which is what scikit-learn uses; other libraries use 2^rel − 1"
+  - "Ties in scores are broken arbitrarily here by sort order; scikit-learn averages over ties by default"
+  - "The nDCG code needs k no larger than the number of documents per query"
+interview_qa:
+  - q: "When is Recall@k the right metric for retrieval?"
+    a: "For a first-stage retriever feeding a reranker or an LLM, since anything missing from the top k can never be recovered later. Order within the top k matters less."
+  - q: "Why does nDCG normalise by the ideal DCG?"
+    a: "Raw DCG grows with the number of relevant items, so queries are not comparable. Dividing by the best achievable DCG puts every query on a zero-to-one scale."
+  - q: "How do MRR and nDCG differ?"
+    a: "MRR only looks at the first relevant item and treats relevance as binary. nDCG uses the whole ranked list and supports graded relevance with a smooth position discount."
+related: [precision-recall-f1, roc-auc, rag-dense-retrieval]
+patterns: ["Text evaluation and retrieval"]

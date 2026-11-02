@@ -1,0 +1,78 @@
+slug: isotonic-regression-pava
+title: Isotonic Regression (PAVA)
+url: https://scikit-learn.org/stable/modules/isotonic.html
+difficulty: Medium
+area: Classical ML
+topics: [Regression, Calibration, Monotonic, Nonparametric]
+summary: |
+  Fit the non-decreasing step function closest to the targets in least
+  squares. The pool-adjacent-violators algorithm scans left to right and
+  averages neighbouring blocks whenever the order is violated.
+intuition: |
+  If two neighbouring values break the required order, the best you can do
+  for both is to replace them with their weighted average, since any other
+  common value is worse. Pooling can create a new violation with the block
+  before it, so keep merging backwards until the sequence is ordered.
+why_it_works: |
+  Isotonic regression is a convex projection onto the cone of monotone
+  sequences, with a unique solution. A violation cannot remain in any
+  optimum, so those two values must share one fitted value, which must be
+  their weighted mean. The stack of blocks is therefore always optimal for
+  the prefix seen so far, which makes a single pass enough.
+when_to_use: |
+  Calibrating classifier probabilities with a monotone map, dose-response
+  and other curves known to be monotone, and a nonparametric fit without
+  choosing a smoothing parameter.
+when_not_to_use: |
+  Skip it with little data for calibration, where it overfits into steps
+  (Platt scaling is smoother), when the relation is not monotone, or when
+  you need a smooth curve with derivatives.
+math:
+  - "min over f₁ ≤ f₂ ≤ … ≤ fₙ of Σᵢ wᵢ (yᵢ − fᵢ)²"
+  - "Pool B = block, value m(B) = Σᵢ∈B wᵢ yᵢ / Σᵢ∈B wᵢ"
+  - "Violation: m(B_prev) > m(B_last)  ⇒  merge the two blocks"
+  - "Merged weight W = W₁ + W₂"
+  - "Merged value m = (W₁ m₁ + W₂ m₂) / (W₁ + W₂)"
+  - "Fitted fᵢ = m(block containing i)"
+approach:
+  - "Sort by the input variable and push each target as its own block with its weight — a single point is trivially ordered"
+  - "While the last two blocks decrease, merge them into their weighted mean — the best common value for both"
+  - "Keep merging backwards after each merge — a new mean can break order with earlier blocks"
+  - "Expand each block value over the points it covers — gives the fitted non-decreasing sequence"
+  - "For a decreasing fit, negate the targets or reverse the order — same algorithm"
+code: |
+  import numpy as np
+
+  def pava(y, w=None):
+      w = np.ones(len(y)) if w is None else np.asarray(w, float)
+      val, wt, cnt = [], [], []
+      for yi, wi in zip(y, w):
+          val.append(float(yi)); wt.append(wi); cnt.append(1)
+          while len(val) > 1 and val[-2] > val[-1]:
+              t = wt[-2] + wt[-1]
+              m = (wt[-2] * val[-2] + wt[-1] * val[-1]) / t
+              c = cnt[-2] + cnt[-1]
+              del val[-1], wt[-1], cnt[-1]
+              val[-1], wt[-1], cnt[-1] = m, t, c
+      return np.repeat(val, cnt)
+key_lines: [8, 10, 13]
+time: "O(n) after sorting, since each point is merged at most once; O(n log n) with the sort"
+space: "O(n) for the block stack"
+hyperparameters:
+  - "increasing — direction of the monotone constraint"
+  - "Sample weights — weight each point, for example by counts"
+  - "out_of_bounds — how to treat inputs outside the training range when predicting"
+pitfalls:
+  - "Produces flat steps and can overfit when calibration data is small"
+  - "Predictions at new x need interpolation between block values, usually linear"
+  - "Tied x values must be pooled first, since the order among ties is arbitrary"
+  - "A single outlier at an end can drag a long block to a poor value"
+interview_qa:
+  - q: "What does the pool-adjacent-violators step do?"
+    a: "When two adjacent fitted values are out of order it replaces them with their weighted average, and keeps merging backwards while order is violated."
+  - q: "Why use isotonic regression for calibration?"
+    a: "It learns any monotone map from scores to probabilities without a parametric form, correcting miscalibration while keeping the ranking of predictions."
+  - q: "Is the PAVA solution optimal?"
+    a: "Yes. Least squares isotonic regression is a convex projection with a unique minimiser, and PAVA finds it exactly in one pass."
+related: [probability-calibration, linear-regression, roc-auc]
+patterns: ["Classification metrics"]

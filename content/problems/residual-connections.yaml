@@ -62,4 +62,15 @@ pitfalls:
   - "This card omits normalisation and the post-addition ReLU of the original ResNet"
   - "Residual stacks can grow activation scale with depth; normalisation or scaled initialisation controls it"
 related: [layer-normalization, backpropagation, batch-normalization]
+diagram:
+- x ───────────┐
+- │            │
+- ▼            │
+- '[ F(x) ]     │ identity'
+- │            │ shortcut
+- ▼            │
+- (+) ◄────────┘
+- │
+- ▼
+- y = x + F(x)
 patterns: ["Network building blocks"]

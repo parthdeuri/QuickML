@@ -1,0 +1,84 @@
+slug: bleu-score
+title: BLEU Score
+url: https://aclanthology.org/P02-1040/
+difficulty: Medium
+area: NLP
+topics: [Evaluation, Machine Translation, Text Generation]
+summary: |
+  Score a generated text against a reference by how many of its n-grams
+  also appear in the reference, with a penalty for being too short.
+intuition: |
+  Precision alone rewards a one-word output that happens to be correct,
+  so BLEU does two things to stop that. It clips each n-gram's credit to
+  the number of times it occurs in the reference, so repeating a word
+  earns nothing extra, and it multiplies by a brevity penalty so short
+  outputs cannot win by being safe. Combining 1- to 4-gram precisions
+  with a geometric mean checks both word choice and local fluency.
+why_it_works: |
+  Matching n-grams of several orders is a cheap proxy for adequacy
+  (unigrams) and fluency (longer n-grams) that correlates with human
+  judgement when averaged over a whole corpus. Counts are summed over
+  the corpus before taking ratios, which keeps one short sentence from
+  producing a zero that wipes out the score. The geometric mean means a
+  single order with no matches drives the score to zero.
+when_to_use: |
+  Comparing machine translation systems on the same test set, using a
+  standard tool such as sacreBLEU so that tokenisation is identical.
+when_not_to_use: |
+  Single sentences (any missing n-gram order gives zero without
+  smoothing), paraphrase-heavy tasks, open-ended generation, and
+  comparisons across different tokenisations. It ignores meaning, so
+  fluent paraphrases score poorly.
+math:
+  - "Clipped count: min(count_hyp(g), count_ref(g)) for each n-gram g"
+  - "pₙ = Σ clipped counts / Σ hypothesis n-grams  (summed over corpus)"
+  - "BP = 1 if c > r,  else exp(1 − r/c)   (c, r: hyp / ref length)"
+  - "BLEU = BP · exp( (1/N) · Σₙ log pₙ ),  N = 4"
+approach:
+  - "Count hypothesis n-grams for n = 1 to 4 — the units being matched"
+  - "Clip each count to the reference count — repeated words cannot be rewarded twice"
+  - "Sum matches and totals over the whole corpus, then divide for each pₙ — corpus-level precision is more stable than per-sentence"
+  - "Compute the brevity penalty from total hypothesis and reference lengths — precision cannot see missing content"
+  - "Take BP times the geometric mean of the pₙ — one number that needs every order to match"
+code: |
+  import numpy as np
+  from collections import Counter
+
+  def ngrams(t, n):
+      return Counter(tuple(t[i:i + n]) for i in range(len(t) - n + 1))
+
+  def corpus_bleu(hyps, refs, max_n=4):
+      match, total = np.zeros(max_n), np.zeros(max_n)
+      hl = rl = 0
+      for h, r in zip(hyps, refs):
+          hl, rl = hl + len(h), rl + len(r)
+          for n in range(1, max_n + 1):
+              hn, rn = ngrams(h, n), ngrams(r, n)
+              match[n - 1] += sum(min(c, rn[g]) for g, c in hn.items())
+              total[n - 1] += max(len(h) - n + 1, 0)
+      if match.min() == 0:
+          return 0.0
+      bp = 1.0 if hl > rl else np.exp(1 - rl / hl)
+      return 100 * bp * np.exp(np.log(match / total).mean())
+key_lines: [14, 18, 19]
+time: "O(total tokens · N) for N-gram orders, using hash-based counting"
+space: "O(distinct n-grams in one sentence)"
+hyperparameters:
+  - "Maximum n-gram order N (4 is the standard BLEU-4)"
+  - "Tokenisation (scores are only comparable under the same tokeniser)"
+  - "Smoothing method for short texts (this code uses none)"
+  - "Number of references (this code uses one)"
+pitfalls:
+  - "Scores from different tokenisers or casing are not comparable; report the sacreBLEU signature"
+  - "Without smoothing, a corpus with no matching 4-gram scores exactly zero"
+  - "This code takes one reference per sentence and tokens already split; real BLEU allows several references and picks the closest length"
+  - "BLEU measures overlap, not meaning, and is not reliable for single sentences"
+interview_qa:
+  - q: "Why does BLEU clip n-gram counts?"
+    a: "Without clipping, a hypothesis repeating a reference word many times would get full precision. Clipping caps credit at the number of times the n-gram appears in the reference."
+  - q: "What does the brevity penalty do and why is there no recall term?"
+    a: "BLEU is precision-based, so very short outputs could score high. The brevity penalty multiplies the score down when total hypothesis length is below the reference length. It is a length-based stand-in for recall."
+  - q: "Why compute BLEU at corpus level rather than averaging sentence BLEU?"
+    a: "Summing n-gram counts over the corpus avoids zero precisions on short sentences and gives a more stable statistic. Averaging sentence scores treats a three-word sentence like a long one."
+related: [perplexity, precision-recall-f1, rouge-score]
+patterns: ["Text evaluation and retrieval"]

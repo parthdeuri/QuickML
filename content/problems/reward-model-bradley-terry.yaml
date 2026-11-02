@@ -1,0 +1,77 @@
+slug: reward-model-bradley-terry
+title: Reward Model (Bradley-Terry Loss)
+url: https://arxiv.org/abs/2203.02155
+difficulty: Medium
+area: NLP
+topics: [Alignment, Preference Learning, RLHF]
+summary: |
+  Learn a scalar reward for text from human comparisons by training so
+  that the preferred response scores higher than the rejected one, using
+  a logistic loss on the score difference.
+intuition: |
+  People find it easier to say which of two answers is better than to
+  give an absolute score. The Bradley-Terry model turns that into
+  probability: the chance that the chosen response wins is a sigmoid of
+  the difference between the two rewards. Only the difference matters, so
+  the learned rewards have no absolute scale or zero point, and the
+  loss simply pushes the gap in the right direction with more force
+  when the model currently has the pair the wrong way round.
+why_it_works: |
+  Minimising the loss is maximum likelihood for the Bradley-Terry
+  model, and the logistic loss is smooth and convex in a linear reward.
+  The gradient on each pair is proportional to the probability the model
+  assigns to the wrong ordering, so confident mistakes are corrected
+  hardest while correctly ranked pairs fade out of the update.
+when_to_use: |
+  Building the reward model in RLHF from pairwise human or AI
+  preference labels, or for any ranking problem trained on pairs.
+when_not_to_use: |
+  When labels are absolute scores (use regression), when preferences are
+  intransitive or inconsistent across annotators, or when the reward
+  will be optimised so hard that the model exploits its errors.
+math:
+  - "P(chosen ≻ rejected) = σ(r_c − r_r) = e^{r_c} / (e^{r_c} + e^{r_r})"
+  - "Linear reward: r(x) = w·x"
+  - "d = r_c − r_r = w·(x_c − x_r)"
+  - "L = −mean log σ(d) = mean log(1 + e^(−d))"
+  - "∂L/∂w = −mean[ σ(−d) · (x_c − x_r) ]"
+  - "Shift invariance: adding any constant to both rewards leaves L fixed"
+approach:
+  - "Score the chosen and rejected response with the reward model — a scalar for each"
+  - "Take the difference d = r_c − r_r — Bradley-Terry only depends on the gap"
+  - "Apply −log σ(d), computed as log(1 + e^(−d)) — negative log-likelihood that the chosen response wins"
+  - "Average over pairs — one training objective for the batch"
+  - "Step the reward model's parameters down the gradient — larger corrections for pairs currently ranked wrongly"
+code: |
+  import numpy as np
+
+  def bt_loss(w, Xc, Xr):
+      # Xc, Xr: features of chosen / rejected responses (N x d)
+      diff = Xc - Xr
+      d = diff @ w                       # r_chosen - r_rejected
+      loss = np.logaddexp(0.0, -d).mean()
+      p = np.exp(-np.logaddexp(0.0, d))  # sigma(-d): P(wrong order)
+      grad = -(diff.T @ p) / len(d)
+      return loss, grad
+key_lines: [6, 7, 8]
+time: "O(N·d) per pass for N pairs of d-dimensional features (a real reward model costs a transformer forward pass per response)"
+space: "O(N·d) for the pair features"
+hyperparameters:
+  - "Learning rate and optimiser"
+  - "Number of epochs (reward models overfit quickly on small preference sets)"
+  - "L2 regularisation or reward centring"
+  - "Base model and score head (here a linear head on fixed features)"
+pitfalls:
+  - "Only reward differences are meaningful; normalise or centre rewards before using them elsewhere"
+  - "This code uses a linear reward on fixed features; a real model scores text with a transformer and a scalar head on its final token"
+  - "Noisy or contradictory labels cap how well pairs can be ordered"
+  - "Policies optimised against the reward can exploit its mistakes (reward hacking)"
+interview_qa:
+  - q: "Why is the loss a function of the reward difference only?"
+    a: "The Bradley-Terry probability that one item beats another is a sigmoid of the difference of their scores. Adding a constant to all scores cancels, so absolute reward values are unidentifiable."
+  - q: "Why does the loss equal log(1 + e^(−d))?"
+    a: "−log σ(d) = log(1 + e^(−d)). Computing it with logaddexp avoids overflow and underflow for large positive or negative differences."
+  - q: "How does the reward model connect to DPO?"
+    a: "DPO uses the same Bradley-Terry likelihood but defines the reward as a scaled log-ratio of policy to reference, so the policy itself plays the role of the reward model."
+related: [logistic-regression, dpo-loss, softmax-cross-entropy]
+patterns: ["Preference alignment and policy gradients"]

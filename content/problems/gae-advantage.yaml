@@ -1,0 +1,83 @@
+slug: gae-advantage
+title: Generalised Advantage Estimation
+url: https://arxiv.org/abs/1506.02438
+difficulty: Hard
+area: RL
+topics: [Reinforcement Learning, Policy Gradient, Advantage Estimation]
+summary: |
+  Estimate how much better an action was than average by summing
+  one-step temporal-difference errors with exponentially decaying
+  weights, trading bias against variance with a single parameter λ.
+intuition: |
+  A one-step estimate of an action's advantage trusts the value function
+  heavily: low variance but biased if the critic is wrong. A full
+  Monte-Carlo return trusts only observed rewards: unbiased but noisy.
+  GAE blends them: each TD error δ looks one step ahead, and the
+  advantage is a decayed sum of future TD errors, with γλ controlling how
+  far the sum reaches. Computing it is a simple backward recursion over
+  the trajectory.
+why_it_works: |
+  The sum of TD errors with weights (γλ)^l is an exponentially weighted
+  average of n-step advantage estimates. λ = 0 recovers the one-step
+  TD error and λ = 1 recovers the Monte-Carlo advantage, with
+  intermediate values interpolating. Because the weights decay
+  geometrically, the whole sum satisfies A_t = δ_t + γλ·A_{t+1}, so a
+  single backward pass computes every advantage in linear time.
+when_to_use: |
+  Actor-critic methods such as PPO and A2C, where a value function
+  is available and advantages should be less noisy than raw returns.
+when_not_to_use: |
+  When no value function is learned (pure REINFORCE with a baseline
+  from returns), or when the critic is so poor that bootstrapping
+  hurts. Off-policy replay needs importance-corrected estimators
+  instead.
+math:
+  - "TD error: δ_t = r_t + γ·(1 − d_t)·V(s_{t+1}) − V(s_t)"
+  - "GAE: A_t = Σ_{l≥0} (γλ)^l · δ_{t+l}   (stops at episode end)"
+  - "Recursion: A_t = δ_t + γλ·(1 − d_t)·A_{t+1}"
+  - "λ = 0:  A_t = δ_t   (one-step TD)"
+  - "λ = 1:  A_t = G_t − V(s_t)   (Monte-Carlo advantage)"
+  - "Value target: A_t + V(s_t)"
+  - "d_t = 1 if the episode ends after step t, else 0"
+approach:
+  - "Compute the TD error δ_t for every step, bootstrapping from V(s_{t+1}) unless the episode ended — the one-step advantage signal"
+  - "Start at the end of the rollout with a running advantage of zero — nothing lies beyond the horizon"
+  - "Walk backwards: add δ_t to γλ times the next step's advantage — accumulates decayed future TD errors"
+  - "Reset the running sum across episode boundaries using the done flag — advantages must not leak between episodes"
+  - "Return advantages and A + V as value targets — the policy and critic training signals"
+code: |
+  import numpy as np
+
+  def gae(rewards, values, last_value, dones, gamma=0.99, lam=0.95):
+      # dones[t] = 1 if the episode ended after step t
+      v_next = np.append(values[1:], last_value)
+      alive = 1.0 - dones
+      delta = rewards + gamma * alive * v_next - values
+      adv = np.zeros(len(rewards))
+      run = 0.0
+      for t in reversed(range(len(rewards))):
+          run = delta[t] + gamma * lam * alive[t] * run
+          adv[t] = run
+      return adv, adv + values      # advantages, value targets
+key_lines: [7, 11]
+time: "O(T) for a rollout of T steps"
+space: "O(T) for the TD errors and advantages"
+hyperparameters:
+  - "Discount γ"
+  - "GAE parameter λ (low is biased and low variance, high is unbiased and noisy)"
+  - "Rollout length (sets how far bootstrapping from last_value reaches)"
+  - "Advantage normalisation across the batch"
+pitfalls:
+  - "Bootstrap from last_value only if the rollout was cut off; a terminated episode must have done = 1 at its final step"
+  - "Time-limit truncation is not a true terminal and should still bootstrap from the value of the final state; this code treats done as terminal"
+  - "Values and last_value come from the critic at collection time and are not differentiated through"
+  - "This handles one environment; vectorised rollouts apply the same recursion per environment"
+interview_qa:
+  - q: "What do λ = 0 and λ = 1 give?"
+    a: "λ = 0 gives the one-step TD error, low variance but biased by the critic. λ = 1 gives the discounted Monte-Carlo return minus the value baseline, unbiased but high variance."
+  - q: "Why is GAE computed backwards?"
+    a: "Each advantage equals its own TD error plus γλ times the next advantage, so iterating from the end reuses the already-computed suffix and costs linear time."
+  - q: "What does the done flag do in the recursion?"
+    a: "It removes the bootstrap term at a terminal state and stops the running sum from carrying future advantages across an episode boundary."
+related: [reinforce-policy-gradient, q-learning, ppo-clipped-objective]
+patterns: ["Reinforcement learning", "Preference alignment and policy gradients"]

@@ -75,4 +75,12 @@ interview_qa:
   - q: "When is layer norm preferred?"
     a: "When batch statistics are unreliable or undefined, as in small batches or variable-length sequences, since layer norm normalises per sample."
 related: [mlp-forward-pass, backpropagation, dropout]
+diagram:
+- '            features →'
+- '         ┌─────────────┐'
+- ' batch   │ x x x x x x │ ◄ layer norm:'
+- '   ↓     │ x x x x x x │   each row'
+- '         │ x x x x x x │'
+- '         └─────────────┘'
+- '           ▲ batch norm: each column'
 patterns: ["Normalisation"]

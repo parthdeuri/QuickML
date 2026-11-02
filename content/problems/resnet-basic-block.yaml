@@ -1,0 +1,94 @@
+slug: resnet-basic-block
+title: ResNet Basic Block
+url: https://d2l.ai/chapter_convolutional-modern/resnet.html
+difficulty: Medium
+area: Vision
+topics: [Residual Networks, Convolutional Networks, Skip Connections]
+summary: |
+  Two 3×3 convolutions with batch norm and ReLU, plus a shortcut that
+  adds the block's input to its output before the final ReLU.
+intuition: |
+  The block only has to learn a correction F(x) on top of the identity,
+  so if the best change is small the weights can simply stay near zero.
+  The shortcut also gives gradients a direct path back through the
+  addition, which is what lets networks with dozens of layers train.
+  When the shape changes (stride 2 or more channels) the shortcut uses a
+  1×1 convolution so the two branches can still be added.
+approach:
+  - "Convolve with a 3×3 kernel (stride s) and batch-normalise — first feature transform, s downsamples"
+  - "Apply ReLU — adds the nonlinearity between the two convolutions"
+  - "Convolve again at stride 1 and batch-normalise — second transform, no ReLU yet"
+  - "If shape changes, map x with a strided 1×1 conv plus batch norm — makes the shortcut addable"
+  - "Add the shortcut to the branch output, then ReLU — output is x + F(x), so identity is easy to learn"
+code: |
+  import numpy as np
+
+  def conv(x, w, stride=1, pad=1):
+      x = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)))
+      k = w.shape[2]
+      oh = (x.shape[2] - k) // stride + 1
+      ow = (x.shape[3] - k) // stride + 1
+      out = np.zeros((x.shape[0], w.shape[0], oh, ow))
+      for i in range(oh):
+          for j in range(ow):
+              r, s = i * stride, j * stride
+              p = x[:, :, r:r + k, s:s + k]
+              out[:, :, i, j] = np.einsum("ncuv,fcuv->nf", p, w)
+      return out
+
+  def bn(x, g, b, eps=1e-5):
+      mu = x.mean(axis=(0, 2, 3), keepdims=True)
+      var = x.var(axis=(0, 2, 3), keepdims=True)
+      xhat = (x - mu) / np.sqrt(var + eps)
+      return g.reshape(1, -1, 1, 1) * xhat + b.reshape(1, -1, 1, 1)
+
+  def basic_block(x, p, stride=1):
+      out = bn(conv(x, p["w1"], stride), p["g1"], p["b1"])
+      out = bn(conv(np.maximum(0, out), p["w2"]), p["g2"], p["b2"])
+      if "ws" in p:
+          x = bn(conv(x, p["ws"], stride, 0), p["gs"], p["bs"])
+      return np.maximum(0, out + x)
+key_lines: [24, 26, 27]
+time: "O(N·H·W·C²·9) per conv, dominated by the two 3×3 convolutions"
+space: "O(N·C·H·W) per activation map kept for backpropagation"
+when_to_use: |
+  Medium-depth image backbones (ResNet-18 and ResNet-34 use this block),
+  and as a default building block when you want a deeper CNN that still
+  trains reliably.
+when_not_to_use: |
+  Very deep or wide networks where a bottleneck block (1×1, 3×3, 1×1)
+  is cheaper, or latency-bound mobile models where depthwise-separable
+  blocks are a better trade.
+why_it_works: |
+  Writing the block as y = x + F(x) means the Jacobian is I + ∂F/∂x, so
+  the identity term carries gradient to earlier layers unchanged and
+  prevents it from vanishing. The optimisation problem also becomes
+  easier because "do nothing" is the zero-weight solution rather than a
+  precise mapping the stacked layers must discover.
+math:
+  - "F(x) = BN(W₂ ∗ ReLU(BN(W₁ ∗ x)))"
+  - "y = ReLU(F(x) + x)   when shapes match"
+  - "y = ReLU(F(x) + BN(W_s ∗ x))   with a 1×1 conv W_s at stride s"
+  - "BN(x) = γ · (x − μ_B) / √(σ²_B + ε) + β, stats over (N, H, W)"
+  - "∂y/∂x = I + ∂F/∂x   (before the ReLU gate)"
+interview_qa:
+  - q: "Why does a skip connection help train deep networks?"
+    a: "The addition gives an identity path for both signal and gradient, so the layers learn a residual and gradients do not have to pass through every nonlinearity."
+  - q: "When does the shortcut need a projection?"
+    a: "When the block changes the spatial size or channel count, the input and F(x) differ in shape, so a strided 1×1 conv (with batch norm) matches them."
+  - q: "Where is the last ReLU placed in the original basic block?"
+    a: "After the addition, so the block output is non-negative; pre-activation variants move BN and ReLU before each conv instead."
+  - q: "Why no bias in the convolutions?"
+    a: "The following batch norm has its own shift β, which makes a conv bias redundant."
+hyperparameters:
+  - "Channels per stage and number of blocks per stage"
+  - "Stride of the first block in each stage (downsampling)"
+  - "BatchNorm ε and momentum"
+  - "Zero-initialising the last BN γ so each block starts as identity"
+pitfalls:
+  - "This code uses batch statistics only (train mode); inference needs running averages"
+  - "Adding before the ReLU versus after changes the function; follow the variant you load weights for"
+  - "A stride-2 first conv with an identity shortcut fails on shape; use the projection"
+  - "Loops make this very slow; it is for understanding, not training"
+related: [residual-connections, batch-normalization, convolution-2d]
+patterns: ["Convolution and vision"]

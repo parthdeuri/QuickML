@@ -78,3 +78,9 @@ interview_qa:
 related: [softmax-cross-entropy, mlp-forward-pass, backpropagation]
 diagram: self-attention
 patterns: ["Attention and sequences"]
+math_tex:
+- $Q = XW_q,\;\; K = XW_k,\;\; V = XW_v \qquad (X:\ T \times d)$
+- $S = \frac{QK^{\top}}{\sqrt{d_k}}$
+- 'Causal: set $S_{ij} = -\infty$ for $j > i$'
+- $A = \mathrm{softmax}(S)$ row-wise
+- $\mathrm{Output} = A\,V$

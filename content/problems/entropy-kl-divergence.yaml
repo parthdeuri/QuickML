@@ -71,3 +71,10 @@ interview_qa:
     a: "No. It is asymmetric and does not satisfy the triangle inequality."
 related: [softmax-cross-entropy, maximum-likelihood, bayes-theorem]
 patterns: ["Information-theoretic losses"]
+math_tex:
+- $H(p) = -\sum_x p(x)\log p(x)$
+- $H(p,q) = -\sum_x p(x)\log q(x)$
+- $\mathrm{KL}(p\,\|\,q) = \sum_x p(x)\log\frac{p(x)}{q(x)}$
+- $\mathrm{KL}(p\,\|\,q) = H(p,q) - H(p)$
+- $\mathrm{KL}(p\,\|\,q) \geq 0$, equality iff $p = q$
+- $\mathrm{KL}(p\,\|\,q) \neq \mathrm{KL}(q\,\|\,p)$ in general

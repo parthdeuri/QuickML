@@ -1118,29 +1118,39 @@ private fun ExplanationBlock(title: String, body: String, titleColor: Color, bac
     }
 }
 
-/** Pre-drawn diagram (PNG from assets/diagrams, light or dark variant); tap to enlarge. */
+/** Loading state of a PNG shipped in assets. */
+private sealed interface AssetPic {
+    data object Loading : AssetPic
+    data object Missing : AssetPic
+    class Ready(val bitmap: ImageBitmap) : AssetPic
+}
+
 @Composable
-private fun DiagramBox(lines: List<String>) {
-    val colors = QuickMLTheme.colors
+private fun rememberAssetPic(dir: String, name: String): AssetPic {
     val context = LocalContext.current
-    val name = lines.firstOrNull() ?: return
-    val theme = if (colors.isDark) "dark" else "light"
-    val bitmap by produceState<ImageBitmap?>(null, name, theme) {
+    val theme = if (QuickMLTheme.colors.isDark) "dark" else "light"
+    val pic by produceState<AssetPic>(AssetPic.Loading, dir, name, theme) {
         value = withContext(Dispatchers.IO) {
             runCatching {
-                context.assets.open("diagrams/${name}_$theme.png").use {
+                context.assets.open("$dir/${name}_$theme.png").use {
                     BitmapFactory.decodeStream(it)?.asImageBitmap()
                 }
-            }.getOrNull()
+            }.getOrNull()?.let { AssetPic.Ready(it) } ?: AssetPic.Missing
         }
     }
+    return pic
+}
+
+/** A pre-rendered picture on a code-coloured card; tap to enlarge. */
+@Composable
+private fun PictureBox(title: String, bitmap: ImageBitmap) {
+    val colors = QuickMLTheme.colors
     var enlarged by remember { mutableStateOf(false) }
-    val img = bitmap ?: return
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SectionHeading("Diagram")
+        SectionHeading(title)
         Image(
-            bitmap = img,
-            contentDescription = "Diagram",
+            bitmap = bitmap,
+            contentDescription = title,
             contentScale = ContentScale.FillWidth,
             modifier = Modifier
                 .fillMaxWidth()
@@ -1163,8 +1173,8 @@ private fun DiagramBox(lines: List<String>) {
                 contentAlignment = Alignment.Center
             ) {
                 Image(
-                    bitmap = img,
-                    contentDescription = "Diagram",
+                    bitmap = bitmap,
+                    contentDescription = title,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize().padding(12.dp)
                 )
@@ -1173,8 +1183,23 @@ private fun DiagramBox(lines: List<String>) {
     }
 }
 
+/** Pre-drawn diagram (assets/diagrams, light or dark variant). */
 @Composable
-private fun DryRunBox(lines: List<String>) {
+private fun DiagramBox(lines: List<String>) {
+    val name = lines.firstOrNull() ?: return
+    val pic = rememberAssetPic("diagrams", name)
+    if (pic is AssetPic.Ready) PictureBox("Diagram", pic.bitmap)
+}
+
+/** Formulas: a typeset image when the card has one, otherwise plain monospace lines. */
+@Composable
+private fun DryRunBox(slug: String, lines: List<String>) {
+    val pic = rememberAssetPic("math", slug)
+    if (pic is AssetPic.Ready) {
+        PictureBox("Math", pic.bitmap)
+        return
+    }
+    if (pic is AssetPic.Loading) return
     val code = QuickMLTheme.colors.code
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionHeading("Math")
@@ -1249,7 +1274,7 @@ private fun ApproachSection(
             DiagramBox(diagram)
         }
         if (dryRun.isNotEmpty()) {
-            DryRunBox(dryRun)
+            DryRunBox(slug, dryRun)
         }
         Row(
             modifier = Modifier.fillMaxWidth(),

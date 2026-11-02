@@ -29,8 +29,9 @@ AREAS = {"Classical ML", "Deep Learning", "NLP", "Vision", "RL", "MLOps",
 REQUIRED_KEYS = ["slug", "title", "url", "difficulty", "topics", "area"]
 # Fields that make up a "full" card. All or none of them must be present.
 CONTENT_KEYS = ["summary", "intuition", "approach", "time", "space", "code"]
-OPTIONAL_KEYS = ["patterns", "pitfalls", "related", "diagram"]
+OPTIONAL_KEYS = ["patterns", "pitfalls", "related", "diagram", "math_tex"]
 # Optional monospace box-art picture (architecture / data flow).
+MATH_DIR = Path(__file__).resolve().parent.parent.parent / "app/src/main/assets/math"
 DIAGRAM_DIR = Path(__file__).resolve().parent.parent.parent / "app/src/main/assets/diagrams"
 # 1-based line numbers of `code` holding the core idea. Required for full
 # cards, forbidden for metadata-only ones.
@@ -234,6 +235,17 @@ def check_problem(path, p, errors, warnings):
                 if not (DIAGRAM_DIR / f"{dg}_{theme}.png").exists():
                     err(f"diagram image missing: {dg}_{theme}.png "
                         "(run make_diagrams.py)")
+
+    mt = p.get("math_tex")
+    if mt is not None:
+        if not _is_text_list(mt):
+            err("'math_tex' must be a list of non-empty strings")
+        elif len(mt) != len(p.get("math") or []):
+            err(f"'math_tex' has {len(mt)} lines but 'math' has {len(p.get('math') or [])}")
+        else:
+            for theme in ("light", "dark"):
+                if not (MATH_DIR / f"{slug}_{theme}.png").exists():
+                    err(f"math image missing: {slug}_{theme}.png (run make_math.py)")
 
     # Full vs metadata-only: all or nothing.
     full_keys = CONTENT_KEYS + DETAIL_KEYS + EXPLAIN_KEYS

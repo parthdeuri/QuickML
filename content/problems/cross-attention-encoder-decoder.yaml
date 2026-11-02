@@ -19,7 +19,7 @@ why_it_works: |
   any source position at every step with content-based weights instead
   of squeezing the source into one fixed vector. Keys and values are
   computed once per source and reused for every generated token. A
-  padding mask sets the scores of padded source columns to −∞ so they
+  padding mask sets the scores of padded source columns to $-\infty$ so they
   receive exactly zero weight.
 when_to_use: |
   Translation, summarisation, speech recognition and any
@@ -40,9 +40,9 @@ math:
 approach:
   - "Project decoder states to queries — the decoder is the one asking"
   - "Project encoder outputs to keys and values — the source supplies what to match and what to give"
-  - "Score every target-source pair with Q·Kᵀ/√d_k — rectangular matrix, scaled to keep softmax healthy"
-  - "Mask padded source columns with −∞ — padding must receive zero weight"
-  - "Softmax each row and multiply by V — each target position gets a weighted average of source values"
+  - "Score every target-source pair with $QK^{\\top}/\\sqrt{d_k}$ — rectangular matrix, scaled to keep softmax healthy"
+  - "Mask padded source columns with $-\\infty$ — padding must receive zero weight"
+  - "Softmax each row and multiply by $V$ — each target position gets a weighted average of source values"
 code: |
   import numpy as np
 
@@ -62,7 +62,7 @@ key_lines: [8, 9, 12]
 time: "O(T_dec·T_enc·d) for target length T_dec, source length T_enc and width d"
 space: "O(T_dec·T_enc) for the attention matrix; K and V (O(T_enc·d)) can be cached across decoding steps"
 hyperparameters:
-  - "Key/query dimension d_k (sets the scale √d_k)"
+  - "Key/query dimension $d_k$ (sets the scale $\\sqrt{d_k}$)"
   - "Number of heads (this code is a single head)"
   - "Source padding mask (needed whenever sources in a batch differ in length)"
   - "Attention dropout"
@@ -72,7 +72,7 @@ pitfalls:
   - "Queries must come from the decoder; swapping the roles gives a source-by-target matrix instead"
   - "This is one head with no output projection, residual or layer norm, which a real decoder layer adds"
 interview_qa:
-  - q: "Where do Q, K and V come from in cross-attention?"
+  - q: "Where do $Q$, $K$ and $V$ come from in cross-attention?"
     a: "Queries come from the decoder's current hidden states; keys and values come from the encoder's final outputs. The attention matrix is therefore target length by source length."
   - q: "Why can encoder keys and values be cached during generation?"
     a: "The source does not change while decoding, so its keys and values are computed once and reused at every step; only the new query is computed each step."

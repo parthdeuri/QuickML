@@ -5,8 +5,8 @@ difficulty: Medium
 area: MLOps
 topics: [Calibration, Evaluation, Reliability Diagram, Brier Score]
 summary: |
-  A model is calibrated when, among predictions of probability p, about a
-  fraction p are actually positive. Measure it with a reliability diagram,
+  A model is calibrated when, among predictions of probability $p$, about a
+  fraction $p$ are actually positive. Measure it with a reliability diagram,
   expected calibration error and the Brier score.
 intuition: |
   Ranking quality and honesty of probabilities are different things: a
@@ -16,7 +16,7 @@ intuition: |
   is the miscalibration, and decisions based on expected cost depend on
   it.
 why_it_works: |
-  If predictions are calibrated, E[y | p̂ = p] = p, so every bin's observed
+  If predictions are calibrated, $E[y\,|\,\hat{p}=p]=p$, so every bin's observed
   rate matches its mean prediction. The Brier score is the mean squared
   error of the probabilities and is a proper scoring rule, so it is
   minimised only by the true probabilities and rewards both calibration
@@ -36,7 +36,7 @@ math:
   - "Bins: equal-width edges on [0, 1], empty bins skipped"
 approach:
   - "Hold out data the model never trained on — in-sample probabilities are too confident"
-  - "Cut [0, 1] into equal-width bins and assign each prediction — groups predictions of similar confidence"
+  - "Cut $[0,1]$ into equal-width bins and assign each prediction — groups predictions of similar confidence"
   - "Per bin, compute the observed positive rate and the mean predicted probability — the two sides of the reliability diagram"
   - "Weight the absolute gaps by bin size to get ECE — one summary number"
   - "Compute the Brier score too — it needs no binning and is a proper scoring rule"
@@ -73,7 +73,7 @@ pitfalls:
   - "A calibrated model can still be a poor classifier; check discrimination as well"
 interview_qa:
   - q: "What does it mean for a classifier to be calibrated?"
-    a: "Among all cases given probability p, the observed positive rate is p; the reliability diagram then lies on the diagonal."
+    a: "Among all cases given probability $p$, the observed positive rate is $p$; the reliability diagram then lies on the diagonal."
   - q: "How is the Brier score related to calibration?"
     a: "It is the squared error of the probabilities and a proper scoring rule, so it improves with better calibration and with sharper, more discriminative predictions."
   - q: "How do you fix a miscalibrated model?"

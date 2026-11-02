@@ -7,10 +7,10 @@ topics: [Kernel Methods, Non-linear, Regression, Regularisation]
 summary: |
   Replace dot products by a kernel so a linear method works in a huge
   implicit feature space. With the RBF kernel and ridge regression this
-  gives a smooth non-linear regressor using only an n by n Gram matrix.
+  gives a smooth non-linear regressor using only an $n$ by $n$ Gram matrix.
 intuition: |
   Many linear algorithms touch the data only through dot products between
-  points. If you swap each dot product for a kernel k(x, z) that equals a
+  points. If you swap each dot product for a kernel $k(x, z)$ that equals a
   dot product in some richer feature space, you get a non-linear model
   without ever building those features. The RBF kernel is a similarity
   that decays with distance, which corresponds to an infinite-dimensional
@@ -18,16 +18,16 @@ intuition: |
 why_it_works: |
   By the representer theorem the minimiser of a regularised loss lies in
   the span of the kernel functions centred on the training points, so the
-  problem reduces to n coefficients. A positive semidefinite kernel is
+  problem reduces to $n$ coefficients. A positive semidefinite kernel is
   guaranteed (Mercer) to be an inner product in some feature space, and
-  the ridge penalty keeps the solve well conditioned. The bandwidth γ sets
+  the ridge penalty keeps the solve well conditioned. The bandwidth $\gamma$ sets
   how local the similarity is.
 when_to_use: |
   Small to medium datasets (up to a few thousand points) with smooth
   non-linear structure, kernel SVMs and kernel ridge baselines, and
   Gaussian-process-style regression.
 when_not_to_use: |
-  Large n, since the Gram matrix costs quadratic memory and the solve
+  Large $n$, since the Gram matrix costs quadratic memory and the solve
   cubic time (use random features, Nyström or neural nets), or
   high-dimensional sparse data where a linear model already works.
 math:
@@ -38,11 +38,11 @@ math:
   - "Prediction: f(x) = Σᵢ αᵢ k(x, xᵢ)"
   - "Trick: k(x, z) = φ(x)ᵀ φ(z) without computing φ"
 approach:
-  - "Compute squared distances through ‖x‖² + ‖z‖² − 2xᵀz — one matrix product instead of a double loop"
-  - "Clip tiny negative distances to zero and apply exp(−γ d²) — rounding can push distances below zero"
-  - "Build the training Gram matrix K — it holds all pairwise similarities"
-  - "Solve (K + λI) α = y — the ridge term makes the system invertible and controls overfitting"
-  - "Predict with the test-versus-train kernel matrix times α — a weighted sum of similarities to training points"
+  - "Compute squared distances through $\\|x\\|^2 + \\|z\\|^2 - 2x^{\\top}z$ — one matrix product instead of a double loop"
+  - "Clip tiny negative distances to zero and apply $\\exp(-\\gamma d^2)$ — rounding can push distances below zero"
+  - "Build the training Gram matrix $K$ — it holds all pairwise similarities"
+  - "Solve $(K + \\lambda I)\\alpha = y$ — the ridge term makes the system invertible and controls overfitting"
+  - "Predict with the test-versus-train kernel matrix times $\\alpha$ — a weighted sum of similarities to training points"
 code: |
   import numpy as np
 
@@ -58,20 +58,20 @@ key_lines: [4, 5, 9]
 time: "O(n²·d) to build the Gram matrix plus O(n³) for the solve"
 space: "O(n²) for the Gram matrix"
 hyperparameters:
-  - "Bandwidth γ — large γ is local and can overfit, small γ approaches a linear fit"
-  - "Regularisation λ — larger values smooth the fit"
+  - "Bandwidth $\\gamma$ — large $\\gamma$ is local and can overfit, small $\\gamma$ approaches a linear fit"
+  - "Regularisation $\\lambda$ — larger values smooth the fit"
   - "Kernel choice — RBF, polynomial, linear or others"
   - "Feature scaling — the RBF distance is dominated by large-scale features"
 pitfalls:
-  - "Features must be scaled, otherwise γ means different things per dimension"
-  - "Memory and time grow with n², so it does not scale to millions of rows"
-  - "This is kernel ridge (squared loss, dense α), not an SVM: no sparse support vectors"
+  - "Features must be scaled, otherwise $\\gamma$ means different things per dimension"
+  - "Memory and time grow with $n^2$, so it does not scale to millions of rows"
+  - "This is kernel ridge (squared loss, dense $\\alpha$), not an SVM: no sparse support vectors"
   - "Far from the training data the prediction decays toward zero because the kernel does, so extrapolation is poor"
 interview_qa:
   - q: "What is the kernel trick?"
     a: "If an algorithm uses data only through inner products, you can replace them with a kernel function that equals an inner product in a richer feature space, getting non-linearity without computing the features."
   - q: "What does the RBF bandwidth control?"
-    a: "How fast similarity falls with distance: large γ gives very local, wiggly fits that can overfit; small γ gives smooth, nearly linear fits that can underfit."
+    a: "How fast similarity falls with distance: large $\\gamma$ gives very local, wiggly fits that can overfit; small $\\gamma$ gives smooth, nearly linear fits that can underfit."
   - q: "What makes a function a valid kernel?"
     a: "It must be symmetric and positive semidefinite, meaning every Gram matrix has non-negative eigenvalues (Mercer's condition)."
   - q: "Kernel ridge versus SVM?"

@@ -19,7 +19,7 @@ why_it_works: |
   that pulls the predicted distribution toward uniform. That keeps
   logits bounded and the penultimate-layer clusters tight, which acts
   as a regulariser and often improves calibration. It is the same as
-  cross-entropy to a target that is (1 − ε) one-hot plus ε uniform.
+  cross-entropy to a target that is $(1-\epsilon)$ one-hot plus $\epsilon$ uniform.
 when_to_use: |
   Large classifiers (image classification, translation) where labels
   may be noisy and overconfident predictions hurt generalisation.
@@ -35,7 +35,7 @@ math:
   - "Equivalent: (1 − ε)·(−log p_y) + ε·mean_k(−log p_k)"
 approach:
   - "Compute log-probabilities with a stable log-softmax — avoids overflow and log of zero"
-  - "Build the target: ε/K everywhere, then add 1 − ε at the true class — a valid probability vector"
+  - "Build the target: $\\epsilon/K$ everywhere, then add $1-\\epsilon$ at the true class — a valid probability vector"
   - "Take the cross-entropy between target and log-probabilities — the usual loss with a soft target"
   - "Average over the batch — gives one scalar to differentiate"
 code: |
@@ -52,18 +52,18 @@ key_lines: [5, 7, 8]
 time: "O(N·K) for N samples and K classes"
 space: "O(N·K) for the target and log-probabilities"
 hyperparameters:
-  - "Smoothing ε"
-  - "Number of classes K (sets how the mass is spread)"
+  - "Smoothing $\\epsilon$"
+  - "Number of classes $K$ (sets how the mass is spread)"
 pitfalls:
-  - "Too large ε underfits and weakens the signal from the true label"
-  - "Some libraries spread ε over K classes, others over K − 1; check the convention"
+  - "Too large $\\epsilon$ underfits and weakens the signal from the true label"
+  - "Some libraries spread $\\epsilon$ over $K$ classes, others over $K-1$; check the convention"
   - "Smoothed models can give poorer teachers for distillation"
   - "Evaluate accuracy and calibration separately; smoothing can change both"
 interview_qa:
   - q: "Why does label smoothing help?"
     a: "It stops the loss rewarding unbounded logits, which regularises the model and often improves calibration."
   - q: "What is the smoothed target?"
-    a: "(1 − ε) on the true class mixed with a uniform ε/K over all classes."
+    a: "$(1-\\epsilon)$ on the true class mixed with a uniform $\\epsilon/K$ over all classes."
   - q: "How is it related to KL divergence?"
     a: "It adds a penalty that pulls predictions toward the uniform distribution, equal to a KL term up to a constant."
 related: [softmax-cross-entropy, entropy-kl-divergence, probability-calibration]

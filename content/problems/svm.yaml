@@ -15,8 +15,8 @@ intuition: |
   inside the margin matter for the solution (the support vectors), so
   confidently classified points are simply ignored.
 why_it_works: |
-  The hinge loss max(0, 1 − y·f) is zero for points beyond the margin, so
-  they give no gradient, and the ‖w‖² term maximises the margin 2/‖w‖.
+  The hinge loss $\max(0, 1 - y\cdot f)$ is zero for points beyond the margin, so
+  they give no gradient, and the $\|w\|^2$ term maximises the margin $2/\|w\|$.
   The objective is convex, so sub-gradient descent with a decaying step
   converges to the global optimum, the same one the dual quadratic
   program finds.
@@ -24,7 +24,7 @@ when_to_use: |
   Medium-sized, high-dimensional problems (text, genomics) with a clear
   margin, and with a kernel when the boundary is curved.
 when_not_to_use: |
-  Skip kernel SVMs on very large datasets (training scales badly with n),
+  Skip kernel SVMs on very large datasets (training scales badly with $n$),
   when you need probabilities directly, or when classes overlap heavily
   and features are unscaled.
 math:
@@ -37,11 +37,11 @@ math:
   - "Step size ηₜ = 1 / (λ(t + 10))"
   - "Equivalent to sklearn C = 1 / (λ n)"
 approach:
-  - "Encode labels as −1/+1 — so y·f > 0 means correct"
-  - "Find points with y·f(x) < 1 — only margin violators contribute to the gradient"
-  - "Sum their yx terms and add λw — hinge sub-gradient plus margin regulariser"
-  - "Take a step with size 1/(λ(t + 10)) — a decaying step gives convergence"
-  - "Repeat for many iterations — then classify with sign(wᵀx + b)"
+  - "Encode labels as $-1$/$+1$ — so $y\\cdot f > 0$ means correct"
+  - "Find points with $y\\cdot f(x) < 1$ — only margin violators contribute to the gradient"
+  - "Sum their $yx$ terms and add $\\lambda w$ — hinge sub-gradient plus margin regulariser"
+  - "Take a step with size $1/(\\lambda(t + 10))$ — a decaying step gives convergence"
+  - "Repeat for many iterations — then classify with $\\mathrm{sign}(w^{\\top}x + b)$"
 code: |
   import numpy as np
 
@@ -63,7 +63,7 @@ key_lines: [7, 8, 11]
 time: "O(iters · n · d) here; kernel SVM solvers are between O(n²) and O(n³)"
 space: "O(n · d) for the data; kernel SVMs also store the support vectors"
 hyperparameters:
-  - "C (or λ = 1/(C·n)) — large C fits training data harder, small C widens the margin"
+  - "$C$ (or $\\lambda = 1/(C\\cdot n)$) — large $C$ fits training data harder, small $C$ widens the margin"
   - "kernel — linear, RBF, polynomial"
   - "gamma — RBF width; large values overfit"
   - "Feature scaling — required, since the margin is distance-based"
@@ -75,10 +75,10 @@ pitfalls:
 interview_qa:
   - q: "What are support vectors?"
     a: "The training points on or inside the margin; they alone determine the hyperplane and removing any other point leaves it unchanged."
-  - q: "What does C control?"
-    a: "The penalty on margin violations: large C tolerates few violations (narrow margin, low bias), small C allows more (wide margin, more regularisation)."
+  - q: "What does $C$ control?"
+    a: "The penalty on margin violations: large $C$ tolerates few violations (narrow margin, low bias), small $C$ allows more (wide margin, more regularisation)."
   - q: "What is the kernel trick?"
-    a: "The dual problem uses only dot products xᵢ·xⱼ, so replacing them with a kernel k(xᵢ, xⱼ) gives a linear margin in an implicit high-dimensional space without computing it."
+    a: "The dual problem uses only dot products $x_i\\cdot x_j$, so replacing them with a kernel $k(x_i, x_j)$ gives a linear margin in an implicit high-dimensional space without computing it."
 related: [logistic-regression, gradient-descent, softmax-cross-entropy]
 patterns: ["Linear models"]
 math_tex:

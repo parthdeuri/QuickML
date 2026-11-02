@@ -8,18 +8,18 @@ summary: |
   Rotate each pair of query and key coordinates by an angle proportional
   to the token position, so attention scores depend on relative offsets.
 intuition: |
-  If you rotate a query by m·θ and a key by n·θ, their dot product
-  depends only on the angle difference (m−n)·θ, because rotations are
+  If you rotate a query by $m\theta$ and a key by $n\theta$, their dot product
+  depends only on the angle difference $(m-n)\theta$, because rotations are
   orthogonal and compose by adding angles. RoPE therefore injects
   relative position directly into the attention score with no learned
   position table, and each coordinate pair uses its own frequency so
   both short and long ranges are covered.
 approach:
-  - "Pair up coordinates (x₀, x₁), (x₂, x₃), … — each pair is a point in a 2-D plane"
-  - "Give pair i a frequency θᵢ = base^(−2i/d) — a spread of fast and slow rotations"
-  - "Multiply position m by each θᵢ to get an angle — the angle grows linearly with position"
+  - "Pair up coordinates $(x_0, x_1)$, $(x_2, x_3)$, … — each pair is a point in a 2-D plane"
+  - "Give pair $i$ a frequency $\\theta_i = \\mathrm{base}^{-2i/d}$ — a spread of fast and slow rotations"
+  - "Multiply position $m$ by each $\\theta_i$ to get an angle — the angle grows linearly with position"
   - "Rotate every pair by its angle using cos and sin — a norm-preserving position encoding"
-  - "Apply to queries and keys only, not values — only the score q·k needs relative position"
+  - "Apply to queries and keys only, not values — only the score $q \\cdot k$ needs relative position"
 code: |
   import numpy as np
 
@@ -44,11 +44,11 @@ when_not_to_use: |
   head width is odd. Beyond the trained length it needs rescaling
   methods to extrapolate.
 why_it_works: |
-  Treat each coordinate pair as a complex number; rotating by angle φ is
-  multiplication by e^{iφ}. The score is the real part of the product of
+  Treat each coordinate pair as a complex number; rotating by angle $\phi$ is
+  multiplication by $e^{i\phi}$. The score is the real part of the product of
   one rotated number and the conjugate of the other, so the two position
-  angles combine into e^{i(m−n)θ}. The score is thus a function of the
-  content vectors and the offset m−n alone, and rotations preserve norms
+  angles combine into $e^{i(m-n)\theta}$. The score is thus a function of the
+  content vectors and the offset $m-n$ alone, and rotations preserve norms
   so magnitudes are untouched.
 math:
   - "θᵢ = base^(−2i/d),   i = 0 … d/2 − 1"
@@ -58,18 +58,18 @@ math:
   - "⟨RoPE(q, m), RoPE(k, n)⟩ = Re Σᵢ qᵢ · conj(kᵢ) · e^{i(m−n)θᵢ}"
 interview_qa:
   - q: "Why does RoPE give relative position?"
-    a: "Rotations compose by adding angles and preserve dot products, so the query-key score depends on the rotation by m−n and not on m and n separately."
+    a: "Rotations compose by adding angles and preserve dot products, so the query-key score depends on the rotation by $m-n$ and not on $m$ and $n$ separately."
   - q: "Why rotate only queries and keys?"
-    a: "Position needs to enter the attention score q·k. Values are just averaged, so rotating them would corrupt the content being passed along."
+    a: "Position needs to enter the attention score $q \\cdot k$. Values are just averaged, so rotating them would corrupt the content being passed along."
   - q: "How does RoPE differ from sinusoidal positional encoding?"
-    a: "Sinusoidal encoding is added to the embeddings once at the input. RoPE multiplies q and k by rotations inside every attention layer and adds no parameters."
+    a: "Sinusoidal encoding is added to the embeddings once at the input. RoPE multiplies $q$ and $k$ by rotations inside every attention layer and adds no parameters."
 hyperparameters:
   - "Frequency base (larger bases favour longer contexts)"
-  - "Head width d (must be even)"
+  - "Head width $d$ (must be even)"
   - "Position scaling factor for context extension"
 pitfalls:
   - "Pairing convention differs between libraries (adjacent pairs here, split halves in others); weights are not interchangeable"
-  - "Apply it per head, to q and k after the projection and before the dot product"
+  - "Apply it per head, to $q$ and $k$ after the projection and before the dot product"
   - "In float16 the angles for large positions lose precision; compute cos and sin in float32"
 related: [positional-encoding, self-attention, multi-head-attention]
 patterns: ["Attention and sequences"]

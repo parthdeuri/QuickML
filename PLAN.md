@@ -9,7 +9,7 @@ Actions and the user reports pass or fail.
 |---|---|
 | Stack | Kotlin 2.1 + Jetpack Compose, Room, WorkManager, manual DI, no nav library |
 | Package | `com.parthdeuri.quickml`, signed with a stable key from GitHub secrets |
-| Math | Plain Unicode in monospace blocks (no LaTeX) |
+| Math | LaTeX between `$...$` in card text, typeset in-app by `MathText` (jlatexmath-android); `math_tex` feeds the Math box, Unicode `math` kept for speech |
 | Diagrams | Pre-drawn PNGs (light and dark) from `content/scripts/make_diagrams.py`, shown in the Approach tab; card field `diagram: <name>` |
 | Content | One YAML per concept card, validated by `content/scripts/validate.py` |
 | Verification | Every card's code is run in `content/tests/` against sklearn / PyTorch / SciPy |

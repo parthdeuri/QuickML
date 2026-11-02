@@ -39,10 +39,10 @@ math:
   - "Objective: ℓ = Σᵢ log Σₖ πₖ N(xᵢ; μₖ, Σₖ)"
 approach:
   - "Initialise means, equal weights and the data covariance — any start works but the result depends on it"
-  - "Compute log πₖ N(x; μₖ, Σₖ) per point and component with a Cholesky solve — stable and gives the log-determinant for free"
+  - "Compute $\\log \\pi_k \\mathcal{N}(x; \\mu_k, \\Sigma_k)$ per point and component with a Cholesky solve — stable and gives the log-determinant for free"
   - "Normalise with log-sum-exp to get responsibilities — turns joint densities into soft assignments without underflow"
   - "Re-estimate weights, means and covariances weighted by responsibilities — the exact maximiser given the soft labels"
-  - "Add a small ε to each covariance diagonal — stops a component collapsing onto one point"
+  - "Add a small $\\epsilon$ to each covariance diagonal — stops a component collapsing onto one point"
   - "Stop when the log-likelihood gain is tiny — it never decreases, so the gain is a safe test"
 code: |
   import numpy as np
@@ -81,13 +81,13 @@ key_lines: [23, 26, 29]
 time: "O(iters·n·K·d²) plus O(K·d³) per iteration for the Cholesky factors"
 space: "O(n·K) for responsibilities, O(K·d²) for covariances"
 hyperparameters:
-  - "n_components K — choose by BIC/AIC or held-out likelihood"
+  - "n_components $K$ — choose by BIC/AIC or held-out likelihood"
   - "covariance_type — full, tied, diagonal or spherical (this code is full only)"
-  - "reg_covar ε — floor added to covariance diagonals"
+  - "reg_covar $\\epsilon$ — floor added to covariance diagonals"
   - "Initialisation and n_init — several restarts guard against poor local optima"
 pitfalls:
   - "Local optima: different starts give different fits, so run several restarts"
-  - "A component can collapse onto a single point, sending the likelihood to infinity without the ε floor"
+  - "A component can collapse onto a single point, sending the likelihood to infinity without the $\\epsilon$ floor"
   - "Component labels are arbitrary, so compare fits after matching components"
   - "Likelihood alone always favours more components; penalise with BIC or validate on held-out data"
 interview_qa:
@@ -96,7 +96,7 @@ interview_qa:
   - q: "Why does EM never decrease the likelihood?"
     a: "The E-step builds a lower bound equal to the likelihood at the current parameters and the M-step maximises that bound, so the true likelihood can only go up."
   - q: "How do you pick the number of components?"
-    a: "Fit several K and compare BIC, which penalises parameters, or compare held-out log-likelihood; likelihood on training data always improves with K."
+    a: "Fit several $K$ and compare BIC, which penalises parameters, or compare held-out log-likelihood; likelihood on training data always improves with $K$."
   - q: "What goes wrong when a covariance is singular?"
     a: "The density at that component's point blows up, so the fit chases a spike; a covariance floor or priors prevent it."
 related: [k-means, maximum-likelihood, pca]

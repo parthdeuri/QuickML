@@ -17,9 +17,9 @@ intuition: |
 why_it_works: |
   Soft targets carry far more information per example than one-hot
   labels, giving a richer gradient signal and acting as a regulariser.
-  Multiplying the soft loss by T² keeps its gradient magnitude
+  Multiplying the soft loss by $T^2$ keeps its gradient magnitude
   comparable to the hard-label loss as the temperature changes, since
-  gradients through the softened softmax scale like 1/T².
+  gradients through the softened softmax scale like $1/T^2$.
 when_to_use: |
   Compressing a large model or ensemble into a smaller one for
   deployment, or when unlabelled data can be labelled by a teacher.
@@ -33,10 +33,10 @@ math:
   - "Hard loss: CE(softmax(z_student), y)"
   - "L = (1 − α)·hard + α·T²·soft"
 approach:
-  - "Compute teacher and student log-probabilities at temperature T — exposes the small class probabilities"
+  - "Compute teacher and student log-probabilities at temperature $T$ — exposes the small class probabilities"
   - "Compute the KL divergence from teacher to student, averaged over the batch — measures mismatch of the soft distributions"
-  - "Compute the ordinary cross-entropy of the student at T = 1 — keeps the student anchored to the labels"
-  - "Mix the two with weight α and scale the soft term by T² — balances gradient sizes across temperatures"
+  - "Compute the ordinary cross-entropy of the student at $T = 1$ — keeps the student anchored to the labels"
+  - "Mix the two with weight $\\alpha$ and scale the soft term by $T^2$ — balances gradient sizes across temperatures"
 code: |
   import numpy as np
 
@@ -54,22 +54,22 @@ key_lines: [9, 10, 12]
 time: "O(N·K) per batch, plus the teacher's forward pass"
 space: "O(N·K) for the log-probabilities"
 hyperparameters:
-  - "Temperature T"
-  - "Mixing weight α between soft and hard loss"
+  - "Temperature $T$"
+  - "Mixing weight $\\alpha$ between soft and hard loss"
   - "Student size relative to the teacher"
   - "Whether the teacher's logits are precomputed"
 pitfalls:
-  - "Forgetting the T² factor makes the soft term vanish at high temperature"
+  - "Forgetting the $T^2$ factor makes the soft term vanish at high temperature"
   - "Teacher gradients must not flow; use its outputs as fixed targets"
   - "The teacher must be in eval mode so dropout does not add noise"
   - "This is the logit-matching form; feature and attention distillation are not covered"
 interview_qa:
   - q: "Why use a temperature?"
     a: "It flattens the teacher's distribution so the small probabilities on wrong classes become a usable training signal."
-  - q: "Why multiply the soft loss by T²?"
-    a: "Gradients through the softened softmax scale like 1/T², so T² keeps the soft and hard terms comparable."
+  - q: "Why multiply the soft loss by $T^2$?"
+    a: "Gradients through the softened softmax scale like $1/T^2$, so $T^2$ keeps the soft and hard terms comparable."
   - q: "Which direction of KL is used?"
-    a: "KL(teacher ‖ student), so the student covers the classes the teacher considers likely."
+    a: "$\\mathrm{KL}(\\mathrm{teacher} \\,\\|\\, \\mathrm{student})$, so the student covers the classes the teacher considers likely."
 related: [softmax-cross-entropy, entropy-kl-divergence, label-smoothing]
 patterns: ["Transfer and adaptation"]
 math_tex:

@@ -6,7 +6,7 @@ area: Classical ML
 topics: [Anomaly Detection, Unsupervised, Density Estimation, Nearest Neighbors]
 summary: |
   Score each point by comparing its local density with the density around
-  its k nearest neighbours. A score near one means a point is as dense as
+  its $k$ nearest neighbours. A score near one means a point is as dense as
   its surroundings; a much larger score marks a local outlier.
 intuition: |
   A point can be far from everything in absolute terms and still be normal
@@ -16,7 +16,7 @@ intuition: |
   distance.
 why_it_works: |
   The reachability distance smooths density estimates by flooring each
-  distance at the neighbour's own k-distance, so points inside a cluster
+  distance at the neighbour's own $k$-distance, so points inside a cluster
   get stable, comparable densities. Dividing the neighbours' average
   density by the point's density normalises away the cluster's overall
   scale, which makes clusters of different density comparable.
@@ -36,8 +36,8 @@ math:
   - "LOF ≈ 1 inlier, LOF ≫ 1 outlier"
 approach:
   - "Compute pairwise distances and set the self distance to infinity — a point is not its own neighbour"
-  - "Take the k nearest neighbours of each point and the distance to the k-th — the k-distance defines the neighbourhood scale"
-  - "Form reachability distances with the floor at the neighbour's k-distance — smooths out noise inside dense clusters"
+  - "Take the $k$ nearest neighbours of each point and the distance to the $k$-th — the $k$-distance defines the neighbourhood scale"
+  - "Form reachability distances with the floor at the neighbour's $k$-distance — smooths out noise inside dense clusters"
   - "Invert the mean reachability to get a local density — high when neighbours are close"
   - "Divide the neighbours' mean density by the point's own — a ratio above one means sparser than the neighbourhood"
 code: |
@@ -55,21 +55,21 @@ key_lines: [8, 9, 10]
 time: "O(n²·d) here from the full distance matrix; spatial indexes make neighbour search faster in low dimensions"
 space: "O(n²) for the distance matrix, O(n·k) for neighbour lists"
 hyperparameters:
-  - "n_neighbors k — larger smooths the score, small is noisy and sensitive to tiny clusters"
+  - "n_neighbors $k$ — larger smooths the score, small is noisy and sensitive to tiny clusters"
   - "Distance metric — Euclidean by default, scale features first"
   - "Contamination — fraction flagged when a hard threshold is needed"
 pitfalls:
   - "Features on different scales make the distance, and so the score, meaningless"
   - "Duplicate points give zero reachability distance, so a tiny constant avoids dividing by zero"
-  - "Ties at the k-th distance make the neighbour set depend on tie-breaking"
-  - "Scores are relative to k; there is no universal threshold above 1"
+  - "Ties at the $k$-th distance make the neighbour set depend on tie-breaking"
+  - "Scores are relative to $k$; there is no universal threshold above 1"
 interview_qa:
   - q: "Why is LOF a local method?"
     a: "It compares a point's density with that of its own neighbours instead of the global average, so a point in a sparse cluster is not flagged just because the whole cluster is sparse."
   - q: "What does the reachability distance do?"
-    a: "It replaces the true distance by the larger of the true distance and the neighbour's k-distance, which stops very close pairs from producing wildly large densities."
-  - q: "How do you choose k?"
-    a: "Use at least the size of the smallest group you would still call a cluster; larger k smooths the scores, and ranking stability across a range of k is a useful check."
+    a: "It replaces the true distance by the larger of the true distance and the neighbour's $k$-distance, which stops very close pairs from producing wildly large densities."
+  - q: "How do you choose $k$?"
+    a: "Use at least the size of the smallest group you would still call a cluster; larger $k$ smooths the scores, and ranking stability across a range of $k$ is a useful check."
 related: [knn, dbscan, k-means]
 patterns: ["Distance and clustering"]
 math_tex:

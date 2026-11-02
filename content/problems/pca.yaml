@@ -6,7 +6,7 @@ area: Classical ML
 topics: [Dimensionality Reduction, Unsupervised, Linear Algebra, SVD]
 summary: |
   Rotate centred data onto orthogonal directions ordered by how much
-  variance they capture, then keep only the first k. It is computed
+  variance they capture, then keep only the first $k$. It is computed
   directly from the SVD of the centred data matrix.
 intuition: |
   Real data often lives near a low-dimensional slab inside a high
@@ -15,10 +15,10 @@ intuition: |
   the second, and dropping the low-spread directions loses the least
   information.
 why_it_works: |
-  The variance along a unit direction v is vᵀΣv, which is maximised by
-  the top eigenvector of the covariance Σ, and the next one under the
+  The variance along a unit direction $v$ is $v^{\top}\Sigma v$, which is maximised by
+  the top eigenvector of the covariance $\Sigma$, and the next one under the
   orthogonality constraint, and so on. The SVD of the centred data gives
-  those eigenvectors directly, without forming Σ, and the discarded
+  those eigenvectors directly, without forming $\Sigma$, and the discarded
   variance is exactly the squared reconstruction error.
 when_to_use: |
   Compressing correlated features, denoising, visualising in 2-D or 3-D,
@@ -39,9 +39,9 @@ math:
 approach:
   - "Subtract the column means — PCA is about spread around the mean"
   - "Take the SVD of the centred matrix — its right vectors are the principal axes"
-  - "Square the singular values and divide by n − 1 — these are the variances per axis"
-  - "Keep the top k rows of Vᵀ — the k directions with most variance"
-  - "Project centred data onto them — gives the k-dimensional representation"
+  - "Square the singular values and divide by $n-1$ — these are the variances per axis"
+  - "Keep the top $k$ rows of $V^{\\top}$ — the k directions with most variance"
+  - "Project centred data onto them — gives the $k$-dimensional representation"
 code: |
   import numpy as np
 
@@ -66,7 +66,7 @@ key_lines: [4, 5, 6]
 time: "O(n·d·min(n, d)) for a full SVD; randomised SVD gives O(n·d·k)"
 space: "O(n·d) for the data, O(d·k) for the components"
 hyperparameters:
-  - "n_components k — chosen by explained-variance ratio or a scree plot"
+  - "n_components $k$ — chosen by explained-variance ratio or a scree plot"
   - "whiten — rescale components to unit variance"
   - "svd_solver — full, randomized or arpack for large data"
 pitfalls:
@@ -76,7 +76,7 @@ pitfalls:
   - "Fit PCA on training data only, then reuse it on validation/test data"
 interview_qa:
   - q: "How does PCA relate to SVD?"
-    a: "The right singular vectors of the centred data are the eigenvectors of the covariance, and the squared singular values divided by n − 1 are its eigenvalues."
+    a: "The right singular vectors of the centred data are the eigenvectors of the covariance, and the squared singular values divided by $n-1$ are its eigenvalues."
   - q: "How many components do I keep?"
     a: "Enough to reach a target share of explained variance, or at the elbow of the scree plot; validate against the downstream task."
   - q: "Why centre the data?"

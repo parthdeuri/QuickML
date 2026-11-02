@@ -20,8 +20,8 @@ why_it_works: |
   The Markov property makes the probability of the next state and symbol
   depend only on the current state, so the joint sum factorises into
   nested sums that can be pushed inside each other (the distributive law).
-  The forward variable αₜ(j) is the partial sum over all paths ending in
-  state j. Rescaling αₜ to sum to one at each step avoids numerical
+  The forward variable $\alpha_t(j)$ is the partial sum over all paths ending in
+  state $j$. Rescaling $\alpha_t$ to sum to one at each step avoids numerical
   underflow, and the log of the scale factors adds up to the exact log
   likelihood.
 when_to_use: |
@@ -42,11 +42,11 @@ math:
   - "Scaling: cₜ = Σⱼ α̃ₜ(j) before normalising; log P = Σₜ log cₜ"
   - "Cost: O(T·N²) instead of O(N^T) for the path sum"
 approach:
-  - "Start with α = π ⊙ B[:, o₁] — the joint probability of each first state and the first symbol"
-  - "Normalise α by its sum c and store log c — keeps numbers near one so long sequences do not underflow"
-  - "Propagate with α @ A — pushes the belief one step through the transition matrix, summing over previous states"
+  - "Start with $\\alpha = \\pi \\odot B[:, o_1]$ — the joint probability of each first state and the first symbol"
+  - "Normalise $\\alpha$ by its sum $c$ and store $\\log c$ — keeps numbers near one so long sequences do not underflow"
+  - "Propagate with $\\alpha$ @ $A$ — pushes the belief one step through the transition matrix, summing over previous states"
   - "Multiply by the emission column for the new symbol — conditions the belief on what was just observed"
-  - "Rescale again and add log c to the running total — the scale factors multiply to the true likelihood"
+  - "Rescale again and add $\\log c$ to the running total — the scale factors multiply to the true likelihood"
   - "Return the accumulated log-likelihood — comparable across models for the same sequence"
 code: |
   import numpy as np
@@ -65,17 +65,17 @@ key_lines: [8, 9, 11]
 time: "O(T·N²) for T observations and N hidden states"
 space: "O(N) for the running vector (O(T·N) if all αₜ are kept for smoothing)"
 hyperparameters:
-  - "Number of hidden states N — chosen by BIC or held-out likelihood"
-  - "Initial distribution π, transition matrix A, emission matrix B — learned with Baum-Welch (EM)"
+  - "Number of hidden states $N$ — chosen by BIC or held-out likelihood"
+  - "Initial distribution $\\pi$, transition matrix $A$, emission matrix $B$ — learned with Baum-Welch (EM)"
   - "Emission family — discrete table here, Gaussian or mixture for continuous data"
 pitfalls:
   - "Without rescaling or log-space, the raw forward probabilities underflow on long sequences"
   - "This code handles discrete emissions with a fixed model; training the parameters needs the backward pass too (Baum-Welch)"
-  - "Zero entries in A or B make some sequences impossible, so smooth estimated parameters"
+  - "Zero entries in $A$ or $B$ make some sequences impossible, so smooth estimated parameters"
   - "Forward gives the likelihood, not the best state sequence; use Viterbi for decoding"
 interview_qa:
   - q: "Why is the forward algorithm polynomial when the path sum is exponential?"
-    a: "Paths ending in the same state share an identical future, so their probabilities can be merged into one value per state; each step then costs N² work instead of multiplying the number of paths by N."
+    a: "Paths ending in the same state share an identical future, so their probabilities can be merged into one value per state; each step then costs $N^2$ work instead of multiplying the number of paths by $N$."
   - q: "How does Viterbi differ from the forward algorithm?"
     a: "Forward sums over predecessor states to get a likelihood; Viterbi takes a max and keeps back-pointers to recover the single most probable state path."
   - q: "How do you avoid underflow?"

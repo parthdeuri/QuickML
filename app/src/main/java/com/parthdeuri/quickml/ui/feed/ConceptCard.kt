@@ -1202,15 +1202,9 @@ private fun DiagramBox(lines: List<String>) {
     if (pic is AssetPic.Ready) PictureBox("Diagram", pic.bitmap)
 }
 
-/** Formulas: a typeset image when the card has one, otherwise plain monospace lines. */
+/** Formulas, typeset live; a line that cannot be typeset shows as its LaTeX source. */
 @Composable
-private fun DryRunBox(slug: String, lines: List<String>) {
-    val pic = rememberAssetPic("math", slug)
-    if (pic is AssetPic.Ready) {
-        PictureBox("Math", pic.bitmap)
-        return
-    }
-    if (pic is AssetPic.Loading) return
+private fun DryRunBox(lines: List<String>) {
     val code = QuickMLTheme.colors.code
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionHeading("Math")
@@ -1219,17 +1213,13 @@ private fun DryRunBox(slug: String, lines: List<String>) {
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
                 .background(code.background)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             lines.forEach { line ->
-                Text(
+                MathText(
                     text = line,
-                    style = TextStyle(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.5.sp,
-                        lineHeight = 18.sp
-                    ),
+                    style = MaterialTheme.typography.bodyLarge,
                     color = code.text
                 )
             }
@@ -1285,7 +1275,7 @@ private fun ApproachSection(
             DiagramBox(diagram)
         }
         if (dryRun.isNotEmpty()) {
-            DryRunBox(slug, dryRun)
+            DryRunBox(dryRun)
         }
         Row(
             modifier = Modifier.fillMaxWidth(),

@@ -5,7 +5,7 @@ difficulty: Easy
 area: MLOps
 topics: [Evaluation, Classification Metrics, Multiclass, Confusion Matrix]
 summary: |
-  Reduce a K-class confusion matrix to per-class precision, recall and F1,
+  Reduce a $K$-class confusion matrix to per-class precision, recall and F1,
   then average them three ways. The choice of averaging decides whether
   rare classes count.
 intuition: |
@@ -46,7 +46,7 @@ approach:
   - "Guard the divisions with a floor — a class that is never predicted or absent should score zero, not NaN"
   - "Combine into per-class F1 — the harmonic mean punishes a gap between precision and recall"
   - "Average unweighted for macro and by support for weighted — rare classes count fully versus in proportion"
-  - "Divide total true positives by n for micro — pooled counts reduce to accuracy"
+  - "Divide total true positives by $n$ for micro — pooled counts reduce to accuracy"
 code: |
   import numpy as np
 
@@ -73,7 +73,7 @@ hyperparameters:
   - "zero_division — value used when a class has no predictions or no samples"
   - "Class labels and order — fix them so the matrix aligns across runs"
 pitfalls:
-  - "Labels must be integers 0 to K−1 here; map strings first"
+  - "Labels must be integers 0 to $K-1$ here; map strings first"
   - "Micro F1 equals accuracy for single-label problems, so it adds nothing beyond accuracy"
   - "Macro F1 swings on tiny classes with few support samples, so report supports too"
   - "A class missing from the true labels gives a zero F1 that still enters the macro mean in this code (sklearn behaves the same only if its labels are listed)"

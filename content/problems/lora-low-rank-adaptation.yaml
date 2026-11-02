@@ -5,20 +5,20 @@ difficulty: Medium
 area: Deep Learning
 topics: [Fine-tuning, Parameter-Efficient Learning, Transformers]
 summary: |
-  Freeze a pretrained weight matrix W and learn a small low-rank update
-  BA, so fine-tuning trains only a tiny fraction of the parameters.
+  Freeze a pretrained weight matrix $W$ and learn a small low-rank update
+  $BA$, so fine-tuning trains only a tiny fraction of the parameters.
 intuition: |
   The change needed to adapt a large model to a new task often has low
-  intrinsic rank, so a full d_out × d_in update is mostly wasted.
+  intrinsic rank, so a full $d_{\mathrm{out}} \times d_{\mathrm{in}}$ update is mostly wasted.
   Writing the update as a product of a thin and a wide matrix stores it
   in far fewer numbers, and after training the product can be folded
-  back into W so inference costs nothing extra.
+  back into $W$ so inference costs nothing extra.
 approach:
-  - "Freeze the pretrained W — preserves the base model and needs no optimiser state for it"
-  - "Add trainable A (r × d_in) and B (d_out × r) — a rank-r update with few parameters"
-  - "Initialise B to zero and A small random — the adapted model starts identical to the base"
-  - "Compute Wx + (α/r) B A x through the thin path — the scaling keeps the update size stable across ranks"
-  - "After training merge W′ = W + (α/r) B A — the same outputs with no extra latency"
+  - "Freeze the pretrained $W$ — preserves the base model and needs no optimiser state for it"
+  - "Add trainable $A$ ($r \\times d_{\\mathrm{in}}$) and $B$ ($d_{\\mathrm{out}} \\times r$) — a rank-$r$ update with few parameters"
+  - "Initialise $B$ to zero and $A$ small random — the adapted model starts identical to the base"
+  - "Compute $Wx + (\\alpha/r) B A x$ through the thin path — the scaling keeps the update size stable across ranks"
+  - "After training merge $W' = W + (\\alpha/r) B A$ — the same outputs with no extra latency"
 code: |
   import numpy as np
 
@@ -48,13 +48,13 @@ when_not_to_use: |
   entirely new knowledge at scale, where low rank may limit quality, or
   small models where full fine-tuning is cheap.
 why_it_works: |
-  The update ΔW = (α/r) B A has rank at most r, so it spans a small
+  The update $\Delta W = (\alpha/r) B A$ has rank at most $r$, so it spans a small
   subspace of directions in weight space, which is enough when the
-  fine-tuning change is low-dimensional. Gradients reach only A and B,
+  fine-tuning change is low-dimensional. Gradients reach only $A$ and $B$,
   so optimiser memory shrinks with the parameter count. Zero-initialising
-  B makes ΔW zero at the start, and gradients to B are non-zero from the
+  $B$ makes $\Delta W$ zero at the start, and gradients to $B$ are non-zero from the
   first step so learning begins. Merging is exact because the layer is
-  linear in W.
+  linear in $W$.
 math:
   - "W′ = W + (α/r) · B A,   B: d_out × r,  A: r × d_in"
   - "y = x W′ᵀ = x Wᵀ + (α/r) · x Aᵀ Bᵀ"
@@ -63,15 +63,15 @@ math:
   - "∂L/∂A = (α/r) · (dy B)ᵀ x"
   - "∂L/∂x = dy W′"
 interview_qa:
-  - q: "Why initialise B to zero?"
-    a: "It makes the update zero, so training starts from the pretrained model. A is random so that gradients to B are non-zero and the product can grow."
-  - q: "What does the α/r scale do?"
-    a: "It sets the size of the update independently of the rank, so changing r does not require retuning the learning rate much."
+  - q: "Why initialise $B$ to zero?"
+    a: "It makes the update zero, so training starts from the pretrained model. $A$ is random so that gradients to $B$ are non-zero and the product can grow."
+  - q: "What does the $\\alpha/r$ scale do?"
+    a: "It sets the size of the update independently of the rank, so changing $r$ does not require retuning the learning rate much."
   - q: "How is LoRA different from adding adapter layers?"
-    a: "Adapters add sequential layers that increase inference latency. LoRA is parallel and mergeable into W, so inference cost is unchanged."
+    a: "Adapters add sequential layers that increase inference latency. LoRA is parallel and mergeable into $W$, so inference cost is unchanged."
 hyperparameters:
-  - "Rank r"
-  - "Scaling α"
+  - "Rank $r$"
+  - "Scaling $\\alpha$"
   - "Which weight matrices get adapters (attention q, v, all linears)"
   - "Dropout on the adapter path"
 pitfalls:

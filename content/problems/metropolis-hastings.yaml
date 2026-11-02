@@ -17,8 +17,8 @@ intuition: |
   constant cancels because only ratios appear.
 why_it_works: |
   The acceptance rule is chosen so the chain satisfies detailed balance
-  with respect to the target: probability flow from x to y equals flow
-  from y to x at stationarity. Detailed balance implies the target is the
+  with respect to the target: probability flow from $x$ to $y$ equals flow
+  from $y$ to $x$ at stationarity. Detailed balance implies the target is the
   stationary distribution, and with an irreducible aperiodic chain the
   samples converge to it. Consecutive samples are correlated, so the
   effective sample size is smaller than the number of draws.
@@ -41,7 +41,7 @@ approach:
   - "Start at an initial point and evaluate its log density — logs avoid underflow"
   - "Propose a Gaussian step from the current point — a symmetric random-walk move"
   - "Compute the log density ratio of proposal to current — the normaliser cancels"
-  - "Accept if log u is below the ratio, otherwise stay — uphill is always taken, downhill sometimes"
+  - "Accept if $\\log u$ is below the ratio, otherwise stay — uphill is always taken, downhill sometimes"
   - "Record the current state every iteration, including repeats — rejected moves must be counted"
   - "Discard a burn-in and check the acceptance rate — too high means tiny steps, too low means huge ones"
 code: |
@@ -63,9 +63,9 @@ key_lines: [8, 10, 11]
 time: "O(n) target evaluations for n iterations"
 space: "O(n) for stored samples (O(1) if only running statistics are kept)"
 hyperparameters:
-  - "Proposal step size σ — tune for a moderate acceptance rate"
+  - "Proposal step size $\\sigma$ — tune for a moderate acceptance rate"
   - "Burn-in length — samples discarded before the chain is near stationary"
-  - "Number of iterations n and thinning — set by effective sample size"
+  - "Number of iterations $n$ and thinning — set by effective sample size"
   - "Starting point and number of chains — several chains diagnose non-convergence"
 pitfalls:
   - "This is a 1-D random walk with a symmetric proposal; asymmetric proposals need the Hastings correction"
@@ -74,9 +74,9 @@ pitfalls:
   - "A single chain can look converged while stuck in one mode; run several and compare"
 interview_qa:
   - q: "Why does the normalising constant not matter?"
-    a: "The acceptance probability depends only on the ratio p(y)/p(x), in which the unknown constant cancels."
+    a: "The acceptance probability depends only on the ratio $p(y)/p(x)$, in which the unknown constant cancels."
   - q: "What is detailed balance and why does it matter?"
-    a: "It says stationary probability flow x to y equals y to x; any chain satisfying it with respect to π has π as a stationary distribution, which is the correctness condition."
+    a: "It says stationary probability flow $x$ to $y$ equals $y$ to $x$; any chain satisfying it with respect to $\\pi$ has $\\pi$ as a stationary distribution, which is the correctness condition."
   - q: "How do you choose the proposal step size?"
     a: "Tune it so the acceptance rate is moderate, neither near zero nor near one; both extremes give highly autocorrelated samples."
   - q: "How does Metropolis-Hastings differ from Gibbs sampling?"

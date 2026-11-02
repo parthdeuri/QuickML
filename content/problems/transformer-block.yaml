@@ -12,13 +12,13 @@ intuition: |
   Attention moves information between tokens, and the feed-forward
   network transforms each token on its own; stacking the two gives a
   layer that both gathers context and processes it. Keeping a clean
-  residual path x + f(norm(x)) lets each layer make a small correction
+  residual path $x + f(\mathrm{norm}(x))$ lets each layer make a small correction
   to the stream, so gradients reach early layers and deep stacks train.
 approach:
-  - "Normalise x with LayerNorm — keeps the attention input at a stable scale"
-  - "Project to Q, K, V and split into heads — each head attends in its own subspace"
+  - "Normalise $x$ with LayerNorm — keeps the attention input at a stable scale"
+  - "Project to $Q$, $K$, $V$ and split into heads — each head attends in its own subspace"
   - "Apply causal softmax attention per head — mixes past tokens into each position"
-  - "Merge heads, project with Wo and add to x — the first residual update"
+  - "Merge heads, project with $W_o$ and add to $x$ — the first residual update"
   - "Normalise, then apply Linear → GELU → Linear and add — position-wise processing with the second residual update"
 code: |
   import numpy as np
@@ -72,12 +72,12 @@ interview_qa:
   - q: "What is the difference between pre-norm and post-norm?"
     a: "Pre-norm normalises the input of each sublayer and keeps the residual path clean, which trains stably in deep stacks. Post-norm normalises after the addition, as in the original Transformer, and usually needs warmup."
   - q: "Why does the block have a feed-forward network after attention?"
-    a: "Attention only takes weighted averages of values, which is linear in V. The MLP adds a non-linearity and most of the capacity, applied to each position independently."
+    a: "Attention only takes weighted averages of values, which is linear in $V$. The MLP adds a non-linearity and most of the capacity, applied to each position independently."
   - q: "Where are most of the parameters in a block?"
-    a: "In the MLP, whose hidden width is usually a few times d, so its two matrices outweigh the four attention projections."
+    a: "In the MLP, whose hidden width is usually a few times $d$, so its two matrices outweigh the four attention projections."
 hyperparameters:
-  - "Model width d and number of heads h"
-  - "MLP hidden width (commonly a small multiple of d)"
+  - "Model width $d$ and number of heads $h$"
+  - "MLP hidden width (commonly a small multiple of $d$)"
   - "Pre-norm or post-norm placement"
   - "Number of stacked blocks and dropout rate"
 pitfalls:

@@ -16,9 +16,9 @@ intuition: |
   tanh network over both vectors, so the two sides need not have the
   same size.
 approach:
-  - "Project the decoder state with W_s and every encoder state with W_h — maps both into a shared scoring space"
+  - "Project the decoder state with $W_s$ and every encoder state with $W_h$ — maps both into a shared scoring space"
   - "Add them (broadcast over positions) and apply tanh — lets query and key interact nonlinearly"
-  - "Dot with a learned vector v — reduces each position to one scalar score"
+  - "Dot with a learned vector $v$ — reduces each position to one scalar score"
   - "Softmax over source positions — turns scores into weights that sum to one"
   - "Weighted sum of the encoder states — the context vector fed to the decoder"
 code: |
@@ -65,9 +65,9 @@ interview_qa:
   - q: "How does it differ from scaled dot-product attention?"
     a: "It uses a learned one-hidden-layer scorer and works with different query and key sizes; dot-product is cheaper and parallelises but needs matching dimensions or a projection."
   - q: "What are the shapes of the attention weights and context?"
-    a: "One weight per source position (T,) and a context vector of the encoder width d_h."
+    a: "One weight per source position $(T,)$ and a context vector of the encoder width $d_h$."
 hyperparameters:
-  - "Attention hidden width d_a"
+  - "Attention hidden width $d_a$"
   - "Encoder and decoder state sizes"
   - "Whether encoder states are bidirectional"
   - "Attention dropout"

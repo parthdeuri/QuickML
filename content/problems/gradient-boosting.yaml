@@ -15,9 +15,9 @@ intuition: |
   residuals, so each new small tree learns to correct the leftover error,
   and a small learning rate makes each correction cautious.
 why_it_works: |
-  Boosting is gradient descent in function space. The residual y − F(x)
+  Boosting is gradient descent in function space. The residual $y - F(x)$
   is the negative gradient of the squared loss with respect to the
-  prediction, so fitting a tree to it moves F downhill on the loss. Swap
+  prediction, so fitting a tree to it moves $F$ downhill on the loss. Swap
   the loss and the same loop gives classification or robust regression by
   fitting the new negative gradients instead.
 when_to_use: |
@@ -36,11 +36,11 @@ math:
   - "a, b = mean residual on each side of the split"
   - "Best split maximises (Σ_L r)²/|L| + (Σ_R r)²/|R|"
 approach:
-  - "Start from the mean of y — the best constant prediction"
-  - "Compute residuals y − F — they are the negative gradient of the loss"
+  - "Start from the mean of $y$ — the best constant prediction"
+  - "Compute residuals $y - F$ — they are the negative gradient of the loss"
   - "Find the stump that best fits the residuals — sorted cumulative sums score every split at once"
-  - "Add η times the stump to F — a small step avoids overfitting"
-  - "Repeat for M rounds — each round removes more of the remaining error"
+  - "Add $\\eta$ times the stump to $F$ — a small step avoids overfitting"
+  - "Repeat for $M$ rounds — each round removes more of the remaining error"
 code: |
   import numpy as np
 
@@ -74,8 +74,8 @@ key_lines: [9, 20, 21]
 time: "O(M · d · n log n) with a sort per feature per round; prediction is O(M)"
 space: "O(M) for the stumps plus O(n) for the running prediction"
 hyperparameters:
-  - "n_estimators M — more rounds fit more; use early stopping"
-  - "learning_rate η — smaller needs more rounds but generalises better"
+  - "n_estimators $M$ — more rounds fit more; use early stopping"
+  - "learning_rate $\\eta$ — smaller needs more rounds but generalises better"
   - "max_depth — depth 1 gives additive models, 3-6 allows interactions"
   - "subsample — fraction of rows per round (stochastic boosting)"
   - "loss — squared, absolute, Huber, or log-loss for classification"

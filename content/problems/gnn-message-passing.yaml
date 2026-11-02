@@ -11,15 +11,15 @@ summary: |
 intuition: |
   A node cannot see the whole graph, so it learns from its neighbourhood:
   each layer collects messages from adjacent nodes and mixes them with
-  its own state. Stacking k layers lets information travel k hops. The
+  its own state. Stacking $k$ layers lets information travel $k$ hops. The
   normalisation by degrees stops high-degree nodes from dominating, and
   the added self-loop keeps a node's own features in the mix.
 approach:
-  - "Add self-loops, Â = A + I — each node keeps its own features in the sum"
-  - "Compute degrees d̃ of Â — needed for normalisation"
-  - "Scale to Â_norm = D̃^(−1/2) Â D̃^(−1/2) — symmetric weights stop hubs from blowing up the scale"
-  - "Aggregate neighbour features with Â_norm X — the message-passing step"
-  - "Apply the shared weight W and ReLU — transforms the aggregated features like a dense layer"
+  - "Add self-loops, $\\hat{A} = A + I$ — each node keeps its own features in the sum"
+  - "Compute degrees $\\tilde{d}$ of $\\hat{A}$ — needed for normalisation"
+  - "Scale to $\\hat{A}_{\\mathrm{norm}} = \\tilde{D}^{-1/2}\\hat{A}\\tilde{D}^{-1/2}$ — symmetric weights stop hubs from blowing up the scale"
+  - "Aggregate neighbour features with $\\hat{A}_{\\mathrm{norm}} X$ — the message-passing step"
+  - "Apply the shared weight $W$ and ReLU — transforms the aggregated features like a dense layer"
 code: |
   import numpy as np
 
@@ -59,21 +59,21 @@ math:
   - "k layers aggregate information from k-hop neighbourhoods"
 interview_qa:
   - q: "Why add self-loops?"
-    a: "Without Â = A + I a node would ignore its own features after aggregation and nodes with no neighbours would receive nothing."
+    a: "Without $\\hat{A} = A + I$ a node would ignore its own features after aggregation and nodes with no neighbours would receive nothing."
   - q: "Why symmetric normalisation instead of dividing by degree?"
-    a: "D^(−1/2) A D^(−1/2) treats both endpoints' degrees, keeping the operator symmetric with stable eigenvalues, while row normalisation only averages."
+    a: "$D^{-1/2} A D^{-1/2}$ treats both endpoints' degrees, keeping the operator symmetric with stable eigenvalues, while row normalisation only averages."
   - q: "What is over-smoothing?"
     a: "Repeated neighbourhood averaging pushes node representations toward each other, so deep GCNs lose the ability to tell nodes apart."
-  - q: "What is the receptive field after k layers?"
-    a: "Nodes within k hops of the target."
+  - q: "What is the receptive field after $k$ layers?"
+    a: "Nodes within $k$ hops of the target."
 hyperparameters:
   - "Number of layers (hops)"
-  - "Hidden width F'"
+  - "Hidden width $F'$"
   - "Dropout rate on features and edges"
   - "Normalisation scheme (symmetric, row, none)"
 pitfalls:
   - "Assumes an undirected graph with a symmetric 0/1 adjacency; directed graphs need care"
-  - "A dense N×N adjacency does not scale; real code uses sparse edge lists"
+  - "A dense $N \\times N$ adjacency does not scale; real code uses sparse edge lists"
   - "Stacking many layers over-smooths"
   - "No bias, dropout or edge weights in this sketch"
 related: [mlp-forward-pass, activation-functions, self-attention]

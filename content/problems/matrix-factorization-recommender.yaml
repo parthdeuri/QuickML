@@ -16,7 +16,7 @@ intuition: |
   user or item, so alternating the two solves a hard non-convex problem
   with easy convex steps.
 why_it_works: |
-  The joint objective is non-convex in (U, V) but convex in each factor
+  The joint objective is non-convex in $(U, V)$ but convex in each factor
   with the other fixed. Each ALS half-step solves its subproblem exactly,
   so the regularised loss can never increase and the iterates converge to
   a stationary point. Observed entries only are used, so missing ratings
@@ -71,17 +71,17 @@ key_lines: [8, 9, 19]
 time: "O(iters·(|Ω|·k² + (n+m)·k³)) for n users, m items, |Ω| ratings"
 space: "O((n+m)·k) for the factors plus the rating matrix"
 hyperparameters:
-  - "Rank k — number of latent factors"
-  - "Regularisation λ — controls overfitting, tuned on held-out ratings"
+  - "Rank $k$ — number of latent factors"
+  - "Regularisation $\\lambda$ — controls overfitting, tuned on held-out ratings"
   - "Number of ALS sweeps"
   - "Implicit versus explicit feedback — implicit uses confidence weights (not shown)"
 pitfalls:
-  - "R is a dense array with a 0/1 mask M here; real systems use sparse formats"
+  - "$R$ is a dense array with a 0/1 mask $M$ here; real systems use sparse formats"
   - "A user or item with no ratings gets a zero vector, so cold start needs other signals"
-  - "Plain λ is not scaled by the number of ratings per user (the weighted-λ variant does); a simplification"
+  - "Plain $\\lambda$ is not scaled by the number of ratings per user (the weighted-$\\lambda$ variant does); a simplification"
   - "No user or item bias terms, so subtract the global mean or add biases for better accuracy"
 interview_qa:
-  - q: "Why alternate instead of optimising U and V jointly?"
+  - q: "Why alternate instead of optimising $U$ and $V$ jointly?"
     a: "The joint problem is non-convex, but with one factor fixed it is a set of independent ridge regressions with exact closed-form solutions."
   - q: "How does ALS handle missing entries?"
     a: "It only sums over observed ratings, using the mask to select each user's rated items, so missing values are ignored rather than treated as zero."

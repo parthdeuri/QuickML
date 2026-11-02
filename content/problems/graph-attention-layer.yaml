@@ -16,11 +16,11 @@ intuition: |
   by masking out non-edges, so the model never attends outside the
   graph.
 approach:
-  - "Project features H = XW — shared linear transform to the new width"
-  - "Score every edge e_ij = LeakyReLU(a_iᵀ h_i + a_jᵀ h_j) — splitting a into two halves avoids concatenating pairs"
-  - "Mask non-edges to −∞ (self-loops allowed) — restricts attention to the neighbourhood"
-  - "Softmax over each row — turns scores into attention weights α_ij that sum to one"
-  - "Output α H — attention-weighted sum of neighbour features"
+  - "Project features $H = XW$ — shared linear transform to the new width"
+  - "Score every edge $e_{ij} = \\mathrm{LeakyReLU}(a_i^{\\top} h_i + a_j^{\\top} h_j)$ — splitting $a$ into two halves avoids concatenating pairs"
+  - "Mask non-edges to $-\\infty$ (self-loops allowed) — restricts attention to the neighbourhood"
+  - "Softmax over each row — turns scores into attention weights $\\alpha_{ij}$ that sum to one"
+  - "Output $\\alpha H$ — attention-weighted sum of neighbour features"
 code: |
   import numpy as np
 
@@ -62,21 +62,21 @@ interview_qa:
   - q: "How does GAT differ from GCN?"
     a: "GCN uses fixed degree-based weights; GAT learns edge weights from node features through attention, so aggregation is content dependent."
   - q: "Why mask before the softmax?"
-    a: "Setting non-edges to −∞ gives them zero weight, so attention is only over the real neighbourhood; skipping it would attend over the whole graph."
+    a: "Setting non-edges to $-\\infty$ gives them zero weight, so attention is only over the real neighbourhood; skipping it would attend over the whole graph."
   - q: "Why split the attention vector into two halves?"
-    a: "aᵀ[hᵢ‖hⱼ] = a_iᵀhᵢ + a_jᵀhⱼ, so scores for all pairs come from one broadcast sum instead of building N² concatenated vectors."
+    a: "$a^{\\top}[h_i\\,\\|\\,h_j] = a_i^{\\top}h_i + a_j^{\\top}h_j$, so scores for all pairs come from one broadcast sum instead of building $N^2$ concatenated vectors."
   - q: "Why use multi-head attention in GAT?"
     a: "Several independent attention heads stabilise learning and capture different notions of neighbour relevance."
 hyperparameters:
   - "Number of attention heads"
   - "Hidden width per head"
-  - "LeakyReLU negative slope (0.2 in the paper)"
+  - "LeakyReLU negative slope ($0.2$ in the paper)"
   - "Attention and feature dropout"
 pitfalls:
   - "Rows with no allowed entries give NaN; self-loops guarantee at least one"
-  - "Attention scores here are not symmetric: α_ij differs from α_ji"
+  - "Attention scores here are not symmetric: $\\alpha_{ij}$ differs from $\\alpha_{ji}$"
   - "Single head, no output nonlinearity, bias or dropout in this sketch"
-  - "Dense N×N scoring does not scale to large graphs"
+  - "Dense $N\\times N$ scoring does not scale to large graphs"
 related: [gnn-message-passing, self-attention, multi-head-attention]
 patterns: ["Graph neural networks"]
 math_tex:

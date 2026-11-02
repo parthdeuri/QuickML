@@ -13,13 +13,13 @@ intuition: |
   If today resembles yesterday, the lag-1 correlation is high, but it also
   makes today resemble two days ago through yesterday. The ACF mixes
   direct and relayed dependence; the PACF strips the relayed part, so an
-  AR(p) process shows a PACF that cuts off after lag p while its ACF
+  AR($p$) process shows a PACF that cuts off after lag $p$ while its ACF
   decays.
 why_it_works: |
   For an autoregression the Yule-Walker equations link the ACF to the
-  coefficients through a Toeplitz system. The PACF at lag k is the last
-  coefficient φₖₖ of the best order-k autoregression, and the
-  Durbin-Levinson recursion builds order k from order k − 1 in O(k)
+  coefficients through a Toeplitz system. The PACF at lag $k$ is the last
+  coefficient $\phi_{kk}$ of the best order-$k$ autoregression, and the
+  Durbin-Levinson recursion builds order $k$ from order $k-1$ in O(k)
   work instead of solving a fresh system.
 when_to_use: |
   Choosing AR and MA orders for ARIMA, spotting seasonality and trend
@@ -39,10 +39,10 @@ math:
   - "Approximate 95% band: ± 1.96 / √n"
 approach:
   - "Centre the series — correlation is about deviations from the mean"
-  - "Compute autocovariances with a divisor of n at every lag — keeps the covariance matrix positive semi-definite"
-  - "Divide by lag zero to get the ACF — makes it scale free in [−1, 1]"
+  - "Compute autocovariances with a divisor of $n$ at every lag — keeps the covariance matrix positive semi-definite"
+  - "Divide by lag zero to get the ACF — makes it scale free in $[-1, 1]$"
   - "Run Durbin-Levinson on the ACF — gives each order's last coefficient without solving a linear system per lag"
-  - "Compare each lag with the band of about two over root n — spikes outside are unlikely to be noise"
+  - "Compare each lag with the band of about two over root $n$ — spikes outside are unlikely to be noise"
 code: |
   import numpy as np
 
@@ -64,8 +64,8 @@ key_lines: [5, 13, 14]
 time: "O(n·K) for the ACF directly, O(K²) for Durbin-Levinson"
 space: "O(K) for the recursion state"
 hyperparameters:
-  - "max lag K — a common rule is a fraction of n, such as n/4"
-  - "Divisor n versus n − k — n keeps a valid covariance sequence and is the usual default"
+  - "max lag $K$ — a common rule is a fraction of $n$, such as $n/4$"
+  - "Divisor $n$ versus $n-k$ — $n$ keeps a valid covariance sequence and is the usual default"
   - "Differencing order — applied before computing so the series is near stationary"
 pitfalls:
   - "Trending series give an ACF that decays very slowly and hides the real structure; difference first"
@@ -74,11 +74,11 @@ pitfalls:
   - "Different libraries estimate the PACF differently (Yule-Walker, OLS, Burg), so small numeric differences are normal"
 interview_qa:
   - q: "How do ACF and PACF identify an AR or MA model?"
-    a: "An AR(p) has a PACF that cuts off after lag p and an ACF that decays; an MA(q) has an ACF that cuts off after lag q and a PACF that decays."
-  - q: "What does the PACF at lag k measure?"
-    a: "The correlation between yₜ and yₜ₋ₖ after linearly removing the effect of the lags in between, equal to the last coefficient of an order-k autoregression."
-  - q: "Why divide by n and not n − k in the autocovariance?"
-    a: "Dividing by n guarantees the estimated autocovariance sequence is positive semi-definite, which the Yule-Walker system needs; n − k is less biased but can give invalid values."
+    a: "An AR($p$) has a PACF that cuts off after lag $p$ and an ACF that decays; an MA($q$) has an ACF that cuts off after lag $q$ and a PACF that decays."
+  - q: "What does the PACF at lag $k$ measure?"
+    a: "The correlation between $y_t$ and $y_{t-k}$ after linearly removing the effect of the lags in between, equal to the last coefficient of an order-$k$ autoregression."
+  - q: "Why divide by $n$ and not $n-k$ in the autocovariance?"
+    a: "Dividing by $n$ guarantees the estimated autocovariance sequence is positive semi-definite, which the Yule-Walker system needs; $n-k$ is less biased but can give invalid values."
 related: [linear-regression, maximum-likelihood]
 patterns: ["Time series"]
 math_tex:

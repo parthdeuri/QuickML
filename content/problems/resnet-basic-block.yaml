@@ -8,18 +8,18 @@ summary: |
   Two 3×3 convolutions with batch norm and ReLU, plus a shortcut that
   adds the block's input to its output before the final ReLU.
 intuition: |
-  The block only has to learn a correction F(x) on top of the identity,
+  The block only has to learn a correction $F(x)$ on top of the identity,
   so if the best change is small the weights can simply stay near zero.
   The shortcut also gives gradients a direct path back through the
   addition, which is what lets networks with dozens of layers train.
   When the shape changes (stride 2 or more channels) the shortcut uses a
   1×1 convolution so the two branches can still be added.
 approach:
-  - "Convolve with a 3×3 kernel (stride s) and batch-normalise — first feature transform, s downsamples"
+  - "Convolve with a 3×3 kernel (stride $s$) and batch-normalise — first feature transform, $s$ downsamples"
   - "Apply ReLU — adds the nonlinearity between the two convolutions"
   - "Convolve again at stride 1 and batch-normalise — second transform, no ReLU yet"
-  - "If shape changes, map x with a strided 1×1 conv plus batch norm — makes the shortcut addable"
-  - "Add the shortcut to the branch output, then ReLU — output is x + F(x), so identity is easy to learn"
+  - "If shape changes, map $x$ with a strided 1×1 conv plus batch norm — makes the shortcut addable"
+  - "Add the shortcut to the branch output, then ReLU — output is $x + F(x)$, so identity is easy to learn"
 code: |
   import numpy as np
 
@@ -60,7 +60,7 @@ when_not_to_use: |
   is cheaper, or latency-bound mobile models where depthwise-separable
   blocks are a better trade.
 why_it_works: |
-  Writing the block as y = x + F(x) means the Jacobian is I + ∂F/∂x, so
+  Writing the block as $y = x + F(x)$ means the Jacobian is $I + \partial F/\partial x$, so
   the identity term carries gradient to earlier layers unchanged and
   prevents it from vanishing. The optimisation problem also becomes
   easier because "do nothing" is the zero-weight solution rather than a
@@ -75,16 +75,16 @@ interview_qa:
   - q: "Why does a skip connection help train deep networks?"
     a: "The addition gives an identity path for both signal and gradient, so the layers learn a residual and gradients do not have to pass through every nonlinearity."
   - q: "When does the shortcut need a projection?"
-    a: "When the block changes the spatial size or channel count, the input and F(x) differ in shape, so a strided 1×1 conv (with batch norm) matches them."
+    a: "When the block changes the spatial size or channel count, the input and $F(x)$ differ in shape, so a strided 1×1 conv (with batch norm) matches them."
   - q: "Where is the last ReLU placed in the original basic block?"
     a: "After the addition, so the block output is non-negative; pre-activation variants move BN and ReLU before each conv instead."
   - q: "Why no bias in the convolutions?"
-    a: "The following batch norm has its own shift β, which makes a conv bias redundant."
+    a: "The following batch norm has its own shift $\\beta$, which makes a conv bias redundant."
 hyperparameters:
   - "Channels per stage and number of blocks per stage"
   - "Stride of the first block in each stage (downsampling)"
-  - "BatchNorm ε and momentum"
-  - "Zero-initialising the last BN γ so each block starts as identity"
+  - "BatchNorm $\\epsilon$ and momentum"
+  - "Zero-initialising the last BN $\\gamma$ so each block starts as identity"
 pitfalls:
   - "This code uses batch statistics only (train mode); inference needs running averages"
   - "Adding before the ReLU versus after changes the function; follow the variant you load weights for"

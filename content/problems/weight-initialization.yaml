@@ -47,7 +47,7 @@ when_not_to_use: |
   activations in range, and it does not replace tuning the learning
   rate. Pretrained weights should be kept, not re-initialised.
 why_it_works: |
-  For y = Σ wᵢxᵢ with independent zero-mean terms, Var(y) = fan_in ·
+  For $y = \sum_i w_i x_i$ with independent zero-mean terms, Var(y) = fan_in ·
   Var(w) · Var(x). Setting Var(w) near 1/fan_in keeps the forward
   variance stable, and the same argument backwards uses fan_out.
   Xavier compromises between the two, and He adds a factor of two to

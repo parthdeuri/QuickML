@@ -15,9 +15,9 @@ intuition: |
   trees disagree, which is why each gets a different bootstrap sample and
   a different random feature subset at every split.
 why_it_works: |
-  The variance of an average of B models with variance σ² and pairwise
-  correlation ρ is ρσ² + (1 − ρ)σ²/B. More trees kill the second term,
-  and random feature subsets shrink ρ, the part more trees cannot fix.
+  The variance of an average of $B$ models with variance $\sigma^2$ and pairwise
+  correlation $\rho$ is $\rho\sigma^2 + (1-\rho)\sigma^2/B$. More trees kill the second term,
+  and random feature subsets shrink $\rho$, the part more trees cannot fix.
   Bias stays about that of one deep tree, so the average is better.
 when_to_use: |
   A strong default for tabular data: little tuning, handles non-linear
@@ -35,10 +35,10 @@ math:
   - "Var(ŷ) = ρσ² + (1 − ρ)σ² / B"
   - "Rows left out of a bootstrap: (1 − 1/n)ⁿ → 1/e (out-of-bag)"
 approach:
-  - "Draw n rows with replacement — each tree sees a different dataset"
-  - "At each node pick m random features — decorrelates the trees"
+  - "Draw $n$ rows with replacement — each tree sees a different dataset"
+  - "At each node pick $m$ random features — decorrelates the trees"
   - "Grow a tree to the depth limit using Gini — low-bias, high-variance learner"
-  - "Repeat for B trees — more trees only reduce variance, never overfit"
+  - "Repeat for $B$ trees — more trees only reduce variance, never overfit"
   - "Average the votes (probabilities) — cancels the trees' independent errors"
 code: |
   import numpy as np
@@ -86,18 +86,18 @@ key_lines: [12, 15, 30]
 time: "O(B · m · n² ) as written (naive scan); O(B · m · n log n · depth) with sorted splits; trees are independent so training parallelises"
 space: "O(B · nodes) for the stored trees"
 hyperparameters:
-  - "n_estimators B — more is better, with diminishing returns"
-  - "max_features m — smaller means more diverse trees but weaker ones"
+  - "n_estimators $B$ — more is better, with diminishing returns"
+  - "max_features $m$ — smaller means more diverse trees but weaker ones"
   - "max_depth / min_samples_leaf — control each tree's variance"
   - "bootstrap — sample with replacement (default) or use all rows"
 pitfalls:
-  - "Highly correlated trees give little gain, so keep m below d"
+  - "Highly correlated trees give little gain, so keep $m$ below $d$"
   - "Impurity-based feature importance favours high-cardinality features; use permutation importance"
   - "Trees cannot extrapolate outside the training range"
   - "This card's code simplifies sklearn: no out-of-bag scoring, binary labels only"
 interview_qa:
   - q: "Why does bagging help but not hurt by adding more trees?"
-    a: "Averaging reduces variance and leaves bias unchanged; extra trees only shrink the (1 − ρ)σ²/B term, so the error plateaus rather than rises."
+    a: "Averaging reduces variance and leaves bias unchanged; extra trees only shrink the $(1-\\rho)\\sigma^2/B$ term, so the error plateaus rather than rises."
   - q: "What is the role of max_features?"
     a: "Fewer candidate features per split decorrelates trees, which lowers ensemble variance at the cost of weaker individual trees."
   - q: "What is out-of-bag error?"

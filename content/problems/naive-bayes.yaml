@@ -15,9 +15,9 @@ intuition: |
   independent vote, in log space, for every class, and the largest total
   wins.
 why_it_works: |
-  The classifier only needs the ranking of P(c | x), not calibrated
+  The classifier only needs the ranking of $P(c\,|\,x)$, not calibrated
   probabilities. Even when correlated features double-count evidence and
-  push the probabilities toward 0 or 1, the argmax is often still right.
+  push the probabilities toward $0$ or $1$, the argmax is often still right.
   The model has so few parameters that it has very low variance, so it
   works well on small data.
 when_to_use: |
@@ -36,10 +36,10 @@ math:
   - "ŷ = argmax_c Score(c)"
   - "P(c | x) = softmax over c of Score(c)"
 approach:
-  - "Estimate the class priors from label frequencies — the P(c) term"
+  - "Estimate the class priors from label frequencies — the $P(c)$ term"
   - "Estimate a mean and variance per class and feature — this fully defines each Gaussian"
   - "Add a tiny variance floor — avoids division by zero"
-  - "Compute log P(c) plus the sum of per-feature log-densities — logs avoid underflow"
+  - "Compute $\\log P(c)$ plus the sum of per-feature log-densities — logs avoid underflow"
   - "Subtract the max and exponentiate to normalise — a stable softmax gives probabilities"
 code: |
   import numpy as np

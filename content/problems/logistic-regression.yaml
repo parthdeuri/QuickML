@@ -15,7 +15,7 @@ intuition: |
 why_it_works: |
   The negative log-likelihood of Bernoulli labels is convex in the
   weights, so there is one global minimum and no bad local optima. Its
-  gradient has the same shape as in linear regression, (p − y) in place
+  gradient has the same shape as in linear regression, $(p-y)$ in place
   of the residual, which is why Newton steps or gradient descent both
   converge reliably.
 when_to_use: |
@@ -33,11 +33,11 @@ math:
   - "Hessian H = (1/n) · Xᵀ diag(p(1 − p)) X"
   - "Newton step: w ← w − H⁻¹ ∇L"
 approach:
-  - "Add a ones column to X — so the bias is just another weight"
-  - "Start at w = 0 — the loss is convex, so any start reaches the optimum"
-  - "Compute p = σ(Xw) and the gradient Xᵀ(p − y) — this is the direction of error"
-  - "Build the Hessian with weights p(1 − p) — it gives curvature for a Newton step"
-  - "Solve H·Δ = g and update w — a few steps usually converge"
+  - "Add a ones column to $X$ — so the bias is just another weight"
+  - "Start at $w = 0$ — the loss is convex, so any start reaches the optimum"
+  - "Compute $p = \\sigma(Xw)$ and the gradient $X^{\\top}(p-y)$ — this is the direction of error"
+  - "Build the Hessian with weights $p(1-p)$ — it gives curvature for a Newton step"
+  - "Solve $H\\cdot\\Delta = g$ and update $w$ — a few steps usually converge"
 code: |
   import numpy as np
 
@@ -60,7 +60,7 @@ key_lines: [11, 12, 13]
 time: "O(iters · n·d² + d³) with Newton; O(n·d) per step with gradient descent"
 space: "O(d²) for the Hessian, O(n·d) for the data"
 hyperparameters:
-  - "Regularisation strength C (smaller C means stronger L2 penalty)"
+  - "Regularisation strength $C$ (smaller $C$ means stronger L2 penalty)"
   - "Penalty type (L1 for sparse weights, L2 for shrinkage)"
   - "Decision threshold (default 0.5, tune for precision/recall trade-off)"
   - "Solver and max iterations (Newton, L-BFGS, SGD)"
@@ -68,14 +68,14 @@ pitfalls:
   - "Perfectly separable data makes the weights grow without bound unless regularised"
   - "Unscaled features slow gradient-based solvers and make L2 uneven"
   - "Probabilities are only calibrated if the linear log-odds assumption holds"
-  - "Plain exp overflows for large negative z; production code uses a stable sigmoid"
+  - "Plain exp overflows for large negative $z$; production code uses a stable sigmoid"
 interview_qa:
   - q: "Why cross-entropy loss and not squared error?"
-    a: "Cross-entropy is the Bernoulli negative log-likelihood and is convex in w; squared error on a sigmoid is non-convex and gives vanishing gradients when wrong."
+    a: "Cross-entropy is the Bernoulli negative log-likelihood and is convex in $w$; squared error on a sigmoid is non-convex and gives vanishing gradients when wrong."
   - q: "How do you read a coefficient?"
-    a: "Increasing that feature by one unit multiplies the odds by exp(coefficient), holding the others fixed."
+    a: "Increasing that feature by one unit multiplies the odds by $\\exp(\\mathrm{coefficient})$, holding the others fixed."
   - q: "Is logistic regression a linear classifier?"
-    a: "Yes. The boundary σ(z) = 0.5 is wᵀx + b = 0, a hyperplane."
+    a: "Yes. The boundary $\\sigma(z) = 0.5$ is $w^{\\top}x + b = 0$, a hyperplane."
 related: [linear-regression, gradient-descent, softmax-cross-entropy]
 patterns: ["Linear models"]
 math_tex:

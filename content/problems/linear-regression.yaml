@@ -30,10 +30,10 @@ math:
   - "∇L = −(2/n) · Xᵀ(y − Xw)"
   - "Normal equation: w = (XᵀX)⁻¹ Xᵀ y"
 approach:
-  - "Add a column of ones to X — so the bias is just another weight"
-  - "Form XᵀX and Xᵀy — these summarise all the data for the fit"
-  - "Solve the linear system for w — solving is more stable than inverting"
-  - "Predict with Xw — one matrix product for all rows"
+  - "Add a column of ones to $X$ — so the bias is just another weight"
+  - "Form $X^{\\top}X$ and $X^{\\top}y$ — these summarise all the data for the fit"
+  - "Solve the linear system for $w$ — solving is more stable than inverting"
+  - "Predict with $Xw$ — one matrix product for all rows"
 code: |
   import numpy as np
 
@@ -47,19 +47,19 @@ key_lines: [5]
 time: "O(n·d² + d³) to fit, O(d) per prediction"
 space: "O(d²) for XᵀX"
 hyperparameters:
-  - "Regularisation strength (none in plain OLS; ridge adds λ)"
+  - "Regularisation strength (none in plain OLS; ridge adds $\\lambda$)"
   - "Feature scaling — does not change OLS fit but matters for gradient descent"
 pitfalls:
-  - "Collinear features make XᵀX singular or ill-conditioned"
+  - "Collinear features make $X^{\\top}X$ singular or ill-conditioned"
   - "Outliers pull the fit hard because errors are squared"
-  - "A high R² on training data says nothing about generalisation"
+  - "A high $R^2$ on training data says nothing about generalisation"
 interview_qa:
-  - q: "Why solve the normal equations instead of inverting XᵀX?"
+  - q: "Why solve the normal equations instead of inverting $X^{\\top}X$?"
     a: "Solving is faster and numerically more stable than forming the inverse."
   - q: "What assumption makes least squares the maximum-likelihood fit?"
     a: "Independent Gaussian noise with constant variance on the target."
   - q: "What does ridge change and why?"
-    a: "It adds λI to XᵀX, so the system is always solvable and weights shrink."
+    a: "It adds $\\lambda I$ to $X^{\\top}X$, so the system is always solvable and weights shrink."
 
 related: [gradient-descent, logistic-regression]
 patterns: ["Linear models"]

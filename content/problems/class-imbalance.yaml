@@ -16,7 +16,7 @@ intuition: |
   achieves the same by showing the rare ones more often. Neither adds
   information; they only change what the optimiser cares about.
 why_it_works: |
-  With weight wᶜ on class c, the weighted loss is the expected loss under
+  With weight $w^c$ on class $c$, the weighted loss is the expected loss under
   a re-balanced class prior, so errors on the minority are no longer
   drowned out. Random oversampling duplicates minority rows, which
   matches integer weights in the loss on average. The decision threshold,
@@ -36,7 +36,7 @@ math:
   - "Do it on the training split only, never before splitting"
 approach:
   - "Split first, then look only at the training class counts — resampling must not touch validation or test rows"
-  - "Compute balanced weights n / (K·nᶜ) — each class then carries equal total weight"
+  - "Compute balanced weights $\\frac{n}{K\\,n^c}$ — each class then carries equal total weight"
   - "Weight the per-example loss and normalise by the weight sum — rare-class errors count more and the scale stays comparable"
   - "Alternatively oversample minority rows with replacement up to the majority count — the same effect through the data instead of the loss"
   - "Evaluate with precision-recall, F1 or PR-AUC on untouched data and tune the threshold — accuracy hides minority failures"

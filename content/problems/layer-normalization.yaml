@@ -15,8 +15,8 @@ intuition: |
 approach:
   - "Compute the mean over the feature axis — centres each example on its own"
   - "Compute the variance over the same axis — measures its own spread"
-  - "Subtract the mean and divide by √(variance + ε) — ε prevents division by zero"
-  - "Multiply by γ and add β — lets the network undo or reshape the normalisation"
+  - "Subtract the mean and divide by $\\sqrt{\\mathrm{variance}+\\epsilon}$ — $\\epsilon$ prevents division by zero"
+  - "Multiply by $\\gamma$ and add $\\beta$ — lets the network undo or reshape the normalisation"
 code: |
   import numpy as np
 
@@ -39,7 +39,7 @@ when_not_to_use: |
 why_it_works: |
   Normalising each layer's inputs keeps activations in a stable range as
   earlier layers change, which makes gradients better behaved and lets
-  higher learning rates work. The learned γ and β restore expressiveness
+  higher learning rates work. The learned $\gamma$ and $\beta$ restore expressiveness
   so normalisation does not limit what the layer can represent.
 math:
   - "μ = (1/D) Σⱼ xⱼ"
@@ -54,14 +54,14 @@ interview_qa:
   - q: "What are pre-norm and post-norm?"
     a: "Post-norm normalises after the residual addition; pre-norm normalises the input of each sub-layer, which usually trains more stably in deep stacks."
 hyperparameters:
-  - "Epsilon ε"
+  - "Epsilon $\\epsilon$"
   - "Which axes are normalised (last axis here)"
-  - "Whether γ and β are learned"
+  - "Whether $\\gamma$ and $\\beta$ are learned"
   - "Placement: pre-norm or post-norm"
 pitfalls:
-  - "The variance is the biased one (divide by D), matching PyTorch; using the unbiased estimate changes outputs"
+  - "The variance is the biased one (divide by $D$), matching PyTorch; using the unbiased estimate changes outputs"
   - "Normalising over the wrong axis silently runs but is a different layer"
-  - "Constant input has zero variance, so ε controls the output there"
+  - "Constant input has zero variance, so $\\epsilon$ controls the output there"
 related: [batch-normalization, residual-connections, multi-head-attention]
 patterns: ["Normalisation"]
 math_tex:

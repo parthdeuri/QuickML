@@ -14,8 +14,8 @@ intuition: |
   principal component analysis in disguise; nonlinear layers let the
   code follow curved structure that PCA cannot.
 why_it_works: |
-  Minimising squared reconstruction error through a k-dimensional code
-  forces the encoder-decoder pair to span the best k-dimensional
+  Minimising squared reconstruction error through a $k$-dimensional code
+  forces the encoder-decoder pair to span the best $k$-dimensional
   subspace. For a linear autoencoder the optimum spans the top principal
   subspace, though the learned axes are an arbitrary rotation of the
   principal components.
@@ -68,13 +68,13 @@ key_lines: [11, 12, 13]
 time: "O(steps · n·d·k) for full-batch training"
 space: "O(n·(d+k)) for activations and O(d·k) for the weights"
 hyperparameters:
-  - "Bottleneck size k"
-  - "Activation function f (identity here gives the PCA-like case)"
+  - "Bottleneck size $k$"
+  - "Activation function $f$ (identity here gives the PCA-like case)"
   - "Learning rate and number of steps"
   - "Regularisation: weight decay, sparsity penalty or input noise"
 pitfalls:
   - "Too large a bottleneck lets the network copy the input"
-  - "df takes the activation output (tanh: 1 − h²); identity is the constant 1"
+  - "df takes the activation output (tanh: $1-h^2$); identity is the constant 1"
   - "Inputs should be centred; the linear-to-PCA match here assumes centred data"
   - "Full-batch gradient descent here is for clarity; real training uses minibatches and Adam"
 interview_qa:

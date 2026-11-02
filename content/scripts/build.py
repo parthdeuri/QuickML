@@ -45,7 +45,7 @@ def convert_problem(p):
         "solution": code.rstrip("\n") if code else None,
         "keyLines": list(p.get("key_lines") or []),
         # formula lines keep their layout (monospace block in the app)
-        "dryRun": [s.rstrip() for s in p.get("math") or []],
+        "dryRun": [s.rstrip() for s in (p.get("math_tex") or p.get("math") or [])],  # LaTeX when present
         "description": _prose(p.get("when_to_use")),
         "examples": [{"input": _prose(e["q"]), "output": _prose(e["a"]),
                       "explanation": ""}

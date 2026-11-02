@@ -35,7 +35,7 @@ math:
 approach:
   - "Compute the gradients as usual with backpropagation — clipping acts on finished gradients"
   - "Compute one global norm over all parameter gradients — a single scale keeps their relative sizes"
-  - "Form the factor min(1, τ / (norm + ε)) — it is 1 when the gradient is already small"
+  - "Form the factor $\\min(1,\\, \\tau / (\\mathrm{norm} + \\epsilon))$ — it is 1 when the gradient is already small"
   - "Multiply every gradient by the factor — shrinks the step without turning it"
   - "Call the optimiser step with the clipped gradients — clipping must come before the update"
 code: |
@@ -52,7 +52,7 @@ key_lines: [4, 5, 6]
 time: "O(d) for d parameters"
 space: "O(d) for the clipped copies (libraries clip in place)"
 hyperparameters:
-  - "Max norm τ (or clip value κ)"
+  - "Max norm $\\tau$ (or clip value $\\kappa$)"
   - "Norm type (L2 here; others exist)"
   - "Whether to clip per-parameter or globally"
 pitfalls:

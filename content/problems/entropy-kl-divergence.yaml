@@ -8,21 +8,21 @@ summary: |
   Entropy measures the uncertainty of a distribution, cross-entropy the
   cost of describing it with another one, and KL divergence the extra cost.
 intuition: |
-  Entropy is the average surprise of samples from p when you code them
-  optimally. Cross-entropy H(p, q) is the average surprise if you use q's
+  Entropy is the average surprise of samples from $p$ when you code them
+  optimally. Cross-entropy $H(p, q)$ is the average surprise if you use $q$'s
   code instead, and the gap between the two is KL, a one-sided measure of
-  how badly q approximates p. Because H(p) is fixed by the data,
+  how badly $q$ approximates $p$. Because $H(p)$ is fixed by the data,
   minimising cross-entropy is the same as minimising KL.
 why_it_works: |
   KL is non-negative by Jensen's inequality applied to the concave log,
-  and is zero only when q equals p almost everywhere. That makes
+  and is zero only when $q$ equals $p$ almost everywhere. That makes
   cross-entropy minimised exactly when the model matches the data
   distribution, which is why it is the standard classification loss.
 when_to_use: |
   Training and evaluating classifiers, comparing distributions, VAEs,
   distillation, and anywhere you need a divergence between probabilities.
 when_not_to_use: |
-  KL is asymmetric and infinite when q is zero where p is not, so for a
+  KL is asymmetric and infinite when $q$ is zero where $p$ is not, so for a
   symmetric bounded measure use Jensen-Shannon or a Wasserstein distance.
 math:
   - "H(p) = −Σ p(x) log p(x)"
@@ -32,9 +32,9 @@ math:
   - "KL(p ‖ q) ≥ 0, equality iff p = q"
   - "KL(p ‖ q) ≠ KL(q ‖ p) in general"
 approach:
-  - "Drop zero-probability terms of p — 0·log 0 is defined as 0"
-  - "Entropy is the negative sum of p·log p — average surprise under p"
-  - "Cross-entropy swaps in log q — cost of coding p's samples with q"
+  - "Drop zero-probability terms of $p$ — $0 \\cdot \\log 0$ is defined as $0$"
+  - "Entropy is the negative sum of $p \\cdot \\log p$ — average surprise under $p$"
+  - "Cross-entropy swaps in $\\log q$ — cost of coding $p$'s samples with $q$"
   - "KL is cross-entropy minus entropy — the pure mismatch term"
   - "Use natural log for nats, log base 2 for bits — only changes the scale"
 code: |
@@ -55,18 +55,18 @@ time: "O(k) for k outcomes"
 space: "O(k)"
 hyperparameters:
   - "Log base (natural log for nats, base 2 for bits)"
-  - "Direction of the KL (forward KL(p‖q) or reverse KL(q‖p))"
-  - "Smoothing epsilon added to q to avoid log of zero"
+  - "Direction of the KL (forward $\\mathrm{KL}(p\\|q)$ or reverse $\\mathrm{KL}(q\\|p)$)"
+  - "Smoothing epsilon added to $q$ to avoid log of zero"
 pitfalls:
   - "KL is not symmetric and is not a true distance"
-  - "q must be positive wherever p is, otherwise KL is infinite"
+  - "$q$ must be positive wherever $p$ is, otherwise KL is infinite"
   - "Framework kl_div functions expect log-probabilities as input and probabilities as target"
   - "Inputs must be normalised distributions"
 interview_qa:
   - q: "Why is cross-entropy the loss for classification?"
     a: "With one-hot labels it is the negative log-likelihood of the true class, and its minimiser makes the model distribution match the data distribution."
   - q: "What is the difference between forward and reverse KL?"
-    a: "Forward KL(p‖q) is mass-covering, so q spreads over all modes of p; reverse KL(q‖p) is mode-seeking, so q locks onto one mode."
+    a: "Forward $\\mathrm{KL}(p\\|q)$ is mass-covering, so $q$ spreads over all modes of $p$; reverse $\\mathrm{KL}(q\\|p)$ is mode-seeking, so $q$ locks onto one mode."
   - q: "Is KL divergence a distance?"
     a: "No. It is asymmetric and does not satisfy the triangle inequality."
 related: [softmax-cross-entropy, maximum-likelihood, bayes-theorem]

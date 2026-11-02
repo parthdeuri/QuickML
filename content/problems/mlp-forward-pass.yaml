@@ -33,9 +33,9 @@ math:
   - "He init: Wₗ ~ N(0, 2 / fan_in), bₗ = 0"
   - "Parameters: Σₗ (mₗ·nₗ + nₗ)"
 approach:
-  - "Initialise each weight matrix with std √(2 / fan_in) and zero biases — keeps activation scale stable through ReLU"
-  - "Set a = X with one row per sample — the whole batch moves together"
-  - "Compute z = aW + b for each layer — a learned affine re-mapping"
+  - "Initialise each weight matrix with std $\\sqrt{2 / \\mathrm{fan\\_in}}$ and zero biases — keeps activation scale stable through ReLU"
+  - "Set $a = X$ with one row per sample — the whole batch moves together"
+  - "Compute $z = aW + b$ for each layer — a learned affine re-mapping"
   - "Apply ReLU on hidden layers but not the last — the output stays as unbounded logits"
   - "Apply softmax to logits only when probabilities are needed — losses usually take logits directly"
 code: |

@@ -8,17 +8,17 @@ summary: |
   Set the attention scores for future positions to minus infinity before
   the softmax, so each token mixes only itself and earlier tokens.
 intuition: |
-  A language model is trained to predict token t+1 from tokens up to t,
-  so if position t could see later tokens it would simply copy the
+  A language model is trained to predict token $t+1$ from tokens up to $t$,
+  so if position $t$ could see later tokens it would simply copy the
   answer. Masking the upper triangle of the score matrix makes every row
   a distribution over the past only, which lets one forward pass train
   all next-token predictions in parallel without leaking the future.
 approach:
-  - "Compute raw scores Q Kᵀ / √d — the usual scaled dot-product similarities"
+  - "Compute raw scores $Q K^{\\top} / \\sqrt{d}$ — the usual scaled dot-product similarities"
   - "Build a boolean matrix that is true above the diagonal — marks every (query, future key) pair"
-  - "Replace those scores with −∞ — exp(−∞) is exactly 0 after the softmax"
+  - "Replace those scores with $-\\infty$ — $\\exp(-\\infty)$ is exactly 0 after the softmax"
   - "Apply the softmax along each row — each row sums to 1 over visible keys only"
-  - "Multiply by V — each output is a mix of past and current values"
+  - "Multiply by $V$ — each output is a mix of past and current values"
 code: |
   import numpy as np
 
@@ -43,8 +43,8 @@ when_not_to_use: |
   Bidirectional encoders such as BERT, where each token should see the
   whole sequence. For padding, use a separate key-padding mask instead.
 why_it_works: |
-  After the softmax a −∞ score becomes a weight of exactly zero, so the
-  output at position t is a function of Q[t] and of K, V rows up to t
+  After the softmax a $-\infty$ score becomes a weight of exactly zero, so the
+  output at position $t$ is a function of $Q[t]$ and of $K$, $V$ rows up to $t$
   only. The diagonal is kept, so every row has at least one finite score
   and the softmax is well defined. Because future tokens contribute
   nothing, changing them cannot change earlier outputs.
@@ -56,19 +56,19 @@ math:
   - "Output = A V"
 interview_qa:
   - q: "Why mask before the softmax rather than zero the weights after?"
-    a: "Zeroing after the softmax leaves rows that no longer sum to 1 and still lets the future affect the normaliser. Masking scores with −∞ gives exact zeros and a correct normalisation."
+    a: "Zeroing after the softmax leaves rows that no longer sum to 1 and still lets the future affect the normaliser. Masking scores with $-\\infty$ gives exact zeros and a correct normalisation."
   - q: "How does one forward pass train every position at once?"
-    a: "With the mask, row t only uses tokens up to t, so the loss on every next token can be computed together without the model seeing its own targets."
+    a: "With the mask, row $t$ only uses tokens up to $t$, so the loss on every next token can be computed together without the model seeing its own targets."
   - q: "How is a causal mask different from a padding mask?"
     a: "The causal mask hides future positions and is the same for every sequence; a padding mask hides pad tokens and depends on each sequence's length. They are usually combined."
 hyperparameters:
-  - "Mask diagonal offset (k=1 keeps the token itself visible)"
+  - "Mask diagonal offset ($k=1$ keeps the token itself visible)"
   - "Sliding-window size, if attention is also limited to recent tokens"
-  - "Mask value (−∞ or a large negative number)"
+  - "Mask value ($-\\infty$ or a large negative number)"
 pitfalls:
   - "A row that is fully masked gives NaN from the softmax; always keep the diagonal"
-  - "Using a large negative number in half precision can overflow; −∞ or the dtype minimum is safer"
-  - "This code builds the full T × T matrix; efficient kernels skip the masked blocks entirely"
+  - "Using a large negative number in half precision can overflow; $-\\infty$ or the dtype minimum is safer"
+  - "This code builds the full $T \\times T$ matrix; efficient kernels skip the masked blocks entirely"
 related: [self-attention, multi-head-attention, positional-encoding]
 patterns: ["Attention and sequences"]
 math_tex:

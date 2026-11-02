@@ -36,7 +36,7 @@ math:
 approach:
   - "Seed a random generator — makes the split reproducible"
   - "For each class, shuffle the indices of that class — random choice within the class"
-  - "Take the first round(f · n_c) shuffled indices for test — same fraction from every class"
+  - "Take the first $\\mathrm{round}(f \\cdot n_c)$ shuffled indices for test — same fraction from every class"
   - "Collect test indices, then train is the complement — a clean partition with no overlap"
   - "Check proportions in both parts — confirms the stratification worked"
 code: |
@@ -60,7 +60,7 @@ hyperparameters:
   - "seed — fixes the shuffle for reproducibility"
   - "stratify target — the label (or a combined label or binned target)"
 pitfalls:
-  - "Per-class rounding can make the total test size differ slightly from f·n; sklearn allocates counts to hit it exactly, so splits are close but not identical"
+  - "Per-class rounding can make the total test size differ slightly from $f \\cdot n$; sklearn allocates counts to hit it exactly, so splits are close but not identical"
   - "A class with a single sample cannot appear in both parts; sklearn raises an error here, this code silently keeps it in train"
   - "Stratifying does not fix leakage: duplicates or related rows can still straddle the split"
   - "Split before preprocessing or feature selection, otherwise test statistics leak into training"

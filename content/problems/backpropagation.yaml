@@ -38,8 +38,8 @@ math:
 approach:
   - "Run the forward pass and keep the hidden activations — the backward pass needs them"
   - "Differentiate the loss with respect to the output — this seeds the backward sweep"
-  - "Get the last layer's weight gradient as activationsᵀ times the error — each weight's blame is input times error"
-  - "Push the error through Wᵀ and multiply by the activation derivative — this is the chain rule across a layer"
+  - "Get the last layer's weight gradient as activations$^{\\top}$ times the error — each weight's blame is input times error"
+  - "Push the error through $W^{\\top}$ and multiply by the activation derivative — this is the chain rule across a layer"
   - "Repeat down to the first layer, summing rows for biases — every parameter receives its gradient"
 code: |
   import numpy as np
@@ -62,7 +62,7 @@ key_lines: [10, 12, 13]
 time: "O(parameters × batch size), about the cost of the forward pass"
 space: "O(activations) to cache layer outputs for the backward pass"
 hyperparameters:
-  - "Loss function (sets the starting error signal δ)"
+  - "Loss function (sets the starting error signal $\\delta$)"
   - "Activation function (its derivative scales every backward step)"
   - "Weight initialisation (controls gradient size at the start)"
   - "Gradient clipping threshold (guards against exploding gradients)"
@@ -75,7 +75,7 @@ interview_qa:
   - q: "Why go backwards instead of forwards?"
     a: "Reverse mode gets the gradient of one scalar loss with respect to all parameters in one sweep; forward mode would need one sweep per parameter."
   - q: "Why must the forward activations be stored?"
-    a: "Local derivatives such as aᵀδ and 1 − a² depend on forward values, so they are cached, trading memory for compute."
+    a: "Local derivatives such as $a^{\\top}\\delta$ and $1-a^2$ depend on forward values, so they are cached, trading memory for compute."
   - q: "How do you check a backprop implementation?"
     a: "Compare against a finite-difference gradient or an autograd framework on a small random problem."
 related: [gradient-descent, mlp-forward-pass, activation-functions]

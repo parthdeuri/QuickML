@@ -9,7 +9,7 @@ summary: |
   each estimate toward the reward plus the discounted best value of the
   next state.
 intuition: |
-  Q(s, a) should equal the reward you get now plus the value of playing
+  $Q(s, a)$ should equal the reward you get now plus the value of playing
   optimally afterwards. Each step turns that definition into an update:
   compare the current estimate with reward plus discounted best next
   value, and move a little toward it. Because the target uses the max,
@@ -35,10 +35,10 @@ math:
   - "Behaviour: ε-greedy; random action with probability ε"
   - "Policy: π(s) = argmaxₐ Q(s,a)"
 approach:
-  - "Initialise the Q table to zeros — a neutral starting estimate"
-  - "Pick an action ε-greedily in the current state — mostly exploit, sometimes explore"
+  - "Initialise the $Q$ table to zeros — a neutral starting estimate"
+  - "Pick an action $\\epsilon$-greedily in the current state — mostly exploit, sometimes explore"
   - "Step the environment to get reward and next state — one real transition"
-  - "Form the target r + γ max Q(next) and move Q(s,a) toward it by α — the temporal-difference update"
+  - "Form the target $r + \\gamma \\max Q(\\mathrm{next})$ and move $Q(s,a)$ toward it by $\\alpha$ — the temporal-difference update"
   - "Repeat over many episodes and read the policy as argmax over actions — the learned behaviour"
 code: |
   import numpy as np
@@ -66,11 +66,11 @@ key_lines: [18, 19]
 time: "O(episodes · steps · |A|) for the max over actions"
 space: "O(|S|·|A|) for the Q table"
 hyperparameters:
-  - "Learning rate α (use a smaller α or decay it in stochastic environments)"
-  - "Discount γ"
-  - "Exploration rate ε (often decayed over training)"
+  - "Learning rate $\\alpha$ (use a smaller $\\alpha$ or decay it in stochastic environments)"
+  - "Discount $\\gamma$"
+  - "Exploration rate $\\epsilon$ (often decayed over training)"
   - "Number of episodes"
-  - "Initial Q values (optimistic values encourage exploration)"
+  - "Initial $Q$ values (optimistic values encourage exploration)"
 pitfalls:
   - "Terminal states must have value zero; here their rows stay zero because they are never updated"
   - "The environment is deterministic here; stochastic transitions need decaying step sizes"
@@ -82,7 +82,7 @@ interview_qa:
   - q: "How does Q-learning differ from SARSA?"
     a: "SARSA bootstraps from the action actually taken next, so it learns the value of the exploring policy. Q-learning bootstraps from the max, learning the optimal value."
   - q: "What is the exploration-exploitation trade-off?"
-    a: "The agent must try uncertain actions to find better ones but also use what it knows. ε-greedy mixes the two with a random-action probability."
+    a: "The agent must try uncertain actions to find better ones but also use what it knows. $\\epsilon$-greedy mixes the two with a random-action probability."
 related: [gradient-descent, bayes-theorem]
 patterns: ["Reinforcement learning"]
 math_tex:

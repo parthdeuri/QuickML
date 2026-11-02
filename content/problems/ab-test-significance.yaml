@@ -11,7 +11,7 @@ summary: |
 intuition: |
   Under the null hypothesis both arms share one true rate, so the
   observed gap is just sampling noise whose size is known from the
-  binomial variance. Dividing the gap by that noise gives a z-score that
+  binomial variance. Dividing the gap by that noise gives a $z$-score that
   says how many standard errors apart the arms are. Sample size works the
   other way round: the smaller the effect you want to detect, the more
   users you need, growing with the inverse square of that effect.
@@ -41,8 +41,8 @@ math:
 approach:
   - "Compute each arm's observed rate and the pooled rate — the pooled rate is the estimate under the null"
   - "Form the standard error with the pooled variance — the noise expected if there is no true difference"
-  - "Divide the observed difference by it to get z — how many standard errors apart the arms are"
-  - "Convert z to a two-sided p-value with the normal tail — evidence against the null"
+  - "Divide the observed difference by it to get $z$ — how many standard errors apart the arms are"
+  - "Convert $z$ to a two-sided $p$-value with the normal tail — evidence against the null"
   - "Report a confidence interval with unpooled variance — shows the plausible size of the effect, not just significance"
   - "Before the test, size each arm from the minimum detectable effect, significance and power — avoids underpowered experiments"
 code: |
@@ -65,22 +65,22 @@ key_lines: [6, 7, 8]
 time: "O(1) for the test and the sample-size formula"
 space: "O(1)"
 hyperparameters:
-  - "Significance level α — false-positive rate allowed (two-sided here)"
-  - "Power 1−β — chance of detecting the minimum effect"
-  - "Minimum detectable effect δ — smallest change worth detecting"
-  - "Baseline rate p — needed for the variance"
+  - "Significance level $\\alpha$ — false-positive rate allowed (two-sided here)"
+  - "Power $1-\\beta$ — chance of detecting the minimum effect"
+  - "Minimum detectable effect $\\delta$ — smallest change worth detecting"
+  - "Baseline rate $p$ — needed for the variance"
 pitfalls:
-  - "Peeking and stopping when p dips below α inflates false positives; fix the sample size or use sequential tests"
+  - "Peeking and stopping when $p$ dips below $\\alpha$ inflates false positives; fix the sample size or use sequential tests"
   - "The normal approximation needs enough successes and failures in each arm"
   - "Testing many metrics or variants without correction raises the chance of a false win"
-  - "The constants 1.96 and 0.84 are rounded critical values for α=0.05 two-sided and 80% power; pass other values for other settings, and check the interval for practical size, not just significance"
+  - "The constants 1.96 and 0.84 are rounded critical values for $\\alpha=0.05$ two-sided and 80% power; pass other values for other settings, and check the interval for practical size, not just significance"
 interview_qa:
-  - q: "What does a p-value mean in an A/B test?"
+  - q: "What does a $p$-value mean in an A/B test?"
     a: "It is the probability of seeing a difference at least this large if the two arms truly had the same rate; it is not the probability that the treatment is better."
   - q: "Why pool the rates for the test statistic?"
     a: "The null hypothesis says there is one common rate, so the pooled estimate is the best variance estimate under that null; the confidence interval uses unpooled variances because it describes the actual difference."
   - q: "What happens if you peek at the results every day?"
-    a: "Each look is another chance for a spurious significant result, so the overall false-positive rate rises well above α; use a fixed horizon or a sequential or alpha-spending design."
+    a: "Each look is another chance for a spurious significant result, so the overall false-positive rate rises well above $\\alpha$; use a fixed horizon or a sequential or alpha-spending design."
   - q: "How does sample size scale with effect size?"
     a: "Inversely with the square of the minimum detectable effect, so detecting half the effect needs about four times as many users."
 related: [bayes-theorem, cross-validation, concept-drift]

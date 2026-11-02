@@ -13,9 +13,9 @@ intuition: |
   signal while discarding the exact position, which gives a little
   tolerance to small shifts and cuts the size of later layers.
 approach:
-  - "Choose a window size k and stride — together they set the output size"
-  - "Compute the output size as ⌊(H − k) / stride⌋ + 1 — only full windows are used"
-  - "For each output cell, slice the matching k × k window — each window is independent"
+  - "Choose a window size $k$ and stride — together they set the output size"
+  - "Compute the output size as $\\lfloor (H-k)/\\mathrm{stride} \\rfloor + 1$ — only full windows are used"
+  - "For each output cell, slice the matching $k \\times k$ window — each window is independent"
   - "Take the maximum of the window — keeps the strongest activation"
 code: |
   import numpy as np
@@ -59,7 +59,7 @@ interview_qa:
   - q: "Max pooling versus average pooling?"
     a: "Max keeps the strongest activation and suits sparse feature detectors; average keeps the overall level and smooths."
 hyperparameters:
-  - "Window size k"
+  - "Window size $k$"
   - "Stride"
   - "Padding"
   - "Dilation"

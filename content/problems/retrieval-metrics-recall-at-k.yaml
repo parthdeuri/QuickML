@@ -6,12 +6,12 @@ area: NLP
 topics: [Information Retrieval, Evaluation, Ranking]
 summary: |
   Judge a ranked list of documents against known relevance labels: did
-  the relevant ones appear in the top k, how high was the first one, and
+  the relevant ones appear in the top $k$, how high was the first one, and
   how good is the whole ordering.
 intuition: |
   A retriever returns an ordered list, so correctness depends on position
   as well as membership. Recall@k asks what fraction of the relevant
-  items made the top k, MRR rewards putting the first relevant item
+  items made the top $k$, MRR rewards putting the first relevant item
   high, and nDCG discounts each item's relevance by the log of its rank
   and divides by the best possible ordering, so a perfect ranking scores
   one and graded relevance is handled.
@@ -40,7 +40,7 @@ math:
 approach:
   - "Rank documents for each query by score, highest first — the ordering is what is being judged"
   - "Look up each ranked document's relevance label — turns scores into a sequence of hits and misses"
-  - "Recall@k: relevant hits in the first k divided by all relevant — did the retriever find them"
+  - "Recall@k: relevant hits in the first $k$ divided by all relevant — did the retriever find them"
   - "MRR: reciprocal of the rank of the first hit — how soon does the user see something useful"
   - "nDCG@k: discounted gain divided by the ideal discounted gain — position-aware and normalised to one"
 code: |
@@ -67,18 +67,18 @@ key_lines: [9, 13, 18]
 time: "O(Q·D log D) to sort D documents for each of Q queries"
 space: "O(Q·D) for the score and label matrices"
 hyperparameters:
-  - "Cut-off k (match the number of items a downstream stage or user actually sees)"
-  - "Gain function (linear relevance here; 2^rel − 1 is also common)"
+  - "Cut-off $k$ (match the number of items a downstream stage or user actually sees)"
+  - "Gain function (linear relevance here; $2^{\\mathrm{rel}} - 1$ is also common)"
   - "Relevance grades (binary or graded)"
   - "Tie handling for equal scores"
 pitfalls:
   - "Queries with no relevant document divide by zero here; drop them or define them as zero"
-  - "Gain choice matters: this code uses linear gain, which is what scikit-learn uses; other libraries use 2^rel − 1"
+  - "Gain choice matters: this code uses linear gain, which is what scikit-learn uses; other libraries use $2^{\\mathrm{rel}} - 1$"
   - "Ties in scores are broken arbitrarily here by sort order; scikit-learn averages over ties by default"
-  - "The nDCG code needs k no larger than the number of documents per query"
+  - "The nDCG code needs $k$ no larger than the number of documents per query"
 interview_qa:
   - q: "When is Recall@k the right metric for retrieval?"
-    a: "For a first-stage retriever feeding a reranker or an LLM, since anything missing from the top k can never be recovered later. Order within the top k matters less."
+    a: "For a first-stage retriever feeding a reranker or an LLM, since anything missing from the top $k$ can never be recovered later. Order within the top $k$ matters less."
   - q: "Why does nDCG normalise by the ideal DCG?"
     a: "Raw DCG grows with the number of relevant items, so queries are not comparable. Dividing by the best achievable DCG puts every query on a zero-to-one scale."
   - q: "How do MRR and nDCG differ?"

@@ -38,7 +38,7 @@ approach:
   - "Mark points with at least min_pts neighbours as core — only these may grow clusters"
   - "Visit unlabelled core points in order and start a new cluster at each — one seed per connected component"
   - "Flood-fill from a core point through its neighbours, expanding only through other core points — border points join but do not spread the cluster"
-  - "Leave unreached points as −1 — noise is a legitimate outcome"
+  - "Leave unreached points as $-1$ — noise is a legitimate outcome"
 code: |
   import numpy as np
 
@@ -80,7 +80,7 @@ interview_qa:
   - q: "What are core, border and noise points?"
     a: "Core points have at least min_pts points within eps, border points are within eps of a core but not core themselves, and noise is everything else."
   - q: "How do you choose eps?"
-    a: "Plot each point's distance to its k-th nearest neighbour sorted ascending and pick the knee, then sanity-check the clusters."
+    a: "Plot each point's distance to its $k$-th nearest neighbour sorted ascending and pick the knee, then sanity-check the clusters."
   - q: "Why can DBSCAN beat k-means?"
     a: "It needs no cluster count, finds arbitrary shapes, and marks outliers, whereas k-means assumes compact, similar-sized convex clusters and assigns every point."
 related: [k-means, knn, feature-scaling]

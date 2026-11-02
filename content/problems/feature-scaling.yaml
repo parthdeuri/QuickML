@@ -16,7 +16,7 @@ intuition: |
   in fractions. Scaling gives every feature the same units of spread,
   and the choice of centre and spread decides how outliers behave.
 why_it_works: |
-  Each scaler is an affine map z = (x − c) / s with a per-feature centre
+  Each scaler is an affine map $z = (x-c)/s$ with a per-feature centre
   and scale. Standardisation uses mean and standard deviation, min-max
   uses the minimum and range, and the robust scaler uses median and
   interquartile range, which a few extreme values barely move. Affine maps
@@ -38,8 +38,8 @@ approach:
   - "Choose centre and scale statistics per feature — they define the scaler"
   - "Compute them on the training rows only — held-out rows must not influence them"
   - "Replace zero scales with 1 — a constant column would divide by zero"
-  - "Apply (x − centre) / scale to train, validation and test — same parameters everywhere"
-  - "Invert with x = z·scale + centre when you need original units — the map is affine"
+  - "Apply $(x-\\mathrm{centre})/\\mathrm{scale}$ to train, validation and test — same parameters everywhere"
+  - "Invert with $x = z\\cdot\\mathrm{scale}+\\mathrm{centre}$ when you need original units — the map is affine"
 code: |
   import numpy as np
 
@@ -62,7 +62,7 @@ space: "O(d) for the stored centre and scale"
 hyperparameters:
   - "Which scaler — standard, min-max or robust"
   - "Quantile range for the robust scaler"
-  - "Output range for min-max, such as 0 to 1 or −1 to 1"
+  - "Output range for min-max, such as $0$ to $1$ or $-1$ to $1$"
 pitfalls:
   - "Fitting on all data before splitting leaks test statistics"
   - "Min-max is dominated by a single outlier, squeezing everything else"

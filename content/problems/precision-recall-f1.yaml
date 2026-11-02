@@ -59,7 +59,7 @@ space: "O(1) beyond the inputs"
 hyperparameters:
   - "Decision threshold on the predicted probability (moves the precision-recall trade-off)"
   - "Averaging for multiclass (macro, micro, weighted)"
-  - "β in F-beta (weights recall over precision when above one)"
+  - "$\\beta$ in F-beta (weights recall over precision when above one)"
 pitfalls:
   - "Precision and recall are undefined with no predicted or no actual positives; pick an explicit convention"
   - "Micro, macro and weighted averages tell different stories on imbalanced classes"

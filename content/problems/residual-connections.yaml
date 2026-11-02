@@ -9,13 +9,13 @@ summary: |
   correction to the identity instead of a whole new mapping.
 intuition: |
   If an extra layer is not useful, it should be able to do nothing. With
-  y = x + F(x), doing nothing just means F outputs zero, which is easy
+  $y = x + F(x)$, doing nothing just means $F$ outputs zero, which is easy
   to reach from small weights. The addition also gives gradients a
   direct highway back to earlier layers that bypasses the block.
 approach:
-  - "Compute the block's transformation F(x) with its own weights — the learned correction"
-  - "Keep the original x untouched — this is the skip path"
-  - "Return x + F(x) — the shapes must match so the addition is valid"
+  - "Compute the block's transformation $F(x)$ with its own weights — the learned correction"
+  - "Keep the original $x$ untouched — this is the skip path"
+  - "Return $x + F(x)$ — the shapes must match so the addition is valid"
   - "Stack many such blocks — each refines the representation instead of replacing it"
 code: |
   import numpy as np
@@ -37,10 +37,10 @@ when_not_to_use: |
   you need a projection on the skip path, which weakens the clean
   identity shortcut.
 why_it_works: |
-  For y = x + F(x) the Jacobian is I + ∂F/∂x, so the gradient always
+  For $y = x + F(x)$ the Jacobian is $I + \partial F/\partial x$, so the gradient always
   includes an identity term that passes through unchanged. Across many
   blocks the gradient therefore has a path whose size does not shrink
-  with depth, and zero-initialising F gives an exact identity start.
+  with depth, and zero-initialising $F$ gives an exact identity start.
 math:
   - "y = x + F(x)"
   - "F(x) = relu(xW₁ + b₁)W₂ + b₂"
@@ -58,7 +58,7 @@ hyperparameters:
   - "Whether the skip path uses a projection"
   - "Placement of normalisation and activation (pre- or post-)"
 pitfalls:
-  - "Shapes must match exactly for x + F(x); a broadcast that silently succeeds is a bug"
+  - "Shapes must match exactly for $x + F(x)$; a broadcast that silently succeeds is a bug"
   - "This card omits normalisation and the post-addition ReLU of the original ResNet"
   - "Residual stacks can grow activation scale with depth; normalisation or scaled initialisation controls it"
 related: [layer-normalization, backpropagation, batch-normalization]

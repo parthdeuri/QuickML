@@ -45,7 +45,7 @@ math:
 approach:
   - "Store log-probabilities of the sampled actions under the old policy — the fixed reference for the ratio"
   - "Compute the ratio exp(logp_new − logp_old) — how much the policy has moved on each sample"
-  - "Form the unclipped term ρ·Â and the clipped term clip(ρ)·Â — the plain surrogate and its limited version"
+  - "Form the unclipped term $\\rho \\cdot \\hat{A}$ and the clipped term $\\mathrm{clip}(\\rho) \\cdot \\hat{A}$ — the plain surrogate and its limited version"
   - "Take the elementwise minimum and average — a pessimistic bound with no reward for moving too far"
   - "Maximise it for a few epochs of minibatch gradient steps — reuse the batch safely"
 code: |
@@ -64,20 +64,20 @@ key_lines: [4, 6, 7]
 time: "O(N) per evaluation for N samples (the policy network dominates the real cost)"
 space: "O(N) for the ratios and advantages"
 hyperparameters:
-  - "Clip range ε (smaller is more conservative)"
+  - "Clip range $\\epsilon$ (smaller is more conservative)"
   - "Number of epochs and minibatches per batch of data"
-  - "Advantage estimator settings (γ and λ) and normalisation"
+  - "Advantage estimator settings ($\\gamma$ and $\\lambda$) and normalisation"
   - "Value-loss and entropy coefficients when added to the objective"
 pitfalls:
   - "Clipping bounds the gradient incentive, not the actual policy change; large steps can still overshoot the band"
-  - "Advantages are usually normalised per batch; the sign of Â decides which side of the band is clipped"
+  - "Advantages are usually normalised per batch; the sign of $\\hat{A}$ decides which side of the band is clipped"
   - "Log-probs must be from the policy that sampled the actions and be stored detached"
   - "This is only the policy term; real PPO adds a value-function loss and an entropy bonus, and usually early-stops on KL"
 interview_qa:
   - q: "Why take the minimum of the clipped and unclipped terms?"
     a: "It makes the objective a lower bound on the unclipped surrogate. Improvements beyond the clip band are not rewarded, while moves in the harmful direction keep their full gradient."
   - q: "When is the gradient zero?"
-    a: "For a positive advantage when the ratio is above 1 plus ε, and for a negative advantage when the ratio is below 1 minus ε. In those regions the clipped term is a constant."
+    a: "For a positive advantage when the ratio is above 1 plus $\\epsilon$, and for a negative advantage when the ratio is below 1 minus $\\epsilon$. In those regions the clipped term is a constant."
   - q: "How does PPO relate to TRPO?"
     a: "Both limit how far the policy moves per update. TRPO enforces a KL constraint with second-order optimisation, while PPO uses a first-order clipped objective that is simpler to implement."
 related: [reinforce-policy-gradient, gae-advantage, entropy-kl-divergence]

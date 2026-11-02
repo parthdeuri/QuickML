@@ -5,21 +5,21 @@ difficulty: Medium
 area: Math
 topics: [Linear Algebra, Matrix Factorisation, Low-Rank Approximation]
 summary: |
-  Every matrix factors as A = U S Vᵀ with orthonormal U and V and
-  non-negative singular values in S. Keeping only the largest few gives
-  the best low-rank approximation of A.
+  Every matrix factors as $A = USV^{\top}$ with orthonormal $U$ and $V$ and
+  non-negative singular values in $S$. Keeping only the largest few gives
+  the best low-rank approximation of $A$.
 intuition: |
   A matrix maps the unit sphere to an ellipsoid. The SVD names the
-  ellipsoid's axes: V gives the input directions, the singular values give
-  how much each is stretched, and U gives the output directions. Directions
+  ellipsoid's axes: $V$ gives the input directions, the singular values give
+  how much each is stretched, and $U$ gives the output directions. Directions
   with tiny stretch contribute almost nothing, so you can drop them and
   keep a compact matrix that behaves nearly the same.
 why_it_works: |
-  AᵀA = V S² Vᵀ, so the right singular vectors are eigenvectors of AᵀA
+  $A^{\top}A = VS^2V^{\top}$, so the right singular vectors are eigenvectors of $A^{\top}A$
   and the singular values are the square roots of its eigenvalues. The
   Eckart-Young theorem says that, in both the Frobenius and spectral
-  norms, no rank-k matrix is closer to A than the truncation that keeps
-  the top k singular triplets, and the error is set by the discarded
+  norms, no rank-$k$ matrix is closer to $A$ than the truncation that keeps
+  the top $k$ singular triplets, and the error is set by the discarded
   singular values.
 when_to_use: |
   PCA, low-rank compression, denoising, latent semantic analysis,
@@ -38,11 +38,11 @@ math:
   - "‖A − A_k‖_F² = Σ_{i>k} sᵢ²"
   - "‖A − A_k‖₂ = s_{k+1}"
 approach:
-  - "Form AᵀA — its eigenvectors are the right singular vectors"
+  - "Form $A^{\\top}A$ — its eigenvectors are the right singular vectors"
   - "Eigendecompose it and sort eigenvalues in decreasing order — singular values are conventionally ordered"
   - "Take square roots (clipping tiny negatives from rounding) — gives the singular values"
-  - "Compute U = A V / s column by column — the left vectors follow from the right ones"
-  - "Truncate to the top k triplets for a low-rank approximation — Eckart-Young says this is optimal"
+  - "Compute $U = AV/s$ column by column — the left vectors follow from the right ones"
+  - "Truncate to the top $k$ triplets for a low-rank approximation — Eckart-Young says this is optimal"
 code: |
   import numpy as np
 
@@ -63,23 +63,23 @@ key_lines: [4, 6, 8]
 time: "O(m·n²) for AᵀA plus O(n³) for the eigen step (m ≥ n); library SVD is similar but more stable"
 space: "O(m·n) for the matrices and O(n²) for AᵀA"
 hyperparameters:
-  - "Rank k — chosen from the singular-value spectrum or an energy target"
+  - "Rank $k$ — chosen from the singular-value spectrum or an energy target"
   - "Full or thin (economy) factorisation"
   - "Solver — full, truncated or randomised"
 pitfalls:
-  - "This code assumes m ≥ n and nonzero singular values; zero ones leave zero columns in U"
-  - "Forming AᵀA squares the condition number and loses accuracy for small singular values"
+  - "This code assumes $m\\geq n$ and nonzero singular values; zero ones leave zero columns in $U$"
+  - "Forming $A^{\\top}A$ squares the condition number and loses accuracy for small singular values"
   - "Singular vectors are only defined up to a joint sign flip, and are unstable when singular values are close"
   - "SVD of uncentred data is not PCA; centre the columns first"
 interview_qa:
   - q: "How does SVD relate to eigendecomposition?"
-    a: "The right singular vectors are the eigenvectors of AᵀA and the left ones those of AAᵀ, with singular values the square roots of the shared non-zero eigenvalues."
+    a: "The right singular vectors are the eigenvectors of $A^{\\top}A$ and the left ones those of $AA^{\\top}$, with singular values the square roots of the shared non-zero eigenvalues."
   - q: "What does the Eckart-Young theorem say?"
-    a: "Truncating the SVD to rank k gives the closest rank-k matrix to A in the spectral and Frobenius norms."
+    a: "Truncating the SVD to rank $k$ gives the closest rank-$k$ matrix to $A$ in the spectral and Frobenius norms."
   - q: "How is SVD used in PCA?"
-    a: "Centre the data, take its SVD, and the right singular vectors are the principal axes while squared singular values over n − 1 are the variances."
+    a: "Centre the data, take its SVD, and the right singular vectors are the principal axes while squared singular values over $n-1$ are the variances."
   - q: "Why is SVD better than the normal equations for least squares?"
-    a: "It works with A directly, avoiding the squared condition number of AᵀA, and gives a stable pseudo-inverse for rank-deficient problems."
+    a: "It works with $A$ directly, avoiding the squared condition number of $A^{\\top}A$, and gives a stable pseudo-inverse for rank-deficient problems."
 related: [pca, linear-regression, ridge-lasso-regularization]
 patterns: ["Dimensionality reduction"]
 math_tex:

@@ -64,8 +64,8 @@ hyperparameters:
   - "out_of_bounds — how to treat inputs outside the training range when predicting"
 pitfalls:
   - "Produces flat steps and can overfit when calibration data is small"
-  - "Predictions at new x need interpolation between block values, usually linear"
-  - "Tied x values must be pooled first, since the order among ties is arbitrary"
+  - "Predictions at new $x$ need interpolation between block values, usually linear"
+  - "Tied $x$ values must be pooled first, since the order among ties is arbitrary"
   - "A single outlier at an end can drag a long block to a poor value"
 interview_qa:
   - q: "What does the pool-adjacent-violators step do?"

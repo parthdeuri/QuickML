@@ -38,8 +38,8 @@ math:
   - "Shift invariance: adding any constant to both rewards leaves L fixed"
 approach:
   - "Score the chosen and rejected response with the reward model — a scalar for each"
-  - "Take the difference d = r_c − r_r — Bradley-Terry only depends on the gap"
-  - "Apply −log σ(d), computed as log(1 + e^(−d)) — negative log-likelihood that the chosen response wins"
+  - "Take the difference $d = r_c - r_r$ — Bradley-Terry only depends on the gap"
+  - "Apply $-\\log \\sigma(d)$, computed as $\\log(1 + e^{-d})$ — negative log-likelihood that the chosen response wins"
   - "Average over pairs — one training objective for the batch"
   - "Step the reward model's parameters down the gradient — larger corrections for pairs currently ranked wrongly"
 code: |
@@ -69,8 +69,8 @@ pitfalls:
 interview_qa:
   - q: "Why is the loss a function of the reward difference only?"
     a: "The Bradley-Terry probability that one item beats another is a sigmoid of the difference of their scores. Adding a constant to all scores cancels, so absolute reward values are unidentifiable."
-  - q: "Why does the loss equal log(1 + e^(−d))?"
-    a: "−log σ(d) = log(1 + e^(−d)). Computing it with logaddexp avoids overflow and underflow for large positive or negative differences."
+  - q: "Why does the loss equal $\\log(1 + e^{-d})$?"
+    a: "$-\\log \\sigma(d) = \\log(1 + e^{-d})$. Computing it with logaddexp avoids overflow and underflow for large positive or negative differences."
   - q: "How does the reward model connect to DPO?"
     a: "DPO uses the same Bradley-Terry likelihood but defines the reward as a scaled log-ratio of policy to reference, so the policy itself plays the role of the reward model."
 related: [logistic-regression, dpo-loss, softmax-cross-entropy]

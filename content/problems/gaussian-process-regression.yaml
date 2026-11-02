@@ -25,7 +25,7 @@ when_to_use: |
   optimisation surrogates, smooth interpolation of expensive simulations,
   and regression where a kernel encodes domain knowledge.
 when_not_to_use: |
-  Skip it for large n, since training cubes and memory squares with the
+  Skip it for large $n$, since training cubes and memory squares with the
   number of points, for high dimensional inputs with weak structure, or
   when a fast approximate model is enough.
 math:
@@ -39,10 +39,10 @@ math:
 approach:
   - "Build the kernel matrix on the training inputs and add the noise variance to its diagonal — noise makes it positive definite and stops exact interpolation"
   - "Factor it with a Cholesky decomposition — cheaper and more stable than inverting"
-  - "Solve for α = K⁻¹y with two triangular solves — the prediction weights on the training targets"
+  - "Solve for $\\alpha = K^{-1}y$ with two triangular solves — the prediction weights on the training targets"
   - "Compute the cross kernel between test and train points and form the mean as a weighted sum — predictions"
-  - "Solve L v = k* and subtract vᵀv from the prior variance — uncertainty shrinks where data is nearby"
-  - "Evaluate the log marginal likelihood from the same factor — the score used to tune ℓ, s² and noise"
+  - "Solve $Lv = k_*$ and subtract $v^{\\top}v$ from the prior variance — uncertainty shrinks where data is nearby"
+  - "Evaluate the log marginal likelihood from the same factor — the score used to tune $\\ell$, $s^2$ and noise"
 code: |
   import numpy as np
 
@@ -65,13 +65,13 @@ key_lines: [10, 13, 14]
 time: "O(n³) for the Cholesky factor, O(n·m) per extra test point for the mean and O(n²·m) for variances"
 space: "O(n²) for the kernel matrix"
 hyperparameters:
-  - "Length scale ℓ — how far apart inputs can be and still be correlated"
-  - "Signal variance s² — prior amplitude of the function"
-  - "Noise variance σₙ² — observation noise, also acts as a jitter for stability"
+  - "Length scale $\\ell$ — how far apart inputs can be and still be correlated"
+  - "Signal variance $s^2$ — prior amplitude of the function"
+  - "Noise variance $\\sigma_n^2$ — observation noise, also acts as a jitter for stability"
   - "Kernel family — RBF, Matérn, periodic, or sums and products of them"
   - "Optimiser restarts — the marginal likelihood is non-convex in the hyperparameters"
 pitfalls:
-  - "Training cost grows as n cubed, so thousands of points need sparse or inducing-point approximations"
+  - "Training cost grows as $n$ cubed, so thousands of points need sparse or inducing-point approximations"
   - "Tiny noise makes the kernel matrix near singular and the Cholesky fail; add jitter"
   - "The variance returned here is for the latent function; add the noise variance for a new observation"
   - "A zero prior mean pulls predictions to zero away from data; centre or normalise the targets"

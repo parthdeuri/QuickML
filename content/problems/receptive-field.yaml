@@ -9,16 +9,16 @@ summary: |
   influence its value. It grows layer by layer, and strides make it
   grow faster.
 intuition: |
-  Each layer looks at a k-wide window of the previous layer, but one
+  Each layer looks at a $k$-wide window of the previous layer, but one
   step in a deeper layer already spans several input pixels. Every new
-  kernel therefore adds (k − 1) steps of the current spacing between
+  kernel therefore adds $(k - 1)$ steps of the current spacing between
   neighbouring units, and strides multiply that spacing. This is why
   a stack of small kernels can see a large region, and why a unit
   can only reason about context inside its own receptive field.
 why_it_works: |
   Unrolling the dependency of an output on its inputs layer by layer
   gives a simple recurrence: the field is the previous field plus
-  (k − 1) times the product of all earlier strides (the jump). The
+  $(k - 1)$ times the product of all earlier strides (the jump). The
   recurrence is exact for a plain stack of convolutions or pooling
   layers, because each layer's window is a contiguous block of the
   layer below.
@@ -40,7 +40,7 @@ math:
   - "Padding shifts the interval but does not change its width"
 approach:
   - "Start with field 1 and jump 1 at the input — a single pixel sees only itself"
-  - "For each layer add (k − 1) · jump to the field — a wider window over spaced-out units"
+  - "For each layer add $(k - 1) \\cdot \\mathrm{jump}$ to the field — a wider window over spaced-out units"
   - "Multiply the jump by the layer's stride — later units sit further apart in input pixels"
   - "To locate one unit, walk the layers backwards expanding its index interval — gives the exact input window"
 code: |
@@ -61,18 +61,18 @@ key_lines: [4, 5, 12]
 time: "O(L) for L layers"
 space: "O(1) extra"
 hyperparameters:
-  - "Kernel size k of each layer"
-  - "Stride s of each layer (multiplies the growth)"
+  - "Kernel size $k$ of each layer"
+  - "Stride $s$ of each layer (multiplies the growth)"
   - "Depth (number of layers)"
   - "Dilation (not modelled here; it widens the window per layer)"
 pitfalls:
   - "The theoretical field is much larger than the effective field that actually influences the output"
-  - "This code assumes no dilation and no padding offsets; dilation replaces k by an effective kernel size"
+  - "This code assumes no dilation and no padding offsets; dilation replaces $k$ by an effective kernel size"
   - "Forgetting that strides multiply across layers underestimates growth"
   - "Pooling layers count as layers with their own kernel and stride"
 interview_qa:
   - q: "How does the receptive field grow with depth?"
-    a: "Each layer adds (k − 1) times the product of earlier strides, so it grows linearly with depth at stride 1 and much faster once strides or pooling are used."
+    a: "Each layer adds $(k - 1)$ times the product of earlier strides, so it grows linearly with depth at stride 1 and much faster once strides or pooling are used."
   - q: "What is the effective receptive field?"
     a: "The region that actually carries significant gradient; it is roughly Gaussian and smaller than the theoretical field."
   - q: "How can you enlarge the field without more parameters?"

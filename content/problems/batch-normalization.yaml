@@ -12,7 +12,7 @@ intuition: |
   Layers keep seeing inputs whose scale drifts as earlier weights
   change, which forces small learning rates. Re-centering and
   re-scaling every feature per batch keeps those inputs in a steady
-  range, and the learned γ and β let the layer undo the normalisation
+  range, and the learned $\gamma$ and $\beta$ let the layer undo the normalisation
   if that is what helps.
 why_it_works: |
   Stable input statistics make the loss surface better behaved, so
@@ -36,8 +36,8 @@ math:
   - "Inference: x̂ = (x − running mean) / √(running var + ε)"
 approach:
   - "Compute the per-feature mean and variance over the batch axis — these are the statistics to remove"
-  - "Divide the centred input by √(var + ε) — ε avoids division by zero"
-  - "Apply γ and β — restores representational freedom"
+  - "Divide the centred input by $\\sqrt{\\mathrm{var}+\\epsilon}$ — $\\epsilon$ avoids division by zero"
+  - "Apply $\\gamma$ and $\\beta$ — restores representational freedom"
   - "Update running mean and variance with momentum — they will be used at inference"
   - "In eval mode use the running statistics instead — outputs must not depend on other samples"
 code: |
@@ -60,7 +60,7 @@ time: "O(n·d) for n samples and d features"
 space: "O(d) for γ, β and the running statistics"
 hyperparameters:
   - "Momentum of the running averages"
-  - "ε (numerical floor added to the variance)"
+  - "$\\epsilon$ (numerical floor added to the variance)"
   - "Batch size (small batches give noisy statistics)"
 pitfalls:
   - "Forgetting model.eval() at inference uses batch statistics and makes predictions depend on the batch"
@@ -70,8 +70,8 @@ pitfalls:
 interview_qa:
   - q: "How does batch norm behave differently in training and inference?"
     a: "Training uses statistics of the current batch and updates running averages; inference uses those running averages so each sample is processed independently."
-  - q: "Why learn γ and β?"
-    a: "Forcing zero mean and unit variance would limit what a layer can represent; γ and β let the network restore any scale and shift."
+  - q: "Why learn $\\gamma$ and $\\beta$?"
+    a: "Forcing zero mean and unit variance would limit what a layer can represent; $\\gamma$ and $\\beta$ let the network restore any scale and shift."
   - q: "When is layer norm preferred?"
     a: "When batch statistics are unreliable or undefined, as in small batches or variable-length sequences, since layer norm normalises per sample."
 related: [mlp-forward-pass, backpropagation, dropout]

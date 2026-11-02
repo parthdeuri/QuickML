@@ -16,8 +16,8 @@ intuition: |
   of each sin-cos pair.
 approach:
   - "Make a column of positions and a row of even dimension indices — one grid covers every (position, dimension) pair"
-  - "Compute angle = pos / 10000^(i/d) — each pair gets its own wavelength, from short to long"
-  - "Put sin(angle) in the even columns and cos(angle) in the odd ones — a pair encodes position on a circle"
+  - "Compute $\\mathrm{angle} = \\mathrm{pos} / 10000^{i/d}$ — each pair gets its own wavelength, from short to long"
+  - "Put $\\sin(\\mathrm{angle})$ in the even columns and $\\cos(\\mathrm{angle})$ in the odd ones — a pair encodes position on a circle"
   - "Add the result to the token embeddings — the model sees content and position together"
 code: |
   import numpy as np
@@ -39,10 +39,10 @@ when_to_use: |
 when_not_to_use: |
   When learned, relative or rotary position schemes fit better: they are
   often preferred in modern language models, especially for long
-  contexts. This code also assumes an even dimension d.
+  contexts. This code also assumes an even dimension $d$.
 why_it_works: |
-  Each sin-cos pair at frequency ω is a point on a circle, and moving k
-  positions rotates that point by angle ωk, which is the same linear map
+  Each sin-cos pair at frequency $\omega$ is a point on a circle, and moving $k$
+  positions rotates that point by angle $\omega k$, which is the same linear map
   for every starting position. A model can therefore compute relative
   offsets from the encodings with linear operations, and the many
   wavelengths make every position's overall code distinct.
@@ -60,11 +60,11 @@ interview_qa:
   - q: "Fixed sinusoids versus learned position embeddings?"
     a: "Sinusoids add no parameters and can extrapolate in form, while learned embeddings are flexible but limited to trained positions."
 hyperparameters:
-  - "Model dimension d"
+  - "Model dimension $d$"
   - "Base constant (10000 in the original)"
-  - "Maximum sequence length T"
+  - "Maximum sequence length $T$"
 pitfalls:
-  - "The code assumes d is even; odd d needs special handling for the last column"
+  - "The code assumes $d$ is even; odd $d$ needs special handling for the last column"
   - "Interleaved sin and cos columns versus concatenated halves are both used; the choice must match the rest of the model"
   - "Adding to embeddings without matching scale can drown the content signal"
 related: [self-attention, multi-head-attention, layer-normalization]

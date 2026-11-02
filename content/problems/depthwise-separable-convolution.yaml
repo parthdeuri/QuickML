@@ -37,8 +37,8 @@ math:
 approach:
   - "Pad the input like an ordinary convolution — same output-size rules apply"
   - "For each position, take the patch of every channel separately — channels are not mixed yet"
-  - "Multiply each channel's patch by that channel's own k×k filter and sum — the depthwise step"
-  - "Mix channels at each pixel with a F×C matrix — the pointwise 1×1 step produces F maps"
+  - "Multiply each channel's patch by that channel's own $k \\times k$ filter and sum — the depthwise step"
+  - "Mix channels at each pixel with a $F \\times C$ matrix — the pointwise 1×1 step produces $F$ maps"
 code: |
   import numpy as np
 
@@ -62,7 +62,7 @@ space: "O(N·C·oH·oW) for the intermediate maps"
 hyperparameters:
   - "Kernel size of the depthwise filter"
   - "Stride and padding"
-  - "Output channels F of the pointwise layer"
+  - "Output channels $F$ of the pointwise layer"
   - "Depth multiplier (not modelled; this uses one filter per channel)"
 pitfalls:
   - "Fewer multiply-adds do not always mean faster inference; memory-bound depthwise kernels can be slow"
@@ -71,7 +71,7 @@ pitfalls:
   - "Compare parameter counts with equal accuracy, not with equal width"
 interview_qa:
   - q: "How does a depthwise separable convolution save parameters?"
-    a: "It uses C·k² spatial weights plus F·C mixing weights instead of F·C·k² for the full kernel."
+    a: "It uses $C \\cdot k^2$ spatial weights plus $F \\cdot C$ mixing weights instead of $F \\cdot C \\cdot k^2$ for the full kernel."
   - q: "What does the depthwise step do?"
     a: "It filters each input channel independently with its own spatial kernel, so it mixes no information across channels."
   - q: "What does the pointwise step do?"

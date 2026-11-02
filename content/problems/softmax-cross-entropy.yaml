@@ -12,13 +12,13 @@ intuition: |
   Softmax makes the classes compete: raising one logit steals
   probability from all the others. Cross-entropy then only looks at the
   probability given to the correct class, and its gradient with respect
-  to the logits collapses to the simple form p − y, so wrong and
+  to the logits collapses to the simple form $p - y$, so wrong and
   confident predictions get the strongest push.
 why_it_works: |
   Cross-entropy is the negative log-likelihood of a categorical
   distribution, so minimising it is maximum-likelihood training. The log
   cancels the exponential in softmax, leaving the clean gradient
-  p − onehot(y) that does not vanish when the model is wrong, unlike
+  $p - \mathrm{onehot}(y)$ that does not vanish when the model is wrong, unlike
   squared error.
 when_to_use: |
   The default output layer and loss for single-label multi-class
@@ -37,8 +37,8 @@ math:
 approach:
   - "Subtract each row's max from its logits — stops exp from overflowing"
   - "Exponentiate and normalise by the row sum — gives a probability per class"
-  - "Compute log Σ exp(z) − z_y per row and average — the loss, via log-sum-exp so no log(0)"
-  - "For the gradient, subtract 1 at the true class from p and divide by n — it is the exact derivative w.r.t. logits"
+  - "Compute $\\log \\sum \\exp(z) - z_y$ per row and average — the loss, via log-sum-exp so no $\\log(0)$"
+  - "For the gradient, subtract 1 at the true class from $p$ and divide by $n$ — it is the exact derivative w.r.t. logits"
 code: |
   import numpy as np
 
@@ -69,7 +69,7 @@ pitfalls:
   - "Applying softmax then a framework CrossEntropyLoss applies it twice"
   - "Outputs are confident but not necessarily calibrated"
 interview_qa:
-  - q: "Why is the softmax and cross-entropy gradient just p − y?"
+  - q: "Why is the softmax and cross-entropy gradient just $p - y$?"
     a: "The log in cross-entropy cancels the exponential in softmax, leaving the predicted probabilities minus the one-hot target."
   - q: "Why subtract the max before exp?"
     a: "Softmax is shift-invariant, so it changes nothing mathematically but prevents overflow."

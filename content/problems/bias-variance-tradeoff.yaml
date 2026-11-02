@@ -14,8 +14,8 @@ intuition: |
   first and inflate the second, so test error is U-shaped in complexity.
 why_it_works: |
   For a fixed input, expand the squared error around the mean prediction
-  E[ŷ]. The cross terms vanish because the noise is independent of the fit
-  and the deviation ŷ − E[ŷ] has zero mean, leaving exactly bias², variance
+  $E[\hat{y}]$. The cross terms vanish because the noise is independent of the fit
+  and the deviation $\hat{y}-E[\hat{y}]$ has zero mean, leaving exactly $\mathrm{bias}^2$, variance
   and noise as three non-negative pieces. Only the first two can be traded
   against each other by changing model complexity.
 when_to_use: |
@@ -33,10 +33,10 @@ math:
   - "σ² = noise variance, a floor no model can beat"
   - "Expectation is over training sets D, and over noise in y"
 approach:
-  - "Pick a known true function f and a test point x0 — so bias can be measured exactly"
+  - "Pick a known true function $f$ and a test point $x_0$ — so bias can be measured exactly"
   - "Draw many independent noisy training sets — they play the role of 'retraining'"
-  - "Fit the model on each and predict at x0 — gives a distribution of predictions"
-  - "bias² from the mean prediction versus f(x0) — the systematic part"
+  - "Fit the model on each and predict at $x_0$ — gives a distribution of predictions"
+  - "$\\mathrm{bias}^2$ from the mean prediction versus $f(x_0)$ — the systematic part"
   - "variance as the spread of predictions — the instability part"
   - "Sweep model complexity and compare — bias falls while variance rises"
 code: |
@@ -57,14 +57,14 @@ key_lines: [9, 11, 12]
 time: "O(runs · n · degree²) for the polynomial fits"
 space: "O(runs + n)"
 hyperparameters:
-  - "Model complexity (polynomial degree, tree depth, k in k-NN)"
+  - "Model complexity (polynomial degree, tree depth, $k$ in k-NN)"
   - "Regularisation strength (more shrinkage means more bias, less variance)"
   - "Training set size (more data lowers variance, not bias)"
   - "Number of simulation runs (more runs make the estimates less noisy)"
 pitfalls:
-  - "Bias and variance cannot be computed on real data because the true f is unknown; only simulation or proxies work"
+  - "Bias and variance cannot be computed on real data because the true $f$ is unknown; only simulation or proxies work"
   - "Too few simulation runs give a noisy variance estimate"
-  - "Measured at one x0 only; the trade-off differs across the input space"
+  - "Measured at one $x_0$ only; the trade-off differs across the input space"
 interview_qa:
   - q: "How do you recognise high bias versus high variance from learning curves?"
     a: "High bias: train and validation error are both high and close. High variance: train error is low and validation error is much higher, with a large gap."
@@ -73,7 +73,7 @@ interview_qa:
   - q: "Does more training data fix high bias?"
     a: "No. It reduces variance; a model that is too simple stays wrong however much data it sees."
   - q: "Why can test error never reach zero in this decomposition?"
-    a: "The irreducible noise term σ² is part of every noisy target and no model can predict it."
+    a: "The irreducible noise term $\\sigma^2$ is part of every noisy target and no model can predict it."
 related: [linear-regression, cross-validation]
 patterns: ["Regularisation"]
 math_tex:

@@ -97,8 +97,13 @@ class G:
 
     def save(self, name, theme):
         OUT.mkdir(parents=True, exist_ok=True)
-        self.fig.savefig(OUT / f"{name}_{theme}.png", dpi=300, transparent=True)
+        path = OUT / f"{name}_{theme}.png"
+        self.fig.savefig(path, dpi=220, transparent=True)
         plt.close(self.fig)
+        # 8-bit palette keeps the APK small; the flat colours lose nothing visible
+        from PIL import Image
+        Image.open(path).quantize(colors=96, method=Image.Quantize.FASTOCTREE).save(
+            path, optimize=True)
 
 
 # ------------------------------------------------------------------ diagrams

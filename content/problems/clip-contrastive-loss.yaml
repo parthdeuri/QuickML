@@ -17,8 +17,8 @@ intuition: |
   sharply the softmax separates near and far, so it matters a lot.
 approach:
   - "L2-normalise image and text embeddings — dot products become cosine similarities"
-  - "Form logits = I Tᵀ / τ, an N × N matrix — every image against every caption, τ sharpens the softmax"
-  - "Use labels 0 … N−1 as targets — the matching pair is the diagonal entry"
+  - "Form logits = $I T^{\\top} / \\tau$, an $N \\times N$ matrix — every image against every caption, $\\tau$ sharpens the softmax"
+  - "Use labels $0 \\ldots N-1$ as targets — the matching pair is the diagonal entry"
   - "Cross-entropy along rows — image-to-text, each image must pick its caption"
   - "Cross-entropy along columns (logits transposed) and average both — text-to-image, symmetric training"
 code: |
@@ -47,7 +47,7 @@ when_not_to_use: |
   near-duplicate captions in a batch, which creates false negatives.
 why_it_works: |
   The loss is an InfoNCE bound on the mutual information between the two
-  modalities: it rewards scoring the true partner above all N − 1 other
+  modalities: it rewards scoring the true partner above all $N-1$ other
   candidates. Larger batches provide more negatives and a tighter bound.
   Normalising and using a temperature keeps the similarities bounded
   while still letting the softmax become sharp.
@@ -59,22 +59,22 @@ math:
   - "Original CLIP learns τ as exp(−logit_scale), a trained scalar"
 interview_qa:
   - q: "Why is the loss symmetric?"
-    a: "Each direction is a separate N-way classification, image to text and text to image; averaging trains both encoders to retrieve in both directions."
+    a: "Each direction is a separate $N$-way classification, image to text and text to image; averaging trains both encoders to retrieve in both directions."
   - q: "What does the temperature do?"
-    a: "It scales the cosine similarities before the softmax; small τ makes the distribution sharper and weights hard negatives more."
+    a: "It scales the cosine similarities before the softmax; small $\\tau$ makes the distribution sharper and weights hard negatives more."
   - q: "Where do the negatives come from?"
     a: "Every other pair in the batch, so batch size directly sets the number of negatives."
   - q: "How is zero-shot classification done with CLIP?"
     a: "Embed a text prompt per class, embed the image, and pick the class whose text embedding has the highest cosine similarity."
 hyperparameters:
-  - "Temperature τ (fixed or learned)"
-  - "Batch size N (number of negatives)"
-  - "Embedding dimension D"
+  - "Temperature $\\tau$ (fixed or learned)"
+  - "Batch size $N$ (number of negatives)"
+  - "Embedding dimension $D$"
   - "Encoder architectures and projection heads"
 pitfalls:
   - "Forgetting to normalise embeddings changes the loss and can make training unstable"
   - "Duplicate or very similar captions in one batch act as false negatives"
-  - "Here τ is a constant; CLIP learns it and clamps it to a maximum scale"
+  - "Here $\\tau$ is a constant; CLIP learns it and clamps it to a maximum scale"
   - "Distributed training needs gathered embeddings from all devices to get the full negative set"
 related: [cosine-similarity-embeddings, softmax-cross-entropy, multi-head-attention]
 patterns: ["Information-theoretic losses"]

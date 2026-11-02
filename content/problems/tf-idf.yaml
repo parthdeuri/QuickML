@@ -36,7 +36,7 @@ math:
   - "Cosine similarity of two rows = their dot product after L2 norm"
 approach:
   - "Build a vocabulary and count terms per document — gives the raw tf matrix"
-  - "Count in how many documents each term occurs — this is df"
+  - "Count in how many documents each term occurs — this is $\\mathrm{df}$"
   - "Compute idf with add-one smoothing — rare terms get larger weights, no division by zero"
   - "Multiply tf by idf column-wise — reweights each term by informativeness"
   - "Normalise each row to unit L2 length — removes the effect of document length"
@@ -59,7 +59,7 @@ time: "O(total tokens) to count, O(N·V) for the dense weighting"
 space: "O(N·V) dense here; real systems use sparse matrices"
 hyperparameters:
   - "smooth_idf (add one to document counts, as here)"
-  - "sublinear_tf (use 1 + ln(tf) so repeats saturate)"
+  - "sublinear_tf (use $1 + \\ln(\\mathrm{tf})$ so repeats saturate)"
   - "norm (l2 for cosine similarity, l1, or none)"
   - "min_df / max_df (drop very rare or very common terms)"
   - "n-gram range (include word pairs to recover some order)"
@@ -70,7 +70,7 @@ pitfalls:
   - "Variants differ (log base, smoothing, norm), so scores are not portable between libraries"
 interview_qa:
   - q: "Why take the log in idf?"
-    a: "It damps the ratio N/df so that a very rare word does not dominate, and it makes the weight behave like an information measure."
+    a: "It damps the ratio $N/\\mathrm{df}$ so that a very rare word does not dominate, and it makes the weight behave like an information measure."
   - q: "Why normalise rows?"
     a: "Long documents have larger counts. L2 normalisation makes rows comparable and turns the dot product into cosine similarity."
   - q: "How does TF-IDF differ from word embeddings?"

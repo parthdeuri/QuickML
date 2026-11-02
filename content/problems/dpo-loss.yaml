@@ -10,7 +10,7 @@ summary: |
   relative to a frozen reference model, with no separate reward model or
   reinforcement learning loop.
 intuition: |
-  DPO treats β·log(π/π_ref) as an implicit reward: how much more the
+  DPO treats $\beta\cdot\log(\pi/\pi_{\mathrm{ref}})$ as an implicit reward: how much more the
   tuned model likes a response than the reference does. The loss is a
   logistic loss on the difference of that implicit reward between the
   chosen and rejected response, so it raises the chosen response and
@@ -42,9 +42,9 @@ math:
   - "y_w: preferred (winner),  y_l: rejected (loser),  N: pairs"
 approach:
   - "Compute sequence log-probabilities of the chosen and rejected responses under the policy and the frozen reference — the four quantities the loss needs"
-  - "Subtract reference from policy for each response — the log-ratio is the implicit reward up to β"
-  - "Take the chosen-minus-rejected difference and scale by β — the preference margin"
-  - "Apply −log σ(margin) and average over pairs — the Bradley-Terry negative log-likelihood"
+  - "Subtract reference from policy for each response — the log-ratio is the implicit reward up to $\\beta$"
+  - "Take the chosen-minus-rejected difference and scale by $\\beta$ — the preference margin"
+  - "Apply $-\\log\\sigma(\\mathrm{margin})$ and average over pairs — the Bradley-Terry negative log-likelihood"
   - "Backpropagate into the policy only — the reference stays frozen"
 code: |
   import numpy as np
@@ -62,7 +62,7 @@ key_lines: [8, 9, 10]
 time: "O(N) given the log-probabilities; the real cost is two forward passes (policy and reference) per response"
 space: "O(N) for the margins; the reference model's weights must also be held in memory"
 hyperparameters:
-  - "β (strength of the pull toward the reference; larger keeps the policy closer)"
+  - "$\\beta$ (strength of the pull toward the reference; larger keeps the policy closer)"
   - "Learning rate (usually very small for fine-tuning)"
   - "Reference model (usually the supervised fine-tuned checkpoint)"
   - "Preference dataset quality and size"
@@ -74,8 +74,8 @@ pitfalls:
 interview_qa:
   - q: "How does DPO avoid training a reward model?"
     a: "It reparameterises the reward as a log-ratio of policy to reference, so the preference likelihood can be written directly in terms of the policy. Training the policy on that likelihood implicitly fits the reward."
-  - q: "What does β control?"
-    a: "It scales the log-ratio reward, so it sets how strongly the policy is tied to the reference. A larger β penalises movement away from the reference more and gives smaller updates for a given log-ratio gap."
+  - q: "What does $\\beta$ control?"
+    a: "It scales the log-ratio reward, so it sets how strongly the policy is tied to the reference. A larger $\\beta$ penalises movement away from the reference more and gives smaller updates for a given log-ratio gap."
   - q: "How does DPO relate to RLHF with PPO?"
     a: "Both target the same KL-regularised reward objective. PPO learns an explicit reward and samples from the policy online; DPO optimises a closed-form loss on a fixed dataset of preference pairs."
 related: [reward-model-bradley-terry, entropy-kl-divergence, softmax-cross-entropy]

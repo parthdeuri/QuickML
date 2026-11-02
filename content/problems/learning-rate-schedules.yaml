@@ -62,13 +62,13 @@ interview_qa:
   - q: "How do schedules interact with the optimiser?"
     a: "The schedule only sets the base rate each step; the optimiser, such as SGD or Adam, still decides the update direction and any per-parameter scaling."
 hyperparameters:
-  - "Base learning rate η₀"
-  - "Step size s and decay factor γ (step decay)"
-  - "T_max and floor η_min (cosine)"
-  - "Warmup length W"
+  - "Base learning rate $\\eta_0$"
+  - "Step size $s$ and decay factor $\\gamma$ (step decay)"
+  - "$T_{\\max}$ and floor $\\eta_{\\min}$ (cosine)"
+  - "Warmup length $W$"
 pitfalls:
   - "Counting epochs versus optimiser steps inconsistently shifts the whole schedule"
-  - "Cosine from PyTorch with t beyond T_max rises again; clamp t to the range"
+  - "Cosine from PyTorch with $t$ beyond $T_{\\max}$ rises again; clamp $t$ to the range"
   - "The warmup variant here is a common recipe, not a built-in PyTorch scheduler"
 related: [gradient-descent, adam-optimizer, backpropagation]
 patterns: ["Gradient-based optimisation"]

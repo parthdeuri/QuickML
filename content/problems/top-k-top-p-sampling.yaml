@@ -5,8 +5,8 @@ difficulty: Medium
 area: NLP
 topics: [Decoding, Language Modeling, Sampling]
 summary: |
-  Truncate the next-token distribution to the k most likely tokens, or
-  to the smallest set whose probability reaches p, then renormalise and
+  Truncate the next-token distribution to the $k$ most likely tokens, or
+  to the smallest set whose probability reaches $p$, then renormalise and
   sample from what is left.
 intuition: |
   Sampling from the full distribution occasionally picks a token from the
@@ -16,10 +16,10 @@ intuition: |
   confidence, keeping few tokens when it is sure and many when it is not.
 approach:
   - "Sort tokens by logit, highest first — fixes the order used for both cuts"
-  - "Top-k: set every logit beyond the k-th to −∞ — keeps a fixed number of candidates"
+  - "Top-k: set every logit beyond the $k$-th to $-\\infty$ — keeps a fixed number of candidates"
   - "Softmax the survivors and take cumulative sums — the mass collected so far"
-  - "Top-p: drop a token once the mass before it is at least p — keeps the smallest nucleus reaching p"
-  - "Sample from the renormalised survivors — the softmax gives zero weight to −∞"
+  - "Top-p: drop a token once the mass before it is at least $p$ — keeps the smallest nucleus reaching $p$"
+  - "Sample from the renormalised survivors — the softmax gives zero weight to $-\\infty$"
 code: |
   import numpy as np
 
@@ -65,15 +65,15 @@ math:
   - "p′ᵢ = pᵢ · 1[kept] / Σⱼ pⱼ · 1[kept]"
 interview_qa:
   - q: "How does top-p differ from top-k?"
-    a: "Top-k keeps a fixed number of tokens whatever the distribution looks like. Top-p keeps the smallest set reaching probability mass p, so its size adapts to how confident the model is."
+    a: "Top-k keeps a fixed number of tokens whatever the distribution looks like. Top-p keeps the smallest set reaching probability mass $p$, so its size adapts to how confident the model is."
   - q: "Why renormalise after truncating?"
     a: "The kept probabilities no longer sum to one. The softmax over the remaining logits rescales them so the sample is drawn from a valid distribution."
   - q: "What does temperature do and in what order is it applied?"
     a: "It divides the logits before the softmax; low values sharpen and high values flatten the distribution. It is normally applied first, then the truncation."
 hyperparameters:
   - "Top-k (0 disables)"
-  - "Top-p threshold in (0, 1]"
-  - "Temperature τ"
+  - "Top-p threshold in $(0, 1]$"
+  - "Temperature $\\tau$"
   - "Order of temperature, top-k and top-p"
 pitfalls:
   - "Libraries differ on whether top-p uses the distribution before or after top-k; here top-p sees the renormalised top-k survivors"

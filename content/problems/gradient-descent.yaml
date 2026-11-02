@@ -14,8 +14,8 @@ intuition: |
   the valley and bounce or diverge.
 why_it_works: |
   Near any point the loss looks like a tilted plane, so moving against
-  the gradient lowers it to first order. If the step is below 2/L, where
-  L bounds the curvature, every step decreases a convex loss and the
+  the gradient lowers it to first order. If the step is below $2/L$, where
+  $L$ bounds the curvature, every step decreases a convex loss and the
   iterates converge to the minimum.
 when_to_use: |
   Whenever a model has many parameters and a differentiable loss without
@@ -33,9 +33,9 @@ math:
 approach:
   - "Write the loss and its gradient — the gradient is the only thing the loop needs"
   - "Initialise the parameters — any start works for convex losses"
-  - "Step w ← w − η·∇L(w) — moves downhill by an amount set by η"
+  - "Step $w \\leftarrow w - \\eta\\,\\nabla L(w)$ — moves downhill by an amount set by $\\eta$"
   - "Repeat until the gradient is near zero or steps run out — that is a stationary point"
-  - "Scale features and tune η — poor scaling forces a tiny stable step"
+  - "Scale features and tune $\\eta$ — poor scaling forces a tiny stable step"
 code: |
   import numpy as np
 
@@ -51,10 +51,10 @@ key_lines: [5, 10]
 time: "O(steps · n·d) for full-batch least squares"
 space: "O(d) beyond the data"
 hyperparameters:
-  - "Learning rate η (the most important knob)"
+  - "Learning rate $\\eta$ (the most important knob)"
   - "Number of steps or a tolerance on the gradient norm"
   - "Batch size (full batch, mini-batch or single sample)"
-  - "Momentum β (0 for plain gradient descent)"
+  - "Momentum $\\beta$ (0 for plain gradient descent)"
 pitfalls:
   - "A learning rate above the stability limit makes the loss grow instead of shrink"
   - "Features on very different scales make the loss valley narrow and slow"

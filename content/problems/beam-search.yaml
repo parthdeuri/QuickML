@@ -5,7 +5,7 @@ difficulty: Medium
 area: NLP
 topics: [Decoding, Sequence Generation, Search]
 summary: |
-  Generate a sequence by keeping the B highest-scoring partial sequences
+  Generate a sequence by keeping the $B$ highest-scoring partial sequences
   at every step instead of committing to a single best token.
 intuition: |
   Greedy decoding can take a locally best token that leads to a poor
@@ -15,10 +15,10 @@ intuition: |
   second-best token can still survive.
 why_it_works: |
   The score of a sequence is the sum of per-token log-probabilities, so
-  extending a prefix only adds terms. Keeping the top B prefixes is
-  exact whenever B is at least the number of prefixes at that depth,
+  extending a prefix only adds terms. Keeping the top $B$ prefixes is
+  exact whenever $B$ is at least the number of prefixes at that depth,
   which makes beam width a smooth dial between greedy search and
-  exhaustive search. For smaller B it is only a heuristic.
+  exhaustive search. For smaller $B$ it is only a heuristic.
 when_to_use: |
   Machine translation, summarisation and speech recognition, where the
   single most probable output is wanted and the model is well
@@ -37,7 +37,7 @@ approach:
   - "Start with one beam holding only the start token and score zero — the initial frontier"
   - "Ask the model for next-token log-probabilities of each beam — gives all one-token extensions"
   - "Add each log-probability to its beam's score — scores of sequences are additive"
-  - "Sort all B·|V| candidates and keep the best B — prunes the exponential tree"
+  - "Sort all $B\\cdot|V|$ candidates and keep the best $B$ — prunes the exponential tree"
   - "Repeat for the target length and return the top beam — highest total log-probability found"
 code: |
   import numpy as np
@@ -57,7 +57,7 @@ key_lines: [10, 11, 12]
 time: "O(L · B · |V| · log(B·|V|)) plus L·B model calls"
 space: "O(B · L) for the stored beams"
 hyperparameters:
-  - "Beam width B (larger is closer to exact search but slower)"
+  - "Beam width $B$ (larger is closer to exact search but slower)"
   - "Length penalty (sum of log-probs favours short outputs)"
   - "Maximum length and end-of-sequence handling"
   - "n-gram repetition blocking"
@@ -68,7 +68,7 @@ pitfalls:
   - "A wider beam can lower quality in generation even though it raises model probability"
 interview_qa:
   - q: "Is beam search optimal?"
-    a: "No. It only keeps B prefixes, so the best full sequence can be pruned early. It is exact only when B covers all prefixes."
+    a: "No. It only keeps $B$ prefixes, so the best full sequence can be pruned early. It is exact only when $B$ covers all prefixes."
   - q: "What are greedy and exhaustive search as special cases?"
     a: "Beam width one is greedy. A width that never prunes is exhaustive search over all sequences."
   - q: "Why use log-probabilities?"

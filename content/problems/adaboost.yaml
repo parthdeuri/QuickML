@@ -39,10 +39,10 @@ math:
 approach:
   - "Start with uniform sample weights — every point matters equally at first"
   - "Search every feature, threshold and sign for the stump with the smallest weighted error — the best weak learner for the current weights"
-  - "Set the vote weight α = ½ log((1−ε)/ε) — accurate stumps get larger votes, chance-level ones get none"
-  - "Multiply each weight by exp(−α y h(x)) and renormalise — mistakes grow, hits shrink"
-  - "Repeat for T rounds and store (α, stump) pairs — the ensemble"
-  - "Predict the sign of the α-weighted sum of stump outputs — a weighted majority vote"
+  - "Set the vote weight $\\alpha = \\frac{1}{2}\\log\\frac{1-\\epsilon}{\\epsilon}$ — accurate stumps get larger votes, chance-level ones get none"
+  - "Multiply each weight by $\\exp(-\\alpha\\, y\\, h(x))$ and renormalise — mistakes grow, hits shrink"
+  - "Repeat for $T$ rounds and store $(\\alpha, \\mathrm{stump})$ pairs — the ensemble"
+  - "Predict the sign of the $\\alpha$-weighted sum of stump outputs — a weighted majority vote"
 code: |
   import numpy as np
 
@@ -78,17 +78,17 @@ key_lines: [9, 19, 21]
 time: "O(T·d·n²) as written (O(T·d·n log n) with sorted splits)"
 space: "O(n + T) for the weights and the stored stumps"
 hyperparameters:
-  - "Number of rounds T — more rounds fit more; use early stopping on validation data"
+  - "Number of rounds $T$ — more rounds fit more; use early stopping on validation data"
   - "Weak learner depth — stumps here, shallow trees are common"
   - "Learning rate — shrinks each vote to slow overfitting (fixed at one here)"
 pitfalls:
-  - "Labels must be −1 and +1 in this code; sklearn takes any labels"
+  - "Labels must be $-1$ and $+1$ in this code; sklearn takes any labels"
   - "Label noise and outliers get exponentially up-weighted and degrade the model"
   - "An error of exactly zero would give an infinite vote weight, so the code clips the error"
   - "The stump search here is the slow quadratic version; sort once per feature in practice"
 interview_qa:
   - q: "How does AdaBoost reweight samples?"
-    a: "It multiplies the weight of each sample by exp(−α y h(x)): misclassified points are scaled up, correct ones scaled down, then all weights are renormalised."
+    a: "It multiplies the weight of each sample by $\\exp(-\\alpha\\, y\\, h(x))$: misclassified points are scaled up, correct ones scaled down, then all weights are renormalised."
   - q: "Why is a weak learner enough?"
     a: "The training error bound shrinks multiplicatively each round whenever the learner is even slightly better than chance on the current weights."
   - q: "Why is AdaBoost sensitive to noise?"

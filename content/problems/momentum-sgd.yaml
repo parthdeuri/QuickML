@@ -35,9 +35,9 @@ math:
   - "Common choice: μ = 0.9"
 approach:
   - "Start the velocity buffer at zero — no history yet"
-  - "Update v ← μ·v + g — accumulates gradients with exponential decay"
-  - "Pick the step direction: v for classical, g + μ·v for Nesterov — Nesterov peeks ahead"
-  - "Move the weights by −η times that direction — the usual descent step"
+  - "Update $v \\leftarrow \\mu \\cdot v + g$ — accumulates gradients with exponential decay"
+  - "Pick the step direction: $v$ for classical, $g + \\mu \\cdot v$ for Nesterov — Nesterov peeks ahead"
+  - "Move the weights by $-\\eta$ times that direction — the usual descent step"
 code: |
   import numpy as np
 
@@ -49,22 +49,22 @@ key_lines: [4, 5, 6]
 time: "O(d) per step for d parameters"
 space: "O(d) extra for the velocity buffer"
 hyperparameters:
-  - "Learning rate η"
-  - "Momentum μ"
+  - "Learning rate $\\eta$"
+  - "Momentum $\\mu$"
   - "Nesterov on or off"
   - "Dampening (not modelled here)"
 pitfalls:
   - "Libraries differ in where the learning rate multiplies the velocity; this follows PyTorch's convention"
-  - "The effective step grows with momentum, so lower the learning rate when raising μ"
+  - "The effective step grows with momentum, so lower the learning rate when raising $\\mu$"
   - "Weight decay and dampening are omitted here"
   - "Reset the buffer when you restart or change the optimiser"
 interview_qa:
   - q: "What problem does momentum solve?"
     a: "It speeds progress along consistent gradient directions and damps oscillation across steep, narrow valleys."
   - q: "How does Nesterov differ from classical momentum?"
-    a: "It uses a lookahead gradient direction, g + μ·v after updating v, which reacts sooner when momentum overshoots."
+    a: "It uses a lookahead gradient direction, $g + \\mu \\cdot v$ after updating $v$, which reacts sooner when momentum overshoots."
   - q: "How does momentum change the effective learning rate?"
-    a: "For a steady gradient the velocity approaches a geometric series in μ, so the effective step is larger by 1 / (1 − μ)."
+    a: "For a steady gradient the velocity approaches a geometric series in $\\mu$, so the effective step is larger by $1 / (1 - \\mu)$."
 related: [gradient-descent, adam-optimizer, learning-rate-schedules]
 patterns: ["Gradient-based optimisation"]
 math_tex:

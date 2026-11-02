@@ -17,8 +17,8 @@ intuition: |
   step size stays usable on long, non-convex runs.
 approach:
   - "Keep one accumulator per parameter, started at zero — stores gradient scale history"
-  - "Adagrad adds g² each step; RMSProp sets v = αv + (1 − α)g² — sum versus forgetting average"
-  - "Take the square root of the accumulator and add ε — per-parameter scale, ε avoids dividing by zero"
+  - "Adagrad adds $g^2$ each step; RMSProp sets $v = \\alpha v + (1-\\alpha)g^2$ — sum versus forgetting average"
+  - "Take the square root of the accumulator and add $\\epsilon$ — per-parameter scale, $\\epsilon$ avoids dividing by zero"
   - "Divide the gradient by that scale — normalises the step so each coordinate moves a comparable amount"
   - "Scale by the learning rate and subtract from the weights — the actual update"
 code: |
@@ -49,7 +49,7 @@ when_not_to_use: |
   Neither is ideal when you need best final generalisation, where
   SGD with momentum often wins.
 why_it_works: |
-  Dividing by √v rescales each coordinate by its typical gradient size,
+  Dividing by $\sqrt{v}$ rescales each coordinate by its typical gradient size,
   acting like a diagonal preconditioner. Steep directions get smaller
   steps and flat directions larger ones, so progress is more even on
   badly scaled problems. The exponential average in RMSProp keeps the
@@ -62,21 +62,21 @@ math:
   - "All operations are element-wise; ε is added outside the root"
 interview_qa:
   - q: "Why does Adagrad's learning rate decay?"
-    a: "Its accumulator is a sum of squares that only grows, so the effective step η/√G keeps shrinking and training can stall."
+    a: "Its accumulator is a sum of squares that only grows, so the effective step $\\eta/\\sqrt{G}$ keeps shrinking and training can stall."
   - q: "How does RMSProp fix that?"
     a: "It uses an exponential moving average of squared gradients, so old values fade and the scale tracks recent gradients."
   - q: "How does RMSProp relate to Adam?"
     a: "Adam is RMSProp-style scaling plus momentum on the gradient and bias correction of both averages."
   - q: "Where does ε go and why does it matter?"
-    a: "PyTorch adds it after the square root, √v + ε; putting it inside the root, √(v + ε), is a different update, which matters when v is tiny."
+    a: "PyTorch adds it after the square root, $\\sqrt{v}+\\epsilon$; putting it inside the root, $\\sqrt{v+\\epsilon}$, is a different update, which matters when $v$ is tiny."
 hyperparameters:
-  - "Learning rate η"
-  - "Decay rate α for RMSProp (commonly 0.9 to 0.99)"
-  - "ε for numerical stability"
+  - "Learning rate $\\eta$"
+  - "Decay rate $\\alpha$ for RMSProp (commonly $0.9$ to $0.99$)"
+  - "$\\epsilon$ for numerical stability"
   - "Initial accumulator value (Adagrad)"
 pitfalls:
-  - "The first RMSProp step is large because v starts at zero and is biased low"
-  - "ε placement (inside versus outside the root) differs between libraries"
+  - "The first RMSProp step is large because $v$ starts at zero and is biased low"
+  - "$\\epsilon$ placement (inside versus outside the root) differs between libraries"
   - "Adagrad needs a larger learning rate than RMSProp because the accumulator grows"
   - "No momentum, weight decay or centring here; PyTorch offers them as options"
 related: [adam-optimizer, momentum-sgd, gradient-descent]

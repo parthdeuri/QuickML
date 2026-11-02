@@ -27,7 +27,7 @@ when_to_use: |
   a recent reference window.
 when_not_to_use: |
   Drift in inputs is not the same as harm: a shifted feature may be
-  irrelevant. And these tests cannot see changes in P(y | x) with stable
+  irrelevant. And these tests cannot see changes in $P(y\,|\,x)$ with stable
   inputs; use labelled performance monitoring for that.
 math:
   - "Reference bin shares aᵢ, current bin shares bᵢ (bins from reference)"
@@ -38,7 +38,7 @@ math:
   - "Shares are clipped below by ε so empty bins keep ln finite"
 approach:
   - "Freeze a reference sample, usually training data or a healthy recent window — drift is relative to something"
-  - "Cut the reference into quantile bins, extending the outer edges to ±∞ — every new value falls in a bin"
+  - "Cut the reference into quantile bins, extending the outer edges to $\\pm\\infty$ — every new value falls in a bin"
   - "Compare bin shares of reference and current data with PSI — a single drift score per feature"
   - "Also compute the KS statistic between the raw samples — a bin-free cross-check"
   - "Alert on thresholds you calibrate to your own data, then check labelled performance — input drift is a warning, not proof of harm"
@@ -73,7 +73,7 @@ pitfalls:
   - "Concept drift with unchanged inputs is invisible to these statistics"
 interview_qa:
   - q: "Covariate drift versus concept drift?"
-    a: "Covariate drift is a change in P(x) and can be seen without labels; concept drift is a change in P(y | x) and needs labels or proxy outcomes to detect."
+    a: "Covariate drift is a change in $P(x)$ and can be seen without labels; concept drift is a change in $P(y\\,|\\,x)$ and needs labels or proxy outcomes to detect."
   - q: "How does PSI work and what are its weaknesses?"
     a: "It sums bin-share differences times log ratios, equal to a symmetric KL divergence; it depends on the binning and has only conventional thresholds."
   - q: "What do you do when drift is detected?"

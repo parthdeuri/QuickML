@@ -34,10 +34,10 @@ math:
   - "Output size: (H − 1)·s − 2p + kH"
   - "Padding p crops p entries from each border of the full map"
 approach:
-  - "Allocate the full output of size (H − 1)·s + k — large enough for every stamp"
-  - "For each input position, multiply its channel vector with the kernel — one k×k stamp per output channel"
-  - "Add the stamp into the output at offset (s·i, s·j) — overlapping stamps accumulate"
-  - "Crop p rows and columns from each border — padding shrinks the output instead of growing it"
+  - "Allocate the full output of size $(H-1)\\cdot s+k$ — large enough for every stamp"
+  - "For each input position, multiply its channel vector with the kernel — one $k\\times k$ stamp per output channel"
+  - "Add the stamp into the output at offset $(s\\cdot i,\\, s\\cdot j)$ — overlapping stamps accumulate"
+  - "Crop $p$ rows and columns from each border — padding shrinks the output instead of growing it"
 code: |
   import numpy as np
 
@@ -69,7 +69,7 @@ pitfalls:
   - "The same output size can come from several input sizes of a strided convolution"
 interview_qa:
   - q: "What is the output size of a transposed convolution?"
-    a: "(H − 1)·s − 2p + k along each spatial dimension, plus any output padding."
+    a: "$(H-1)\\cdot s-2p+k$ along each spatial dimension, plus any output padding."
   - q: "Why is it called transposed?"
     a: "Its forward pass multiplies by the transpose of the matrix that represents the corresponding convolution."
   - q: "Why do checkerboard artefacts appear?"

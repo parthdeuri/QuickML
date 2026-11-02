@@ -14,11 +14,11 @@ intuition: |
   update is additive rather than a repeated squashing, both information
   and gradients can travel across many steps.
 approach:
-  - "Compute one big affine map of x and h, then split it into four chunks — one matmul feeds all gates"
+  - "Compute one big affine map of $x$ and $h$, then split it into four chunks — one matmul feeds all gates"
   - "Turn three chunks into gates with a sigmoid — soft switches between zero and one"
   - "Turn the fourth chunk into a candidate with tanh — the new content that may be written"
   - "Update the cell as forget·c + input·candidate — keep part of the past, add part of the new"
-  - "Output h = output gate · tanh(c) — controls how much of the memory is exposed"
+  - "Output $h$ = output gate · $\\tanh(c)$ — controls how much of the memory is exposed"
 code: |
   import numpy as np
 
@@ -43,7 +43,7 @@ when_not_to_use: |
   in parallel and scale better, and tiny tasks where a simpler cell or a
   feed-forward model is enough.
 why_it_works: |
-  The cell state update c = f·c + i·g has a direct additive path from one
+  The cell state update $c = f \cdot c + i \cdot g$ has a direct additive path from one
   step to the next. Its derivative with respect to the previous cell
   state is just the forget gate, so gradients are scaled by gates the
   network can learn to keep near one, instead of by a repeated weight
@@ -62,7 +62,7 @@ interview_qa:
   - q: "Why initialise the forget-gate bias to a positive value?"
     a: "It starts the gate near open so memory is retained early in training and gradients flow; this is a common practical trick."
 hyperparameters:
-  - "Hidden size H"
+  - "Hidden size $H$"
   - "Number of stacked layers"
   - "Forget-gate bias initialisation"
   - "Dropout between layers and gradient clipping threshold"

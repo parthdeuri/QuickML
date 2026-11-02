@@ -17,10 +17,10 @@ intuition: |
   box enough, and each ground-truth box can be claimed only once.
 approach:
   - "Sort one class's detections by descending score — simulates lowering the confidence threshold"
-  - "Match each detection to its best still-unmatched ground-truth box in the same image — IoU ≥ threshold makes it a TP, otherwise FP"
+  - "Match each detection to its best still-unmatched ground-truth box in the same image — $\\mathrm{IoU}\\geq\\mathrm{threshold}$ makes it a TP, otherwise FP"
   - "Take cumulative TP and FP counts — precision and recall at every threshold"
   - "Make precision monotone: replace it by the maximum precision at any higher recall — removes zig-zags"
-  - "Sum precision × recall increments, then average AP over classes — all-point interpolated AP, then mAP"
+  - "Sum precision $\\times$ recall increments, then average AP over classes — all-point interpolated AP, then mAP"
 code: |
   import numpy as np
 
@@ -83,7 +83,7 @@ interview_qa:
   - q: "Why take the monotone envelope of precision?"
     a: "It replaces each precision with the best precision at that recall or higher, removing the zig-zag so AP is the area under a non-increasing curve."
   - q: "How does AP50 differ from COCO mAP?"
-    a: "AP50 uses a single IoU threshold of 0.5; COCO mAP averages over IoU thresholds 0.50 to 0.95 and also uses 101-point recall interpolation."
+    a: "AP50 uses a single IoU threshold of $0.5$; COCO mAP averages over IoU thresholds $0.50$ to $0.95$ and also uses 101-point recall interpolation."
   - q: "Why must you sort detections by score first?"
     a: "The curve is built by lowering the confidence threshold, so confident detections must be matched first and claim ground truths before weaker ones."
 hyperparameters:

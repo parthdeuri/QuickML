@@ -23,8 +23,8 @@ why_it_works: |
   subproblem is solved exactly by soft-thresholding, so the objective never
   increases.
 when_to_use: |
-  Many correlated features where lasso picks one arbitrarily, p larger than
-  n, automatic feature selection with stable grouping, and large sparse
+  Many correlated features where lasso picks one arbitrarily, $p$ larger than
+  $n$, automatic feature selection with stable grouping, and large sparse
   problems where coordinate descent is fast.
 when_not_to_use: |
   Skip it when you want unbiased estimates of the large coefficients (the
@@ -38,10 +38,10 @@ math:
   - "wⱼ ← S(ρⱼ, αρ) / (zⱼ + α(1 − ρ))"
   - "ρ = 1 gives lasso, ρ = 0 gives ridge"
 approach:
-  - "Start at w = 0 with residual r = y — the exact solution once α is large enough"
-  - "For coordinate j compute its correlation with the partial residual, adding back its own contribution — the least-squares target for wⱼ alone"
-  - "Soft-threshold by αρ and divide by zⱼ + α(1 − ρ) — the closed-form minimiser of the one-dimensional problem"
-  - "Update the residual by the change in wⱼ — keeps each step O(n) instead of recomputing Xw"
+  - "Start at $w = 0$ with residual $r = y$ — the exact solution once α is large enough"
+  - "For coordinate $j$ compute its correlation with the partial residual, adding back its own contribution — the least-squares target for $w_j$ alone"
+  - "Soft-threshold by $\\alpha\\rho$ and divide by $z_j + \\alpha(1-\\rho)$ — the closed-form minimiser of the one-dimensional problem"
+  - "Update the residual by the change in $w_j$ — keeps each step O(n) instead of recomputing $Xw$"
   - "Sweep all coordinates until the largest change is below tol — all coordinate steps are small only at the minimum"
 code: |
   import numpy as np
@@ -68,18 +68,18 @@ key_lines: [14, 15, 16]
 time: "O(iters·n·d) with the residual trick; each sweep costs O(n·d)"
 space: "O(n·d) for the data, O(n + d) extra"
 hyperparameters:
-  - "α — overall penalty strength, chosen by cross-validation along a path"
-  - "l1_ratio ρ in [0, 1] — mix between L1 (sparse) and L2 (grouping)"
+  - "$\\alpha$ — overall penalty strength, chosen by cross-validation along a path"
+  - "l1_ratio $\\rho$ in $[0, 1]$ — mix between L1 (sparse) and L2 (grouping)"
   - "tol and max iterations — stopping rule for the sweeps"
   - "Standardisation — features must be on the same scale for the penalty to be fair"
 pitfalls:
   - "Unscaled features are penalised unequally; standardise first"
-  - "Intercept is not penalised, so centre y and X or fit it separately (this code has no intercept)"
-  - "Convergence is slow for highly correlated features and small α"
+  - "Intercept is not penalised, so centre $y$ and $X$ or fit it separately (this code has no intercept)"
+  - "Convergence is slow for highly correlated features and small $\\alpha$"
   - "Selected features can change across resamples; check stability, not just one fit"
 interview_qa:
   - q: "Why use elastic net instead of lasso?"
-    a: "Among correlated features lasso tends to pick one at random, while the L2 term makes elastic net share weight across the group and also lets it keep more than n features when p is larger than n."
+    a: "Among correlated features lasso tends to pick one at random, while the L2 term makes elastic net share weight across the group and also lets it keep more than $n$ features when $p$ is larger than $n$."
   - q: "What does the soft-threshold do?"
     a: "It shrinks the least-squares coordinate estimate toward zero by the L1 amount and sets it exactly to zero when it is smaller than that amount, which is how sparsity arises."
   - q: "Why does coordinate descent converge here?"

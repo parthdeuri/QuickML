@@ -37,7 +37,7 @@ approach:
   - "Roll out an episode with the current stochastic policy — samples the states, actions and rewards"
   - "Compute the discounted return from each step by a backward pass — credit for what followed each action"
   - "Subtract a baseline from the returns — reduces variance, no bias"
-  - "Form the gradient of Gₜ·log π(aₜ|sₜ) summed over steps — onehot minus probabilities for a softmax policy"
+  - "Form the gradient of $G_t \\cdot \\log \\pi(a_t|s_t)$ summed over steps — onehot minus probabilities for a softmax policy"
   - "Ascend this gradient and repeat with fresh episodes — the policy shifts toward higher return"
 code: |
   import numpy as np
@@ -62,17 +62,17 @@ time: "O(T·d·|A|) per episode for T steps"
 space: "O(T·(d+|A|)) to store the episode"
 hyperparameters:
   - "Learning rate"
-  - "Discount γ"
+  - "Discount $\\gamma$"
   - "Baseline (constant, running mean or learned value function)"
   - "Episodes per update (batching reduces variance)"
 pitfalls:
   - "Gradient variance is high; without a baseline learning is slow and noisy"
   - "This returns the ascent direction; frameworks minimise, so negate it for the loss"
-  - "A common implementation omits the γᵗ factor in the exact gradient, as here"
+  - "A common implementation omits the $\\gamma^t$ factor in the exact gradient, as here"
   - "Updates must use trajectories from the current policy, so data cannot be reused freely"
 interview_qa:
   - q: "What is the log-derivative trick?"
-    a: "∇ p = p ∇ log p, which rewrites the gradient of an expectation as an expectation of a score-function term that can be sampled."
+    a: "$\\nabla p = p\\,\\nabla \\log p$, which rewrites the gradient of an expectation as an expectation of a score-function term that can be sampled."
   - q: "Why does a baseline not bias the gradient?"
     a: "For a baseline independent of the action, the expectation of baseline times the score function is zero, so only the variance changes."
   - q: "How does REINFORCE relate to actor-critic?"

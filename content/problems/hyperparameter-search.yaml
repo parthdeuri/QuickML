@@ -16,9 +16,9 @@ intuition: |
   budget, random search explores the important axes more densely, and it
   can sample continuous ranges such as a log-uniform learning rate.
 why_it_works: |
-  If only a subset of parameters affects the score, a grid with m values
-  per parameter yields only m distinct values of each important one,
-  while n random trials yield n distinct values. Random trials are also
+  If only a subset of parameters affects the score, a grid with $m$ values
+  per parameter yields only $m$ distinct values of each important one,
+  while $n$ random trials yield $n$ distinct values. Random trials are also
   independent, so you can stop, extend or parallelise freely, whereas a
   grid grows multiplicatively with the number of parameters.
 when_to_use: |

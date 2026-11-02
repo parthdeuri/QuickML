@@ -17,7 +17,7 @@ intuition: |
   in the projected space meaningful.
 why_it_works: |
   If each class is Gaussian with the same covariance, the log posterior
-  ratio between classes is linear in x, so a linear boundary is Bayes
+  ratio between classes is linear in $x$, so a linear boundary is Bayes
   optimal. Maximising the Fisher ratio is a generalised eigenproblem of
   the between and within scatter matrices. At most one fewer directions
   than classes carry signal because the between-class scatter has rank
@@ -43,8 +43,8 @@ approach:
   - "Compute the class means and the overall mean — the summary of where classes sit"
   - "Accumulate within-class scatter from deviations to each class mean — the noise to be minimised"
   - "Accumulate between-class scatter from class means to the overall mean, weighted by class size — the signal to be maximised"
-  - "Solve the eigenproblem of S_w⁻¹ S_b and keep the top k vectors — the directions with the best signal-to-noise ratio"
-  - "Rescale each vector so wᵀ S_w w = 1 — distances in the projection then match the Gaussian classifier"
+  - "Solve the eigenproblem of $S_w^{-1} S_b$ and keep the top $k$ vectors — the directions with the best signal-to-noise ratio"
+  - "Rescale each vector so $w^{\\top} S_w w = 1$ — distances in the projection then match the Gaussian classifier"
   - "Project with X @ W and classify by nearest class mean (equal priors) — the minimal decision rule"
 code: |
   import numpy as np
@@ -66,13 +66,13 @@ key_lines: [10, 12, 13]
 time: "O(n·d² + d³) to build the scatters and solve the eigenproblem"
 space: "O(d²) for the two scatter matrices"
 hyperparameters:
-  - "n_components k — at most min(C−1, d)"
+  - "n_components $k$ — at most $\\min(C-1, d)$"
   - "solver — svd (no explicit covariance), eigen or lsqr (supports shrinkage)"
-  - "shrinkage — regularises S_w when it is ill-conditioned"
+  - "shrinkage — regularises $S_w$ when it is ill-conditioned"
   - "priors — class prior probabilities used by the classifier"
 pitfalls:
-  - "S_w is singular when features outnumber samples or are collinear; this code would fail, so use shrinkage or PCA first"
-  - "Only C−1 meaningful directions exist; extra eigenvectors have zero eigenvalue"
+  - "$S_w$ is singular when features outnumber samples or are collinear; this code would fail, so use shrinkage or PCA first"
+  - "Only $C-1$ meaningful directions exist; extra eigenvectors have zero eigenvalue"
   - "Directions are defined up to sign, and scaling conventions differ between libraries; compare projections up to sign and scale"
   - "The shared-covariance Gaussian assumption is strong; outliers and unequal covariances hurt"
 interview_qa:
@@ -82,7 +82,7 @@ interview_qa:
     a: "At most the number of classes minus one, because the between-class scatter is built from that many independent mean differences."
   - q: "LDA versus QDA?"
     a: "LDA assumes one shared covariance, giving linear boundaries and fewer parameters; QDA fits a covariance per class, giving quadratic boundaries but needing more data."
-  - q: "What do you do when S_w is singular?"
+  - q: "What do you do when $S_w$ is singular?"
     a: "Shrink it toward a scaled identity, reduce dimension with PCA first, or use the SVD solver, which avoids forming the covariance explicitly."
 related: [pca, logistic-regression, naive-bayes]
 patterns: ["Probabilistic models"]

@@ -31,9 +31,24 @@ names were renamed from Problem to Concept; table and column names were not.
 
 ## Done
 - Skeleton, CI, signing, stable-key builds; logo (flash cards with a bolt).
-- 116 concept cards with all code tests passing; 22 families, 12 compare cards, 17 diagrams.
+- 116 concept cards with all code tests passing; 22 families, 12 compare cards.
 - Card wording (card / learned / implementation), Ask prompt includes math.
 - Reference links all return HTTP 200 (`tools/check_links.py`).
+- 17 diagrams as pre-drawn light/dark images (replaced the text art that broke on phones).
+- Typeset maths: LaTeX inline in all card text and in the Math box, rendered live in the app.
+  The APK stays small (assets about 1.1 MB).
+
+## Next: flash cards (planned, nothing started)
+Auto-generated from the existing cards, spaced repetition, new bottom tab.
+1. Content: `build.py` derives about 800-900 cards (interview Q&A, key insight, when to use,
+   pitfalls, formulas, compare cards) into `flashcards.json`; validator and `test_flashcards.py`.
+2. Data: DB migration 7 to 8 (`flashcards` content table, `flash_review` user table, kept apart from
+   `review_state` so Revise counts are unaffected), `FlashDao`/`FlashRepository` on `Sm2Scheduler`,
+   importer keeps reviews, backup includes them.
+3. UI: Flash tab with deck picker and type chips, due then new cards up to a daily limit, tap to
+   flip, Forgot/Hard/Good/Easy with interval preview, session summary, "Open concept" link.
+   Move `RatingRow` to a shared file. Use `MathText` for formulas.
+4. Wrap-up: dashboard due count, daily-limit setting, README/PLAN update, version bump.
 
 ## Not done
 - Scenario quiz ("which loss or metric fits this?", "what does this curve show?") needs a new quiz
@@ -42,6 +57,7 @@ names were renamed from Problem to Concept; table and column names were not.
 - Play Store prep: privacy policy (Ask sends text to Google when on), store listing, AAB build,
   licence and attribution check.
 - Later ideas: cloud sync, FSRS scheduler, other AI providers.
+- Phone check still owed: diagrams, inline formulas, Math box; progress kept after the DB v7 update.
 
 ## Known card limits
 - Decision tree: matches sklearn exactly up to depth 4; deeper trees differ only through sklearn's

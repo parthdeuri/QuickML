@@ -1,0 +1,71 @@
+slug: gradient-clipping
+title: Gradient Clipping
+url: https://docs.pytorch.org/docs/stable/generated/torch.nn.utils.clip_grad_norm_.html
+difficulty: Easy
+area: Deep Learning
+topics: [Optimisation, Exploding Gradients, Stability]
+summary: |
+  Cap the size of the gradient before the optimiser step, either by
+  rescaling the whole gradient to a maximum norm or by clamping each
+  entry to a range.
+intuition: |
+  A rare, very steep region of the loss can produce a gradient so large
+  that one step throws the weights far away and undoes long training.
+  Clipping by global norm keeps the direction of the gradient and only
+  shrinks its length, so the step stays reasonable. Clipping by value
+  clamps each coordinate and so can change the direction.
+why_it_works: |
+  Gradient descent is only justified for small steps where the local
+  slope is a good guide. Bounding the gradient norm bounds the step
+  length, which keeps updates inside the region where the linear
+  approximation is trusted. Rescaling by a single global factor leaves
+  the relative size of every parameter's gradient unchanged.
+when_to_use: |
+  Recurrent networks, transformers and any training that shows loss
+  spikes or NaNs from occasional huge gradients.
+when_not_to_use: |
+  If gradients are already well behaved it does nothing; if the loss
+  spikes constantly, clipping hides a deeper problem such as a too
+  high learning rate or bad initialisation.
+math:
+  - "Global norm: ‖g‖ = √(Σ_p ‖g_p‖²) over all parameters p"
+  - "Scale: c = min(1, τ / (‖g‖ + ε))  with threshold τ"
+  - "Clip by norm: g_p ← c · g_p  (direction preserved)"
+  - "Clip by value: g_p ← clamp(g_p, −κ, κ)  (direction may change)"
+approach:
+  - "Compute the gradients as usual with backpropagation — clipping acts on finished gradients"
+  - "Compute one global norm over all parameter gradients — a single scale keeps their relative sizes"
+  - "Form the factor min(1, τ / (norm + ε)) — it is 1 when the gradient is already small"
+  - "Multiply every gradient by the factor — shrinks the step without turning it"
+  - "Call the optimiser step with the clipped gradients — clipping must come before the update"
+code: |
+  import numpy as np
+
+  def clip_by_global_norm(grads, max_norm, eps=1e-6):
+      total = np.sqrt(sum((g ** 2).sum() for g in grads))
+      scale = min(1.0, max_norm / (total + eps))
+      return [g * scale for g in grads], total
+
+  def clip_by_value(grads, c):
+      return [np.clip(g, -c, c) for g in grads]
+key_lines: [4, 5, 6]
+time: "O(d) for d parameters"
+space: "O(d) for the clipped copies (libraries clip in place)"
+hyperparameters:
+  - "Max norm τ (or clip value κ)"
+  - "Norm type (L2 here; others exist)"
+  - "Whether to clip per-parameter or globally"
+pitfalls:
+  - "Clipping each tensor's norm separately changes the direction of the full gradient"
+  - "Clip after unscaling when using mixed-precision loss scaling"
+  - "A threshold that is too low turns training into a slow normalised-gradient method"
+  - "Log the pre-clip norm; it shows how often clipping fires"
+interview_qa:
+  - q: "Why clip by global norm rather than by value?"
+    a: "Global-norm clipping preserves the gradient direction; value clipping clamps coordinates independently and can bend the direction."
+  - q: "Does clipping fix vanishing gradients?"
+    a: "No. It only bounds large gradients; vanishing ones need better architecture, initialisation or normalisation."
+  - q: "Where in the training loop does clipping go?"
+    a: "After backward and before optimizer.step (and after unscaling with AMP)."
+related: [gradient-descent, backpropagation, rnn-cell]
+patterns: ["Gradient-based optimisation"]

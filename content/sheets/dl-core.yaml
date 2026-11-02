@@ -11,8 +11,10 @@ sections:
 - name: Training setup
   problems:
   - weight-initialization
+  - momentum-sgd
   - adam-optimizer
   - learning-rate-schedules
+  - gradient-clipping
 - name: Normalisation and regularisation
   problems:
   - batch-normalization
@@ -20,6 +22,16 @@ sections:
   - dropout
   - early-stopping
   - residual-connections
+  - data-augmentation
+  - label-smoothing
+- name: Loss design and compression
+  problems:
+  - focal-loss
+  - knowledge-distillation
+- name: Transfer and adaptation
+  problems:
+  - transfer-learning-fine-tuning
+  - lora-low-rank-adaptation
 - name: Sequence models
   problems:
   - rnn-cell
@@ -35,3 +47,5 @@ sections:
   problems:
   - autoencoder
   - vae-reparameterization
+  - gan-minimax-loss
+  - diffusion-forward-process

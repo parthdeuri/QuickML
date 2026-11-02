@@ -117,7 +117,7 @@ class QuickMLWidgetProvider : AppWidgetProvider() {
             val difficulty = data?.difficulty
             for (id in DIFFICULTY_VIEWS) views.setViewVisibility(id, View.GONE)
             if (title != null) {
-                views.setTextViewText(R.id.widget_label, "Problem of the day")
+                views.setTextViewText(R.id.widget_label, "Card of the day")
                 views.setTextViewText(R.id.widget_title, title)
                 if (difficulty != null) {
                     // Colour comes from the view's resource, so it follows light / dark mode.
@@ -126,7 +126,7 @@ class QuickMLWidgetProvider : AppWidgetProvider() {
                     views.setViewVisibility(id, View.VISIBLE)
                 }
             } else {
-                views.setTextViewText(R.id.widget_label, "Problem of the day")
+                views.setTextViewText(R.id.widget_label, "Card of the day")
                 views.setTextViewText(R.id.widget_title, "Open QuickML to get started")
             }
             views.setOnClickPendingIntent(R.id.widget_root, openIntent(context, data?.slug))

@@ -198,7 +198,7 @@ fun SettingsScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Daily reminder", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        text = "A notification when problems are due or you haven't revised today",
+                        text = "A notification when cards are due or you haven't revised today",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -310,7 +310,7 @@ fun SettingsScreen(
             ) {
                 Text("Think timer before revealing", style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    text = "A countdown on the Problem tab in Revise and Quiz modes",
+                    text = "A countdown on the Concept tab in Revise and Quiz modes",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

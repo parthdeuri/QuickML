@@ -1,0 +1,78 @@
+slug: transposed-convolution
+title: Transposed Convolution
+url: https://d2l.ai/chapter_computer-vision/transposed-conv.html
+difficulty: Medium
+area: Vision
+topics: [Upsampling, Convolutional Networks, Segmentation]
+summary: |
+  A learned upsampling layer: each input value paints a scaled copy of
+  the kernel onto a larger output, and overlapping copies add up.
+intuition: |
+  A normal strided convolution shrinks a map by reading windows; the
+  transposed one runs the same wiring backwards, so a small map grows.
+  Instead of gathering a patch into one number, every input pixel
+  scatters its value times the kernel into the output at stride
+  spacing. Where those stamps overlap they sum, which is why
+  mismatched kernel and stride produce a checkerboard pattern.
+why_it_works: |
+  The layer is the transpose of the matrix that implements a
+  convolution, so it maps gradients of a convolution's output back to
+  its input shape. Because the kernel is learned, the network can
+  learn a good interpolation rather than using a fixed one like
+  bilinear upsampling.
+when_to_use: |
+  Decoders of segmentation networks, autoencoders and GAN generators
+  that must produce a higher resolution map from a coarse one.
+when_not_to_use: |
+  When checkerboard artefacts matter, resize with fixed interpolation
+  and then apply a normal convolution, or choose a kernel size
+  divisible by the stride.
+math:
+  - "Input x: (N, C, H, W); kernel w: (C, F, kH, kW)"
+  - "full[n,f,si+u,sj+v] += Σ_c w[c,f,u,v] · x[n,c,i,j]"
+  - "Full size: (H − 1)·s + kH  (same for width)"
+  - "Output size: (H − 1)·s − 2p + kH"
+  - "Padding p crops p entries from each border of the full map"
+approach:
+  - "Allocate the full output of size (H − 1)·s + k — large enough for every stamp"
+  - "For each input position, multiply its channel vector with the kernel — one k×k stamp per output channel"
+  - "Add the stamp into the output at offset (s·i, s·j) — overlapping stamps accumulate"
+  - "Crop p rows and columns from each border — padding shrinks the output instead of growing it"
+code: |
+  import numpy as np
+
+  def conv_transpose2d(x, w, stride=1, pad=0):
+      # x: (N,C,H,W)  w: (C,F,kh,kw)
+      n, c, h, wd = x.shape
+      _, f, kh, kw = w.shape
+      oh = (h - 1) * stride + kh
+      ow = (wd - 1) * stride + kw
+      full = np.zeros((n, f, oh, ow))
+      for i in range(h):
+          for j in range(wd):
+              stamp = np.tensordot(x[:, :, i, j], w, axes=([1], [0]))
+              r, s = i * stride, j * stride
+              full[:, :, r:r + kh, s:s + kw] += stamp
+      return full[:, :, pad:oh - pad, pad:ow - pad]
+key_lines: [12, 14]
+time: "O(N·C·F·H·W·kH·kW)"
+space: "O(N·F·oH·oW) for the output"
+hyperparameters:
+  - "Kernel size"
+  - "Stride (upsampling factor)"
+  - "Padding (crops the output)"
+  - "Output padding (not modelled here; it resolves size ambiguity)"
+pitfalls:
+  - "Kernel size not divisible by stride gives uneven overlap and checkerboard artefacts"
+  - "Called deconvolution, but it does not invert a convolution's values, only its shape"
+  - "Dilation and output padding are not modelled in this sketch"
+  - "The same output size can come from several input sizes of a strided convolution"
+interview_qa:
+  - q: "What is the output size of a transposed convolution?"
+    a: "(H − 1)·s − 2p + k along each spatial dimension, plus any output padding."
+  - q: "Why is it called transposed?"
+    a: "Its forward pass multiplies by the transpose of the matrix that represents the corresponding convolution."
+  - q: "Why do checkerboard artefacts appear?"
+    a: "Stamps from neighbouring inputs overlap unevenly when the kernel size is not a multiple of the stride."
+related: [convolution-2d, autoencoder, receptive-field]
+patterns: ["Convolution and vision"]

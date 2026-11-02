@@ -1,0 +1,77 @@
+slug: diffusion-forward-process
+title: Diffusion Forward (Noising) Process
+url: https://arxiv.org/abs/2006.11239
+difficulty: Hard
+area: Deep Learning
+topics: [Generative Models, Diffusion, Noise Schedules]
+summary: |
+  Gradually turn data into Gaussian noise by adding a little noise at
+  each step, and jump straight to any step t with one closed-form
+  sample.
+intuition: |
+  Each noising step shrinks the signal slightly and adds fresh Gaussian
+  noise, and a chain of Gaussian steps is itself Gaussian. Their
+  combined effect collapses into a single draw with a scaled copy of the
+  data plus noise, so training can pick a random t and corrupt x₀ in
+  one shot instead of simulating t steps.
+approach:
+  - "Choose a noise schedule β₁ … β_T — how much noise each step adds"
+  - "Form ᾱₜ as the running product of (1 − βₜ) — the fraction of signal variance that survives to step t"
+  - "Draw ε ~ N(0, I) — the only randomness"
+  - "Output √ᾱₜ · x₀ + √(1 − ᾱₜ) · ε — a sample of q(xₜ | x₀) in one step"
+  - "Optionally iterate √(1−βₜ) x + √βₜ ε — the same distribution by single steps"
+code: |
+  import numpy as np
+
+  def make_schedule(T, b0=1e-4, b1=0.02):
+      betas = np.linspace(b0, b1, T)
+      return betas, np.cumprod(1 - betas)
+
+  def q_sample(x0, t, abar, eps):
+      return np.sqrt(abar[t]) * x0 + np.sqrt(1 - abar[t]) * eps
+
+  def q_step(x, t, betas, eps):
+      return np.sqrt(1 - betas[t]) * x + np.sqrt(betas[t]) * eps
+key_lines: [5, 8, 11]
+time: "O(d) per sample at any t, versus O(t·d) by iterating"
+space: "O(T) for the schedule and O(d) per sample"
+when_to_use: |
+  Building the training pairs for denoising diffusion models, where a
+  random t and fresh noise corrupt each clean example, and analysing a
+  noise schedule such as its signal-to-noise ratio.
+when_not_to_use: |
+  Sampling new data, which needs the learned reverse process. The
+  forward process alone is fixed and has no parameters to learn.
+why_it_works: |
+  Each step maps x to a Gaussian with mean √(1−β)·x and variance β. A
+  Gaussian pushed through a linear map plus independent Gaussian noise
+  stays Gaussian, so the mean shrinks by √(1−βₜ) each step and the
+  variance obeys v ← (1−βₜ)·v + βₜ. Solving these recursions gives mean
+  √ᾱₜ x₀ and variance 1 − ᾱₜ, and variance one is preserved at the
+  noise limit. This code uses a linear schedule; other schedules are
+  common.
+math:
+  - "q(xₜ | xₜ₋₁) = N(√(1−βₜ) xₜ₋₁, βₜ I)"
+  - "αₜ = 1 − βₜ,   ᾱₜ = Πₛ≤ₜ αₛ"
+  - "q(xₜ | x₀) = N(√ᾱₜ x₀, (1 − ᾱₜ) I)"
+  - "xₜ = √ᾱₜ x₀ + √(1 − ᾱₜ) ε,   ε ~ N(0, I)"
+  - "Recursions: mₜ = √αₜ mₜ₋₁,   vₜ = αₜ vₜ₋₁ + βₜ"
+  - "x₀ = (xₜ − √(1 − ᾱₜ) ε) / √ᾱₜ"
+  - "SNR(t) = ᾱₜ / (1 − ᾱₜ)"
+interview_qa:
+  - q: "Why can we sample xₜ directly from x₀?"
+    a: "Each step is Gaussian and linear in the previous state, so composing t of them gives one Gaussian with mean √ᾱₜ x₀ and variance 1 − ᾱₜ."
+  - q: "Why scale the signal by √(1−βₜ) instead of only adding noise?"
+    a: "The shrinkage keeps the total variance bounded, so the chain ends near a standard normal instead of growing without limit."
+  - q: "What does the network learn in DDPM?"
+    a: "It predicts the noise ε from xₜ and t, which is equivalent to estimating x₀ using the closed-form relation between the two."
+hyperparameters:
+  - "Number of steps T"
+  - "Schedule endpoints β₁ and β_T, or the schedule family (linear, cosine)"
+  - "Data scaling, usually to [−1, 1]"
+pitfalls:
+  - "Indexing off by one: array position t here is step t+1 of the maths"
+  - "The final ᾱ_T must be near zero or the terminal distribution is not standard normal"
+  - "The equivalence with iterating holds in distribution, not sample by sample for the same ε"
+related: [vae-reparameterization, autoencoder, entropy-kl-divergence]
+patterns: ["Generative models"]

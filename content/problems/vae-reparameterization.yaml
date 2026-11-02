@@ -84,4 +84,4 @@ interview_qa:
   - q: "What is posterior collapse?"
     a: "The KL term goes to zero because a strong decoder ignores z, so the latent code carries no information. KL annealing or a weaker decoder helps."
 related: [autoencoder, entropy-kl-divergence, backpropagation]
-patterns: ["Information-theoretic losses"]
+patterns: ["Information-theoretic losses", "Generative models"]

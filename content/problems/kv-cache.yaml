@@ -1,0 +1,77 @@
+slug: kv-cache
+title: KV Cache for Autoregressive Decoding
+url: https://huggingface.co/docs/transformers/kv_cache
+difficulty: Medium
+area: NLP
+topics: [Transformers, Inference, Language Modeling]
+summary: |
+  Store the keys and values of all past tokens, so each new token only
+  computes its own query, key and value and attends over the cache.
+intuition: |
+  With causal attention, the keys and values of an earlier token never
+  change when later tokens arrive, so recomputing them at every
+  generation step is pure waste. Caching them turns the work for a new
+  token from reprocessing the whole prefix into one projection plus one
+  attention over stored rows, trading memory for speed.
+approach:
+  - "Project only the new token to q, k, v — earlier tokens were already projected"
+  - "Append k and v to the cache — the cache grows by one row per step"
+  - "Score q against all cached keys — gives the attention over the whole prefix"
+  - "Softmax the scores and mix cached values — same output as full attention"
+  - "Keep the cache for the next step — nothing is recomputed later"
+code: |
+  import numpy as np
+
+  def softmax(s):
+      e = np.exp(s - s.max())
+      return e / e.sum()
+
+  def decode_step(x, W, cache):
+      q, k, v = x @ W["q"], x @ W["k"], x @ W["v"]
+      cache["K"] = np.vstack([cache["K"], k])
+      cache["V"] = np.vstack([cache["V"], v])
+      w = softmax(cache["K"] @ q / np.sqrt(len(q)))
+      return w @ cache["V"]
+
+  def new_cache(d):
+      return {"K": np.zeros((0, d)), "V": np.zeros((0, d))}
+key_lines: [9, 10, 11]
+time: "O(t·d) per new token at length t, instead of O(t·d²) to reproject the prefix"
+space: "O(t·d) per layer and head, growing linearly with length"
+when_to_use: |
+  Any autoregressive generation with a transformer, which is almost
+  every LLM serving stack, to make each step cost proportional to the
+  context length instead of recomputing it.
+when_not_to_use: |
+  Training and prompt prefill, which already process all positions in
+  one parallel pass. Bidirectional models have nothing to cache because
+  earlier outputs change when later tokens arrive.
+why_it_works: |
+  Under a causal mask, token t's key and value depend only on token t
+  and its fixed weights, and its attention output depends only on the
+  keys and values up to t. A new token therefore needs the cached rows
+  plus its own, and the result equals recomputing the full masked
+  attention. Only the floating-point summation order can differ.
+math:
+  - "qₜ = xₜ W_q,  kₜ = xₜ W_k,  vₜ = xₜ W_v"
+  - "K₁:ₜ = [K₁:ₜ₋₁ ; kₜ],   V₁:ₜ = [V₁:ₜ₋₁ ; vₜ]"
+  - "oₜ = softmax(K₁:ₜ qₜ / √d)ᵀ V₁:ₜ"
+  - "Cache size = 2 · layers · kv_heads · t · d_head · bytes per value"
+interview_qa:
+  - q: "Why can we cache keys and values but not queries?"
+    a: "A query is only used once, at its own step. Later tokens need the earlier tokens' keys and values to attend to, not their queries."
+  - q: "What is the cost of the KV cache?"
+    a: "Memory grows linearly with context length, batch size, layers and heads, and often dominates GPU memory in long-context serving."
+  - q: "How is the cache size reduced in practice?"
+    a: "Multi-query or grouped-query attention shares keys and values across heads, and quantising or evicting cache entries also helps."
+hyperparameters:
+  - "Maximum context length reserved for the cache"
+  - "Number of KV heads (multi-head, grouped or multi-query)"
+  - "Cache precision (float16, int8, ...)"
+  - "Batch size"
+pitfalls:
+  - "Growing the cache with vstack copies every step; real systems preallocate and write in place"
+  - "Position information such as RoPE must use the true absolute position of the new token"
+  - "This is one head and one layer; a real model keeps a separate cache for each layer"
+related: [self-attention, multi-head-attention, beam-search]
+patterns: ["Attention and sequences"]

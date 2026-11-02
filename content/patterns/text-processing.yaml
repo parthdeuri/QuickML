@@ -27,5 +27,8 @@ problems:
 - word2vec-skipgram
 - bpe-tokenization
 - beam-search
+- top-k-top-p-sampling
+- perplexity
+- cosine-similarity-embeddings
 aliases:
 - Text processing

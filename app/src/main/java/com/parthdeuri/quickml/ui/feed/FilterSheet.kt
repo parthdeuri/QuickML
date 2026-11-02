@@ -30,7 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 private val DIFFICULTIES = listOf("Easy", "Medium", "Hard")
-private val STATUS_OPTIONS = listOf("SOLVED" to "Solved", "UNSOLVED" to "Unsolved")
+private val STATUS_OPTIONS = listOf("SOLVED" to "Learned", "UNSOLVED" to "Not learned")
 
 private fun Set<String>.toggled(value: String): Set<String> =
     if (contains(value)) this - value else this + value
@@ -113,7 +113,7 @@ fun FilterSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Only problems with full notes",
+                    text = "Only cards with full notes",
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.weight(1f)
                 )

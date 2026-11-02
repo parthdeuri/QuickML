@@ -1,0 +1,90 @@
+slug: multiclass-metrics
+title: Multiclass Metrics (Macro, Micro, Weighted F1)
+url: https://scikit-learn.org/stable/modules/generated/sklearn.metrics.f1_score.html
+difficulty: Easy
+area: MLOps
+topics: [Evaluation, Classification Metrics, Multiclass, Confusion Matrix]
+summary: |
+  Reduce a K-class confusion matrix to per-class precision, recall and F1,
+  then average them three ways. The choice of averaging decides whether
+  rare classes count.
+intuition: |
+  A single accuracy number hides which classes fail. Per-class F1 exposes
+  that, but you still need one headline score. Macro averaging gives every
+  class equal say, so a failing rare class drags it down; micro averaging
+  pools all decisions, so frequent classes dominate; weighted averaging
+  sits between by weighting each class by its support.
+why_it_works: |
+  Everything derives from the confusion matrix: the diagonal holds true
+  positives, column sums are predicted counts and row sums are true
+  counts. Micro averaging pools true positives, false positives and false
+  negatives across classes; for single-label problems every error is one
+  false positive and one false negative, so micro precision, recall and F1
+  all equal accuracy. Macro and weighted differ only in the weights on the
+  per-class F1 values.
+when_to_use: |
+  Reporting multiclass classifiers, choosing the average to match the
+  business goal (macro when every class matters, micro or accuracy when
+  overall hit rate matters, weighted for a support-aware compromise), and
+  diagnosing which class pairs get confused.
+when_not_to_use: |
+  When costs differ strongly between error types (use a cost matrix or
+  per-class thresholds), for multilabel problems without adapting the
+  counts, or when probability quality matters (use log loss or
+  calibration instead of a hard-label metric).
+math:
+  - "Confusion: C[i,j] = # samples of true class i predicted as j"
+  - "TPₖ = C[k,k],  predictedₖ = Σᵢ C[i,k],  supportₖ = Σⱼ C[k,j]"
+  - "Precisionₖ = TPₖ / predictedₖ,  Recallₖ = TPₖ / supportₖ"
+  - "F1ₖ = 2 Pₖ Rₖ / (Pₖ + Rₖ)"
+  - "Macro: F1_macro = (1/K) Σₖ F1ₖ"
+  - "Weighted: Σₖ supportₖ F1ₖ / Σₖ supportₖ"
+  - "Micro: F1_micro = Σₖ TPₖ / n = accuracy"
+approach:
+  - "Build the confusion matrix by counting (true, predicted) pairs — the single object all metrics come from"
+  - "Take true positives from the diagonal and divide by column and row sums — per-class precision and recall"
+  - "Guard the divisions with a floor — a class that is never predicted or absent should score zero, not NaN"
+  - "Combine into per-class F1 — the harmonic mean punishes a gap between precision and recall"
+  - "Average unweighted for macro and by support for weighted — rare classes count fully versus in proportion"
+  - "Divide total true positives by n for micro — pooled counts reduce to accuracy"
+code: |
+  import numpy as np
+
+  def confusion(y, p, K):
+      C = np.zeros((K, K), dtype=int)
+      np.add.at(C, (y, p), 1)
+      return C
+
+  def f1_report(C):
+      tp = np.diag(C).astype(float)
+      prec = tp / np.maximum(C.sum(0), 1)
+      rec = tp / np.maximum(C.sum(1), 1)
+      f1 = 2 * prec * rec / np.maximum(prec + rec, 1e-12)
+      sup = C.sum(1)
+      macro = f1.mean()
+      weighted = (f1 * sup).sum() / sup.sum()
+      micro = tp.sum() / C.sum()
+      return f1, macro, weighted, micro
+key_lines: [12, 14, 16]
+time: "O(n + K²) to count pairs and aggregate"
+space: "O(K²) for the confusion matrix"
+hyperparameters:
+  - "average — macro, micro or weighted"
+  - "zero_division — value used when a class has no predictions or no samples"
+  - "Class labels and order — fix them so the matrix aligns across runs"
+pitfalls:
+  - "Labels must be integers 0 to K−1 here; map strings first"
+  - "Micro F1 equals accuracy for single-label problems, so it adds nothing beyond accuracy"
+  - "Macro F1 swings on tiny classes with few support samples, so report supports too"
+  - "A class missing from the true labels gives a zero F1 that still enters the macro mean in this code (sklearn behaves the same only if its labels are listed)"
+interview_qa:
+  - q: "When use macro over micro F1?"
+    a: "When all classes matter equally, especially with imbalance: macro exposes poor performance on rare classes that micro or accuracy would hide."
+  - q: "Why does micro F1 equal accuracy in multiclass?"
+    a: "Each misclassification is exactly one false positive for the predicted class and one false negative for the true class, so pooled precision and recall both equal the fraction correct."
+  - q: "What does weighted F1 do?"
+    a: "It averages per-class F1 with weights proportional to class support, so it tracks frequent classes but still reflects per-class balance of precision and recall."
+  - q: "How do you handle a class that is never predicted?"
+    a: "Its precision is undefined; set it to zero (zero_division) so its F1 is zero, and flag it explicitly in the report."
+related: [precision-recall-f1, class-imbalance, roc-auc]
+patterns: ["Classification metrics"]

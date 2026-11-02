@@ -1,0 +1,81 @@
+slug: receptive-field
+title: Receptive Field
+url: https://d2l.ai/chapter_convolutional-neural-networks/conv-layer.html
+difficulty: Medium
+area: Vision
+topics: [Convolutional Networks, Receptive Field, Stride]
+summary: |
+  The receptive field of a unit is the patch of the input that can
+  influence its value. It grows layer by layer, and strides make it
+  grow faster.
+intuition: |
+  Each layer looks at a k-wide window of the previous layer, but one
+  step in a deeper layer already spans several input pixels. Every new
+  kernel therefore adds (k − 1) steps of the current spacing between
+  neighbouring units, and strides multiply that spacing. This is why
+  a stack of small kernels can see a large region, and why a unit
+  can only reason about context inside its own receptive field.
+why_it_works: |
+  Unrolling the dependency of an output on its inputs layer by layer
+  gives a simple recurrence: the field is the previous field plus
+  (k − 1) times the product of all earlier strides (the jump). The
+  recurrence is exact for a plain stack of convolutions or pooling
+  layers, because each layer's window is a contiguous block of the
+  layer below.
+when_to_use: |
+  Designing a conv backbone so the final features can see enough
+  context for the task (segmentation, detection), or debugging why a
+  model misses large objects.
+when_not_to_use: |
+  This theoretical field ignores how much each pixel actually matters.
+  Actual influence is concentrated near the centre, so for what the
+  network uses, measure gradients instead. It also does not describe
+  attention layers, whose field is global.
+math:
+  - "k_l: kernel size, s_l: stride of layer l (dilation 1)"
+  - "Jump: j₀ = 1,  j_l = j_{l−1} · s_l"
+  - "Field: r₀ = 1,  r_l = r_{l−1} + (k_l − 1) · j_{l−1}"
+  - "Output index i maps back to input [lo, hi] with lo = i · jump"
+  - "Backwards: lo ← lo · s,  hi ← hi · s + k − 1 for each layer"
+  - "Padding shifts the interval but does not change its width"
+approach:
+  - "Start with field 1 and jump 1 at the input — a single pixel sees only itself"
+  - "For each layer add (k − 1) · jump to the field — a wider window over spaced-out units"
+  - "Multiply the jump by the layer's stride — later units sit further apart in input pixels"
+  - "To locate one unit, walk the layers backwards expanding its index interval — gives the exact input window"
+code: |
+  def receptive_field(layers):
+      rf, jump = 1, 1
+      for k, s in layers:
+          rf += (k - 1) * jump
+          jump *= s
+      return rf, jump
+
+  def input_span(layers, i):
+      lo, hi = i, i
+      for k, s in reversed(layers):
+          lo = lo * s
+          hi = hi * s + k - 1
+      return lo, hi
+key_lines: [4, 5, 12]
+time: "O(L) for L layers"
+space: "O(1) extra"
+hyperparameters:
+  - "Kernel size k of each layer"
+  - "Stride s of each layer (multiplies the growth)"
+  - "Depth (number of layers)"
+  - "Dilation (not modelled here; it widens the window per layer)"
+pitfalls:
+  - "The theoretical field is much larger than the effective field that actually influences the output"
+  - "This code assumes no dilation and no padding offsets; dilation replaces k by an effective kernel size"
+  - "Forgetting that strides multiply across layers underestimates growth"
+  - "Pooling layers count as layers with their own kernel and stride"
+interview_qa:
+  - q: "How does the receptive field grow with depth?"
+    a: "Each layer adds (k − 1) times the product of earlier strides, so it grows linearly with depth at stride 1 and much faster once strides or pooling are used."
+  - q: "What is the effective receptive field?"
+    a: "The region that actually carries significant gradient; it is roughly Gaussian and smaller than the theoretical field."
+  - q: "How can you enlarge the field without more parameters?"
+    a: "Use strides, pooling or dilated convolutions, which spread the same kernel weights over a wider window."
+related: [convolution-2d, max-pooling, depthwise-separable-convolution]
+patterns: ["Convolution and vision"]

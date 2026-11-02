@@ -15,33 +15,45 @@ PROBLEMS = C / "problems"
 
 SHEETS = {
  "ml-core": ("ML Core", "Core classical machine learning, evaluation and the math behind them.", [
-  ("Foundations", ["gradient-descent", "bayes-theorem", "maximum-likelihood", "entropy-kl-divergence"]),
+  ("Foundations", ["gradient-descent", "bayes-theorem", "maximum-likelihood", "entropy-kl-divergence",
+                   "metropolis-hastings"]),
   ("Regression", ["linear-regression", "ridge-lasso-regularization"]),
-  ("Classification", ["logistic-regression", "naive-bayes", "knn", "svm", "decision-tree"]),
-  ("Ensembles", ["random-forest", "gradient-boosting"]),
+  ("Classification", ["logistic-regression", "naive-bayes", "knn", "svm", "decision-tree",
+                      "linear-discriminant-analysis", "kernel-trick-rbf"]),
+  ("Ensembles", ["random-forest", "gradient-boosting", "adaboost"]),
+  ("Sequences and recommenders", ["hidden-markov-forward", "matrix-factorization-recommender"]),
   ("Unsupervised", ["k-means", "gaussian-mixture-em", "dbscan", "pca"]),
   ("Preprocessing and linear algebra", ["feature-scaling", "svd"]),
   ("Evaluation and generalisation", ["bias-variance-tradeoff", "cross-validation", "precision-recall-f1",
                                      "roc-auc", "class-imbalance", "probability-calibration",
-                                     "hyperparameter-search", "data-leakage"]),
+                                     "hyperparameter-search", "data-leakage", "multiclass-metrics",
+                                     "stratified-split", "ab-test-significance"]),
   ("Production monitoring", ["concept-drift"]),
  ]),
  "dl-core": ("Deep Learning Core", "Neural network foundations, training tricks and the first architectures.", [
   ("Neural network foundations", ["softmax-cross-entropy", "mlp-forward-pass", "activation-functions",
                                   "backpropagation"]),
-  ("Training setup", ["weight-initialization", "adam-optimizer", "learning-rate-schedules"]),
+  ("Training setup", ["weight-initialization", "momentum-sgd", "adam-optimizer",
+                      "learning-rate-schedules", "gradient-clipping"]),
   ("Normalisation and regularisation", ["batch-normalization", "layer-normalization", "dropout",
-                                        "early-stopping", "residual-connections"]),
+                                        "early-stopping", "residual-connections", "data-augmentation",
+                                        "label-smoothing"]),
+  ("Loss design and compression", ["focal-loss", "knowledge-distillation"]),
+  ("Transfer and adaptation", ["transfer-learning-fine-tuning", "lora-low-rank-adaptation"]),
   ("Sequence models", ["rnn-cell", "lstm-cell"]),
   ("Architectures", ["convolution-2d", "max-pooling", "self-attention", "multi-head-attention",
                      "positional-encoding"]),
-  ("Generative models", ["autoencoder", "vae-reparameterization"]),
+  ("Generative models", ["autoencoder", "vae-reparameterization", "gan-minimax-loss",
+                         "diffusion-forward-process"]),
  ]),
  "nlp-vision-rl": ("NLP, Vision and RL", "Text, image and reinforcement-learning building blocks.", [
   ("NLP", ["tf-idf", "word2vec-skipgram", "bpe-tokenization", "positional-encoding", "self-attention",
-           "multi-head-attention", "beam-search"]),
-  ("Vision", ["convolution-2d", "max-pooling", "iou-and-nms"]),
-  ("Reinforcement learning", ["q-learning", "reinforce-policy-gradient"]),
+           "multi-head-attention", "beam-search", "causal-masking", "transformer-block",
+           "rotary-position-embedding", "kv-cache", "top-k-top-p-sampling", "perplexity",
+           "cosine-similarity-embeddings"]),
+  ("Vision", ["convolution-2d", "max-pooling", "iou-and-nms", "receptive-field",
+             "depthwise-separable-convolution", "transposed-convolution", "data-augmentation"]),
+  ("Reinforcement learning", ["q-learning", "reinforce-policy-gradient", "value-iteration"]),
  ]),
 }
 
@@ -79,8 +91,7 @@ def main():
     for slug, names in tags.items():
         path = PROBLEMS / f"{slug}.yaml"
         text = path.read_text(encoding="utf-8")
-        if re.search(r"^patterns:", text, re.M):
-            continue
+        text = re.sub(r"^patterns:.*\n?", "", text, flags=re.M)
         if not text.endswith("\n"):
             text += "\n"
         text += "patterns: [" + ", ".join(f'"{n}"' for n in names) + "]\n"

@@ -613,11 +613,11 @@ class ProblemRepository(
 
         /** The virtual "My problems" sheet (computed from userAdded, not stored). */
         const val MINE_SHEET_ID = "mine"
-        const val MINE_SHEET_NAME = "My problems"
+        const val MINE_SHEET_NAME = "My cards"
 
         /** The virtual "All problems" sheet: every problem once (computed, not stored). */
         const val ALL_SHEET_ID = "all"
-        const val ALL_SHEET_NAME = "All problems"
+        const val ALL_SHEET_NAME = "All cards"
         const val ALL_OTHER_SECTION = "Other"
         const val USER_SLUG_PREFIX = "user-"
 

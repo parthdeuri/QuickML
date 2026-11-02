@@ -1,0 +1,33 @@
+id: generative-models
+name: Generative models
+order: 17
+summary: Learn the data distribution well enough to sample new examples from it.
+when_to_use:
+- You need to create new images, text or other data.
+- You want a compact latent representation you can sample from.
+- Labels are scarce but raw data is plentiful.
+key_idea: Every generative model turns simple noise into data. VAEs do it with an
+  encoder and a decoder trained on a likelihood bound, GANs with a generator trained
+  against a critic, and diffusion models by learning to undo gradual noising.
+template: |
+  import numpy as np
+
+  def reparameterise(mu, logvar, rng):
+      eps = rng.standard_normal(mu.shape)
+      return mu + np.exp(0.5 * logvar) * eps     # z ~ N(mu, sigma^2)
+
+  def noise_step(x0, abar_t, rng):
+      eps = rng.standard_normal(x0.shape)
+      return np.sqrt(abar_t) * x0 + np.sqrt(1 - abar_t) * eps
+complexity: Training is usually the expensive part; diffusion sampling needs many
+  network passes.
+pitfalls:
+- GAN training can oscillate or collapse to few modes.
+- VAE samples tend to be blurry compared with GANs and diffusion.
+problems:
+- autoencoder
+- vae-reparameterization
+- gan-minimax-loss
+- diffusion-forward-process
+aliases:
+- Generative models

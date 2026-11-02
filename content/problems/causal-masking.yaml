@@ -1,0 +1,73 @@
+slug: causal-masking
+title: Causal Masking in Attention
+url: https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
+difficulty: Medium
+area: NLP
+topics: [Transformers, Attention, Language Modeling]
+summary: |
+  Set the attention scores for future positions to minus infinity before
+  the softmax, so each token mixes only itself and earlier tokens.
+intuition: |
+  A language model is trained to predict token t+1 from tokens up to t,
+  so if position t could see later tokens it would simply copy the
+  answer. Masking the upper triangle of the score matrix makes every row
+  a distribution over the past only, which lets one forward pass train
+  all next-token predictions in parallel without leaking the future.
+approach:
+  - "Compute raw scores Q Kᵀ / √d — the usual scaled dot-product similarities"
+  - "Build a boolean matrix that is true above the diagonal — marks every (query, future key) pair"
+  - "Replace those scores with −∞ — exp(−∞) is exactly 0 after the softmax"
+  - "Apply the softmax along each row — each row sums to 1 over visible keys only"
+  - "Multiply by V — each output is a mix of past and current values"
+code: |
+  import numpy as np
+
+  def softmax(s):
+      e = np.exp(s - s.max(axis=-1, keepdims=True))
+      return e / e.sum(axis=-1, keepdims=True)
+
+  def causal_attention(Q, K, V):
+      T, d = Q.shape
+      scores = Q @ K.T / np.sqrt(d)
+      future = np.triu(np.ones((T, T), dtype=bool), k=1)
+      scores = np.where(future, -np.inf, scores)
+      A = softmax(scores)
+      return A @ V, A
+key_lines: [10, 11, 12]
+time: "O(T²·d) for length T and width d"
+space: "O(T²) for the score matrix"
+when_to_use: |
+  Decoder-only language models, the decoder of encoder-decoder models,
+  and any autoregressive generator, during both training and prefill.
+when_not_to_use: |
+  Bidirectional encoders such as BERT, where each token should see the
+  whole sequence. For padding, use a separate key-padding mask instead.
+why_it_works: |
+  After the softmax a −∞ score becomes a weight of exactly zero, so the
+  output at position t is a function of Q[t] and of K, V rows up to t
+  only. The diagonal is kept, so every row has at least one finite score
+  and the softmax is well defined. Because future tokens contribute
+  nothing, changing them cannot change earlier outputs.
+math:
+  - "S = Q Kᵀ / √d   (T × T)"
+  - "Mᵢⱼ = 0 if j ≤ i,  −∞ if j > i"
+  - "A = softmax(S + M)   (row-wise)"
+  - "Aᵢⱼ = 0 for j > i,   Σⱼ Aᵢⱼ = 1"
+  - "Output = A V"
+interview_qa:
+  - q: "Why mask before the softmax rather than zero the weights after?"
+    a: "Zeroing after the softmax leaves rows that no longer sum to 1 and still lets the future affect the normaliser. Masking scores with −∞ gives exact zeros and a correct normalisation."
+  - q: "How does one forward pass train every position at once?"
+    a: "With the mask, row t only uses tokens up to t, so the loss on every next token can be computed together without the model seeing its own targets."
+  - q: "How is a causal mask different from a padding mask?"
+    a: "The causal mask hides future positions and is the same for every sequence; a padding mask hides pad tokens and depends on each sequence's length. They are usually combined."
+hyperparameters:
+  - "Mask diagonal offset (k=1 keeps the token itself visible)"
+  - "Sliding-window size, if attention is also limited to recent tokens"
+  - "Mask value (−∞ or a large negative number)"
+pitfalls:
+  - "A row that is fully masked gives NaN from the softmax; always keep the diagonal"
+  - "Using a large negative number in half precision can overflow; −∞ or the dtype minimum is safer"
+  - "This code builds the full T × T matrix; efficient kernels skip the masked blocks entirely"
+related: [self-attention, multi-head-attention, positional-encoding]
+patterns: ["Attention and sequences"]

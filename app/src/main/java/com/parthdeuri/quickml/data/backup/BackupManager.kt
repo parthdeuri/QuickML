@@ -113,10 +113,10 @@ data class BackupSummary(
     val ownProblems: Int
 ) {
     fun describe(): String = buildList {
-        add(plural(solved, "solved problem", "solved problems"))
+        add(plural(solved, "learned card", "learned cards"))
         add(plural(reviews, "review schedule", "review schedules"))
         if (notes > 0) add(plural(notes, "note", "notes"))
-        if (ownProblems > 0) add(plural(ownProblems, "own problem", "own problems"))
+        if (ownProblems > 0) add(plural(ownProblems, "own card", "own cards"))
         add(plural(activity, "activity entry", "activity entries"))
     }.joinToString(", ")
 

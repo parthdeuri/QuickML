@@ -31,5 +31,7 @@ problems:
 - learning-rate-schedules
 - backpropagation
 - weight-initialization
+- gradient-clipping
+- momentum-sgd
 aliases:
 - Gradient-based optimisation

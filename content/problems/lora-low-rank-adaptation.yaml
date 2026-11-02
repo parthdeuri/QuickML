@@ -1,0 +1,82 @@
+slug: lora-low-rank-adaptation
+title: LoRA (Low-Rank Adaptation)
+url: https://arxiv.org/abs/2106.09685
+difficulty: Medium
+area: Deep Learning
+topics: [Fine-tuning, Parameter-Efficient Learning, Transformers]
+summary: |
+  Freeze a pretrained weight matrix W and learn a small low-rank update
+  BA, so fine-tuning trains only a tiny fraction of the parameters.
+intuition: |
+  The change needed to adapt a large model to a new task often has low
+  intrinsic rank, so a full d_out × d_in update is mostly wasted.
+  Writing the update as a product of a thin and a wide matrix stores it
+  in far fewer numbers, and after training the product can be folded
+  back into W so inference costs nothing extra.
+approach:
+  - "Freeze the pretrained W — preserves the base model and needs no optimiser state for it"
+  - "Add trainable A (r × d_in) and B (d_out × r) — a rank-r update with few parameters"
+  - "Initialise B to zero and A small random — the adapted model starts identical to the base"
+  - "Compute Wx + (α/r) B A x through the thin path — the scaling keeps the update size stable across ranks"
+  - "After training merge W′ = W + (α/r) B A — the same outputs with no extra latency"
+code: |
+  import numpy as np
+
+  def lora_forward(x, W, A, B, alpha):
+      s = alpha / A.shape[0]
+      return x @ W.T + s * (x @ A.T) @ B.T
+
+  def lora_merge(W, A, B, alpha):
+      return W + (alpha / A.shape[0]) * B @ A
+
+  def lora_grads(x, W, A, B, alpha, dy):
+      s = alpha / A.shape[0]
+      xa = x @ A.T
+      dB = s * dy.T @ xa
+      dA = s * (dy @ B).T @ x
+      dx = dy @ (W + s * B @ A)
+      return dB, dA, dx
+key_lines: [5, 13, 14]
+time: "O(n·r·(d_in + d_out)) extra per forward pass, none after merging"
+space: "O(r·(d_in + d_out)) trainable parameters per matrix"
+when_to_use: |
+  Fine-tuning large language and diffusion models on limited GPU memory,
+  keeping many task adapters for one base model, and swapping tasks by
+  loading small files.
+when_not_to_use: |
+  Tasks that need large changes to the base model, such as teaching
+  entirely new knowledge at scale, where low rank may limit quality, or
+  small models where full fine-tuning is cheap.
+why_it_works: |
+  The update ΔW = (α/r) B A has rank at most r, so it spans a small
+  subspace of directions in weight space, which is enough when the
+  fine-tuning change is low-dimensional. Gradients reach only A and B,
+  so optimiser memory shrinks with the parameter count. Zero-initialising
+  B makes ΔW zero at the start, and gradients to B are non-zero from the
+  first step so learning begins. Merging is exact because the layer is
+  linear in W.
+math:
+  - "W′ = W + (α/r) · B A,   B: d_out × r,  A: r × d_in"
+  - "y = x W′ᵀ = x Wᵀ + (α/r) · x Aᵀ Bᵀ"
+  - "Trainable params = r (d_in + d_out)  vs  d_in · d_out"
+  - "∂L/∂B = (α/r) · dyᵀ (x Aᵀ)"
+  - "∂L/∂A = (α/r) · (dy B)ᵀ x"
+  - "∂L/∂x = dy W′"
+interview_qa:
+  - q: "Why initialise B to zero?"
+    a: "It makes the update zero, so training starts from the pretrained model. A is random so that gradients to B are non-zero and the product can grow."
+  - q: "What does the α/r scale do?"
+    a: "It sets the size of the update independently of the rank, so changing r does not require retuning the learning rate much."
+  - q: "How is LoRA different from adding adapter layers?"
+    a: "Adapters add sequential layers that increase inference latency. LoRA is parallel and mergeable into W, so inference cost is unchanged."
+hyperparameters:
+  - "Rank r"
+  - "Scaling α"
+  - "Which weight matrices get adapters (attention q, v, all linears)"
+  - "Dropout on the adapter path"
+pitfalls:
+  - "Merging into quantised weights loses precision unless handled carefully"
+  - "This code has one matrix without bias or dropout; real use wraps each target layer"
+  - "Low rank too small underfits; too large wastes the savings"
+related: [multi-head-attention, svd, backpropagation]
+patterns: ["Transfer and adaptation"]

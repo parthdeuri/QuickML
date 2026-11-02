@@ -1,0 +1,75 @@
+slug: rotary-position-embedding
+title: Rotary Position Embedding (RoPE)
+url: https://arxiv.org/abs/2104.09864
+difficulty: Hard
+area: NLP
+topics: [Transformers, Positional Encoding, Attention]
+summary: |
+  Rotate each pair of query and key coordinates by an angle proportional
+  to the token position, so attention scores depend on relative offsets.
+intuition: |
+  If you rotate a query by m·θ and a key by n·θ, their dot product
+  depends only on the angle difference (m−n)·θ, because rotations are
+  orthogonal and compose by adding angles. RoPE therefore injects
+  relative position directly into the attention score with no learned
+  position table, and each coordinate pair uses its own frequency so
+  both short and long ranges are covered.
+approach:
+  - "Pair up coordinates (x₀, x₁), (x₂, x₃), … — each pair is a point in a 2-D plane"
+  - "Give pair i a frequency θᵢ = base^(−2i/d) — a spread of fast and slow rotations"
+  - "Multiply position m by each θᵢ to get an angle — the angle grows linearly with position"
+  - "Rotate every pair by its angle using cos and sin — a norm-preserving position encoding"
+  - "Apply to queries and keys only, not values — only the score q·k needs relative position"
+code: |
+  import numpy as np
+
+  def rope(x, base=10000.0):
+      T, d = x.shape
+      theta = base ** (-np.arange(0, d, 2) / d)
+      ang = np.arange(T)[:, None] * theta[None, :]
+      cos, sin = np.cos(ang), np.sin(ang)
+      x1, x2 = x[:, 0::2], x[:, 1::2]
+      out = np.empty_like(x)
+      out[:, 0::2] = x1 * cos - x2 * sin
+      out[:, 1::2] = x1 * sin + x2 * cos
+      return out
+key_lines: [6, 10, 11]
+time: "O(T·d) to rotate T vectors of width d"
+space: "O(T·d) for the rotated copy"
+when_to_use: |
+  Decoder language models and long-context models that want relative
+  position information without a learned table; used in many open LLMs.
+when_not_to_use: |
+  Cases where absolute position matters more than offsets, or when the
+  head width is odd. Beyond the trained length it needs rescaling
+  methods to extrapolate.
+why_it_works: |
+  Treat each coordinate pair as a complex number; rotating by angle φ is
+  multiplication by e^{iφ}. The score is the real part of the product of
+  one rotated number and the conjugate of the other, so the two position
+  angles combine into e^{i(m−n)θ}. The score is thus a function of the
+  content vectors and the offset m−n alone, and rotations preserve norms
+  so magnitudes are untouched.
+math:
+  - "θᵢ = base^(−2i/d),   i = 0 … d/2 − 1"
+  - "Pair i at position m: zᵢ = x₂ᵢ + i·x₂ᵢ₊₁"
+  - "RoPE(x, m)ᵢ = zᵢ · e^{i·m·θᵢ}"
+  - "(x′₂ᵢ, x′₂ᵢ₊₁) = R(mθᵢ)(x₂ᵢ, x₂ᵢ₊₁)"
+  - "⟨RoPE(q, m), RoPE(k, n)⟩ = Re Σᵢ qᵢ · conj(kᵢ) · e^{i(m−n)θᵢ}"
+interview_qa:
+  - q: "Why does RoPE give relative position?"
+    a: "Rotations compose by adding angles and preserve dot products, so the query-key score depends on the rotation by m−n and not on m and n separately."
+  - q: "Why rotate only queries and keys?"
+    a: "Position needs to enter the attention score q·k. Values are just averaged, so rotating them would corrupt the content being passed along."
+  - q: "How does RoPE differ from sinusoidal positional encoding?"
+    a: "Sinusoidal encoding is added to the embeddings once at the input. RoPE multiplies q and k by rotations inside every attention layer and adds no parameters."
+hyperparameters:
+  - "Frequency base (larger bases favour longer contexts)"
+  - "Head width d (must be even)"
+  - "Position scaling factor for context extension"
+pitfalls:
+  - "Pairing convention differs between libraries (adjacent pairs here, split halves in others); weights are not interchangeable"
+  - "Apply it per head, to q and k after the projection and before the dot product"
+  - "In float16 the angles for large positions lose precision; compute cos and sin in float32"
+related: [positional-encoding, self-attention, multi-head-attention]
+patterns: ["Attention and sequences"]

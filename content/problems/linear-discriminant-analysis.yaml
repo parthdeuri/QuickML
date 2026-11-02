@@ -1,0 +1,88 @@
+slug: linear-discriminant-analysis
+title: Linear Discriminant Analysis
+url: https://scikit-learn.org/stable/modules/lda_qda.html
+difficulty: Medium
+area: Classical ML
+topics: [Classification, Dimensionality Reduction, Supervised, Generative]
+summary: |
+  Find the linear projections that push class means far apart while
+  keeping each class tight. The same model doubles as a Gaussian
+  classifier with a shared covariance.
+intuition: |
+  PCA looks for directions of large variance and ignores labels, so the
+  top direction may mix the classes. LDA scores a direction by the ratio
+  of between-class spread to within-class spread, so it picks the
+  direction along which the classes are best separated relative to their
+  own noise. Whitening by the within-class scatter is what makes distances
+  in the projected space meaningful.
+why_it_works: |
+  If each class is Gaussian with the same covariance, the log posterior
+  ratio between classes is linear in x, so a linear boundary is Bayes
+  optimal. Maximising the Fisher ratio is a generalised eigenproblem of
+  the between and within scatter matrices. At most one fewer directions
+  than classes carry signal because the between-class scatter has rank
+  at most that number.
+when_to_use: |
+  Multiclass problems with roughly Gaussian, similarly shaped classes,
+  small datasets where a low-variance linear model helps, and supervised
+  dimensionality reduction before another classifier.
+when_not_to_use: |
+  When class covariances differ a lot (try QDA), when classes are
+  multimodal or non-linear, when features outnumber samples (the
+  within-class scatter is singular, so shrink it), or when you need
+  probabilities that are well calibrated under heavy tails.
+math:
+  - "μ = overall mean, μ_c = mean of class c, n_c = class size"
+  - "Within: S_w = Σ_c Σ_{i∈c} (xᵢ−μ_c)(xᵢ−μ_c)ᵀ"
+  - "Between: S_b = Σ_c n_c (μ_c−μ)(μ_c−μ)ᵀ"
+  - "Fisher: J(w) = wᵀ S_b w / wᵀ S_w w"
+  - "Optimum: S_w⁻¹ S_b w = λ w (top eigenvectors, at most C−1)"
+  - "Scale: wᵀ S_w w = 1 so within-class variance is unit"
+  - "Gaussian view: δ_c(x) = xᵀΣ⁻¹μ_c − ½ μ_cᵀΣ⁻¹μ_c + log π_c"
+approach:
+  - "Compute the class means and the overall mean — the summary of where classes sit"
+  - "Accumulate within-class scatter from deviations to each class mean — the noise to be minimised"
+  - "Accumulate between-class scatter from class means to the overall mean, weighted by class size — the signal to be maximised"
+  - "Solve the eigenproblem of S_w⁻¹ S_b and keep the top k vectors — the directions with the best signal-to-noise ratio"
+  - "Rescale each vector so wᵀ S_w w = 1 — distances in the projection then match the Gaussian classifier"
+  - "Project with X @ W and classify by nearest class mean (equal priors) — the minimal decision rule"
+code: |
+  import numpy as np
+
+  def lda_fit(X, y, k):
+      mu = X.mean(0)
+      d = X.shape[1]
+      Sw, Sb = np.zeros((d, d)), np.zeros((d, d))
+      for c in np.unique(y):
+          Xc = X[y == c]
+          m = Xc.mean(0)
+          Sw += (Xc - m).T @ (Xc - m)
+          g = (m - mu)[:, None]
+          Sb += len(Xc) * g @ g.T
+      vals, V = np.linalg.eig(np.linalg.solve(Sw, Sb))
+      V = V[:, np.argsort(-vals.real)[:k]].real
+      return V / np.sqrt(np.diag(V.T @ Sw @ V))
+key_lines: [10, 12, 13]
+time: "O(n·d² + d³) to build the scatters and solve the eigenproblem"
+space: "O(d²) for the two scatter matrices"
+hyperparameters:
+  - "n_components k — at most min(C−1, d)"
+  - "solver — svd (no explicit covariance), eigen or lsqr (supports shrinkage)"
+  - "shrinkage — regularises S_w when it is ill-conditioned"
+  - "priors — class prior probabilities used by the classifier"
+pitfalls:
+  - "S_w is singular when features outnumber samples or are collinear; this code would fail, so use shrinkage or PCA first"
+  - "Only C−1 meaningful directions exist; extra eigenvectors have zero eigenvalue"
+  - "Directions are defined up to sign, and scaling conventions differ between libraries; compare projections up to sign and scale"
+  - "The shared-covariance Gaussian assumption is strong; outliers and unequal covariances hurt"
+interview_qa:
+  - q: "How does LDA differ from PCA?"
+    a: "PCA is unsupervised and maximises total variance; LDA uses labels and maximises between-class over within-class scatter, so it targets class separation instead."
+  - q: "How many discriminant directions can you get?"
+    a: "At most the number of classes minus one, because the between-class scatter is built from that many independent mean differences."
+  - q: "LDA versus QDA?"
+    a: "LDA assumes one shared covariance, giving linear boundaries and fewer parameters; QDA fits a covariance per class, giving quadratic boundaries but needing more data."
+  - q: "What do you do when S_w is singular?"
+    a: "Shrink it toward a scaled identity, reduce dimension with PCA first, or use the SVD solver, which avoids forming the covariance explicitly."
+related: [pca, logistic-regression, naive-bayes]
+patterns: ["Probabilistic models"]

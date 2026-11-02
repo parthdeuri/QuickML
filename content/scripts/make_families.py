@@ -344,6 +344,70 @@ MEMBERS.update({
  "reinforcement-learning": ["q-learning", "reinforce-policy-gradient"],
 })
 
+F += [
+ dict(id="generative-models", name="Generative models",
+  summary="Learn the data distribution well enough to sample new examples from it.",
+  when_to_use=["You need to create new images, text or other data.",
+               "You want a compact latent representation you can sample from.",
+               "Labels are scarce but raw data is plentiful."],
+  key_idea="Every generative model turns simple noise into data. VAEs do it with an encoder and a decoder trained on a likelihood bound, GANs with a generator trained against a critic, and diffusion models by learning to undo gradual noising.",
+  template="""import numpy as np
+
+def reparameterise(mu, logvar, rng):
+    eps = rng.standard_normal(mu.shape)
+    return mu + np.exp(0.5 * logvar) * eps     # z ~ N(mu, sigma^2)
+
+def noise_step(x0, abar_t, rng):
+    eps = rng.standard_normal(x0.shape)
+    return np.sqrt(abar_t) * x0 + np.sqrt(1 - abar_t) * eps
+""",
+  complexity="Training is usually the expensive part; diffusion sampling needs many network passes.",
+  pitfalls=["GAN training can oscillate or collapse to few modes.", "VAE samples tend to be blurry compared with GANs and diffusion."],
+  aliases=["Generative models"]),
+ dict(id="transfer-and-adaptation", name="Transfer and adaptation",
+  summary="Reuse a trained model by fine-tuning it cheaply or compressing it into a smaller one.",
+  when_to_use=["You have little data for the target task.",
+               "A large pretrained model exists for a related domain.",
+               "You must fit a model into a small memory or latency budget."],
+  key_idea="Pretrained weights already encode useful features, so train only a small part (a head or low-rank update) or let a small student imitate the big teacher's outputs. You keep most of the accuracy for a fraction of the cost.",
+  template="""import numpy as np
+
+def lora_forward(x, W, A, B, alpha, r):
+    return x @ W + (alpha / r) * (x @ A) @ B   # W frozen
+
+def distill_loss(student_logits, teacher_logits, T=2.0):
+    def sm(z):
+        e = np.exp((z - z.max(-1, keepdims=True)) / T)
+        return e / e.sum(-1, keepdims=True)
+    p, q = sm(teacher_logits), sm(student_logits)
+    return np.sum(p * (np.log(p) - np.log(q)), -1).mean() * T * T
+""",
+  complexity="LoRA trains O(r·(d_in + d_out)) parameters per layer instead of O(d_in·d_out).",
+  pitfalls=["Fine-tuning with too large a learning rate destroys pretrained features.", "A student cannot exceed what the teacher's outputs reveal."],
+  aliases=["Transfer and adaptation"]),
+]
+MEMBERS.update({
+ "generative-models": ["autoencoder", "vae-reparameterization", "gan-minimax-loss", "diffusion-forward-process"],
+ "transfer-and-adaptation": ["transfer-learning-fine-tuning", "lora-low-rank-adaptation", "knowledge-distillation"],
+})
+EXTRA = {
+ "convolution-and-vision": ["receptive-field", "depthwise-separable-convolution", "transposed-convolution", "data-augmentation"],
+ "regularisation": ["data-augmentation", "label-smoothing"],
+ "gradient-optimisation": ["gradient-clipping", "momentum-sgd"],
+ "attention-and-sequences": ["causal-masking", "transformer-block", "rotary-position-embedding", "kv-cache", "hidden-markov-forward"],
+ "text-processing": ["top-k-top-p-sampling", "perplexity", "cosine-similarity-embeddings"],
+ "information-theoretic-losses": ["focal-loss", "label-smoothing"],
+ "tree-ensembles": ["adaboost"],
+ "probabilistic-models": ["linear-discriminant-analysis", "hidden-markov-forward", "metropolis-hastings"],
+ "linear-models": ["kernel-trick-rbf"],
+ "dimensionality-reduction": ["matrix-factorization-recommender"],
+ "classification-metrics": ["multiclass-metrics"],
+ "validation-hygiene": ["ab-test-significance", "stratified-split"],
+ "reinforcement-learning": ["value-iteration"],
+}
+for _k, _v in EXTRA.items():
+    MEMBERS[_k] = MEMBERS[_k] + [x for x in _v if x not in MEMBERS[_k]]
+
 KEYS = ["id", "name", "order", "summary", "when_to_use", "key_idea",
         "template", "complexity", "pitfalls", "problems", "aliases"]
 

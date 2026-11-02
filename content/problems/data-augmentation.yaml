@@ -1,0 +1,73 @@
+slug: data-augmentation
+title: Data Augmentation
+url: https://d2l.ai/chapter_computer-vision/image-augmentation.html
+difficulty: Easy
+area: Vision
+topics: [Regularisation, Images, Invariance]
+summary: |
+  Create new training examples on the fly by applying random,
+  label-preserving transformations such as flips and crops to the
+  existing images.
+intuition: |
+  A flipped or slightly shifted cat is still a cat, so each random
+  transform shows the model the same label under a new appearance.
+  This teaches the invariances you care about without collecting more
+  data, and it makes memorising exact pixel patterns much harder.
+  Normalisation is applied last, with fixed statistics, so training
+  and test inputs are on the same scale.
+why_it_works: |
+  Augmentation enlarges the effective training distribution along
+  directions where the true label does not change, which acts as a
+  data-dependent regulariser and reduces variance. It only helps if
+  the transform really preserves the label; a flipped digit or a
+  crop that removes the object injects label noise.
+when_to_use: |
+  Small or medium image datasets and any model prone to overfitting,
+  with transforms matched to the task's real invariances.
+when_not_to_use: |
+  Not on validation or test data (only deterministic preprocessing
+  there), and not with transforms that change the label such as
+  flipping text or digits.
+math:
+  - "Flip: x'[c,i,j] = x[c,i,W−1−j]  with probability 0.5"
+  - "Crop: x'[c,i,j] = x[c,t+i,l+j],  t, l drawn at random"
+  - "Normalise: x''[c] = (x'[c] − μ_c) / σ_c  per channel"
+  - "Label unchanged: y' = y"
+approach:
+  - "Draw the random decisions (flip or not, crop offsets) — each epoch sees a different version"
+  - "Flip the width axis when the coin says so — mirror symmetry preserves most labels"
+  - "Slice a random crop of the target size — shifts and rescales what the model sees"
+  - "Subtract the channel mean and divide by the channel std — same scaling at train and test"
+code: |
+  import numpy as np
+
+  def augment(x, rng, size, mean, std):
+      # x: (C, H, W) image; returns (C, size, size)
+      if rng.random() < 0.5:
+          x = x[:, :, ::-1]
+      top = rng.integers(0, x.shape[1] - size + 1)
+      left = rng.integers(0, x.shape[2] - size + 1)
+      x = x[:, top:top + size, left:left + size]
+      return (x - mean[:, None, None]) / std[:, None, None]
+key_lines: [6, 9, 10]
+time: "O(C·size²) per image"
+space: "O(C·size²) for the output; flips and crops are views"
+hyperparameters:
+  - "Flip probability"
+  - "Crop size (and padding or scale range in practice)"
+  - "Strength of colour or geometric jitter (not modelled here)"
+  - "Normalisation mean and std"
+pitfalls:
+  - "Augmenting validation or test data hides the true generalisation"
+  - "Transforms that change the label (flipped digits, over-aggressive crops) add noise"
+  - "Normalise with training statistics, not per-batch statistics"
+  - "This sketch only flips, crops and normalises; real pipelines add scale, rotation and colour changes"
+interview_qa:
+  - q: "Why does augmentation reduce overfitting?"
+    a: "It makes the model see many label-preserving variants of each image, so it cannot rely on exact pixels and learns the intended invariances."
+  - q: "Should you augment at test time?"
+    a: "Normally no, only deterministic preprocessing; test-time augmentation is a separate technique that averages predictions."
+  - q: "How do you choose augmentations?"
+    a: "Pick transforms the label is truly invariant to in your domain and validate that they help."
+related: [convolution-2d, dropout, feature-scaling]
+patterns: ["Regularisation", "Convolution and vision"]

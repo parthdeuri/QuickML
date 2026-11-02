@@ -29,5 +29,6 @@ problems:
 - roc-auc
 - probability-calibration
 - class-imbalance
+- multiclass-metrics
 aliases:
 - Classification metrics

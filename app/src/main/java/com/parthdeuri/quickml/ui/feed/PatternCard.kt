@@ -338,7 +338,7 @@ private fun ProblemsTab(problems: List<PatternProblemRow>, onOpenProblem: (Strin
             ) {
                 Icon(
                     imageVector = if (row.solved) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircle,
-                    contentDescription = if (row.solved) "Solved" else "Not solved",
+                    contentDescription = if (row.solved) "Learned" else "Not learned",
                     tint = if (row.solved) colors.accent else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp)
                 )

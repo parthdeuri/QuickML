@@ -29,5 +29,7 @@ problems:
 - data-leakage
 - hyperparameter-search
 - concept-drift
+- ab-test-significance
+- stratified-split
 aliases:
 - Validation hygiene

@@ -1,6 +1,91 @@
 {
- "contentVersion": 3,
+ "contentVersion": 4,
  "problems": [
+  {
+   "slug": "ab-test-significance",
+   "title": "A/B Test Significance (Two-Proportion z-Test)",
+   "platform": "MLOps",
+   "url": "https://en.wikipedia.org/wiki/Two-proportion_Z-test",
+   "difficulty": "Medium",
+   "topics": [
+    "Experimentation",
+    "Hypothesis Testing",
+    "A/B Testing",
+    "Statistics"
+   ],
+   "patterns": [
+    "Validation hygiene"
+   ],
+   "summary": "Decide whether two conversion rates differ by more than chance with a pooled two-proportion z-test, and plan how many users each arm needs before the experiment starts.",
+   "bruteForce": "Small counts (use Fisher's exact test), continuous metrics (use a t-test or bootstrap), repeated peeking at results without a sequential method, or users that are not independent (clustering, network effects).",
+   "intuition": "Under the null hypothesis both arms share one true rate, so the observed gap is just sampling noise whose size is known from the binomial variance. Dividing the gap by that noise gives a z-score that says how many standard errors apart the arms are. Sample size works the other way round: the smaller the effect you want to detect, the more users you need, growing with the inverse square of that effect.",
+   "whyItWorks": "For large samples the sample proportions are approximately normal by the central limit theorem, so the standardised difference is approximately standard normal under the null. The pooled rate estimates the common variance under that null. The sample-size formula comes from requiring the gap to clear the critical value under the null while still being detected with the desired power under the alternative.",
+   "approach": [
+    "Compute each arm's observed rate and the pooled rate — the pooled rate is the estimate under the null",
+    "Form the standard error with the pooled variance — the noise expected if there is no true difference",
+    "Divide the observed difference by it to get z — how many standard errors apart the arms are",
+    "Convert z to a two-sided p-value with the normal tail — evidence against the null",
+    "Report a confidence interval with unpooled variance — shows the plausible size of the effect, not just significance",
+    "Before the test, size each arm from the minimum detectable effect, significance and power — avoids underpowered experiments"
+   ],
+   "time": "O(1) for the test and the sample-size formula",
+   "space": "O(1)",
+   "solution": "from math import ceil, erfc, sqrt\n\ndef two_prop_z(x1, n1, x2, n2):\n    p1, p2 = x1 / n1, x2 / n2\n    p = (x1 + x2) / (n1 + n2)\n    se = sqrt(p * (1 - p) * (1 / n1 + 1 / n2))\n    z = (p2 - p1) / se\n    pval = erfc(abs(z) / sqrt(2))\n    se_d = sqrt(p1 * (1 - p1) / n1 + p2 * (1 - p2) / n2)\n    ci = (p2 - p1 - 1.96 * se_d, p2 - p1 + 1.96 * se_d)\n    return z, pval, ci\n\ndef sample_size(p, delta, za=1.96, zb=0.84):\n    var = p * (1 - p) + (p + delta) * (1 - p - delta)\n    return ceil((za + zb) ** 2 * var / delta ** 2)",
+   "keyLines": [
+    6,
+    7,
+    8
+   ],
+   "dryRun": [
+    "p̂₁ = x₁/n₁,  p̂₂ = x₂/n₂,  pooled p̂ = (x₁+x₂)/(n₁+n₂)",
+    "Null SE: √( p̂(1−p̂)(1/n₁ + 1/n₂) )",
+    "z = (p̂₂ − p̂₁) / SE_null",
+    "Two-sided p-value: p = 2(1 − Φ(|z|)) = erfc(|z|/√2)",
+    "CI: (p̂₂−p̂₁) ± z_{α/2} √( p̂₁(1−p̂₁)/n₁ + p̂₂(1−p̂₂)/n₂ )",
+    "Per-arm n = (z_{α/2}+z_β)² [p₁(1−p₁)+p₂(1−p₂)] / δ²",
+    "δ = p₂ − p₁ is the minimum detectable effect"
+   ],
+   "description": "Comparing binary outcomes such as clicks or conversions between a control and a treatment with independent users, enough successes and failures in each arm, and a fixed analysis time decided in advance.",
+   "examples": [
+    {
+     "input": "What does a p-value mean in an A/B test?",
+     "output": "It is the probability of seeing a difference at least this large if the two arms truly had the same rate; it is not the probability that the treatment is better.",
+     "explanation": ""
+    },
+    {
+     "input": "Why pool the rates for the test statistic?",
+     "output": "The null hypothesis says there is one common rate, so the pooled estimate is the best variance estimate under that null; the confidence interval uses unpooled variances because it describes the actual difference.",
+     "explanation": ""
+    },
+    {
+     "input": "What happens if you peek at the results every day?",
+     "output": "Each look is another chance for a spurious significant result, so the overall false-positive rate rises well above α; use a fixed horizon or a sequential or alpha-spending design.",
+     "explanation": ""
+    },
+    {
+     "input": "How does sample size scale with effect size?",
+     "output": "Inversely with the square of the minimum detectable effect, so detecting half the effect needs about four times as many users.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Significance level α — false-positive rate allowed (two-sided here)",
+    "Power 1−β — chance of detecting the minimum effect",
+    "Minimum detectable effect δ — smallest change worth detecting",
+    "Baseline rate p — needed for the variance"
+   ],
+   "edgeCases": [
+    "Peeking and stopping when p dips below α inflates false positives; fix the sample size or use sequential tests",
+    "The normal approximation needs enough successes and failures in each arm",
+    "Testing many metrics or variants without correction raises the chance of a false win",
+    "The constants 1.96 and 0.84 are rounded critical values for α=0.05 two-sided and 80% power; pass other values for other settings, and check the interval for practical size, not just significance"
+   ],
+   "related": [
+    "bayes-theorem",
+    "cross-validation",
+    "concept-drift"
+   ]
+  },
   {
    "slug": "activation-functions",
    "title": "Activation Functions",
@@ -73,6 +158,88 @@
     "backpropagation",
     "mlp-forward-pass",
     "softmax-cross-entropy"
+   ]
+  },
+  {
+   "slug": "adaboost",
+   "title": "AdaBoost (Discrete, Decision Stumps)",
+   "platform": "Classical ML",
+   "url": "https://en.wikipedia.org/wiki/AdaBoost",
+   "difficulty": "Medium",
+   "topics": [
+    "Ensembles",
+    "Boosting",
+    "Classification"
+   ],
+   "patterns": [
+    "Tree ensembles"
+   ],
+   "summary": "Build a strong classifier as a weighted vote of weak ones, training each new stump on the data re-weighted to emphasise earlier mistakes.",
+   "bruteForce": "With noisy or mislabelled data, since the exponential loss keeps raising the weight of bad points and the ensemble chases them. Also when you need calibrated probabilities or very large datasets (gradient boosting libraries are faster and more flexible).",
+   "intuition": "A stump alone is barely better than guessing, but different stumps can be wrong on different points. AdaBoost keeps a weight on every sample and, after each round, raises the weight of the points just misclassified so the next weak learner is forced to fix them. Stumps that do well get a larger say in the final vote.",
+   "whyItWorks": "AdaBoost is stagewise minimisation of the exponential loss over additive models. Given the current ensemble, the best new weak learner minimises the weighted error, and the optimal vote weight for it has the closed form of half the log odds of that error. The training error of the ensemble falls exponentially as long as every learner beats chance on the reweighted data.",
+   "approach": [
+    "Start with uniform sample weights — every point matters equally at first",
+    "Search every feature, threshold and sign for the stump with the smallest weighted error — the best weak learner for the current weights",
+    "Set the vote weight α = ½ log((1−ε)/ε) — accurate stumps get larger votes, chance-level ones get none",
+    "Multiply each weight by exp(−α y h(x)) and renormalise — mistakes grow, hits shrink",
+    "Repeat for T rounds and store (α, stump) pairs — the ensemble",
+    "Predict the sign of the α-weighted sum of stump outputs — a weighted majority vote"
+   ],
+   "time": "O(T·d·n²) as written (O(T·d·n log n) with sorted splits)",
+   "space": "O(n + T) for the weights and the stored stumps",
+   "solution": "import numpy as np\n\ndef stump(X, y, w):\n    best = (np.inf, 0, 0.0, 1)\n    for j in range(X.shape[1]):\n        for t in np.unique(X[:, j])[:-1]:\n            for s in (1, -1):\n                p = np.where(X[:, j] <= t, s, -s)\n                e = w[p != y].sum()\n                if e < best[0]:\n                    best = (e, j, t, s)\n    return best\n\ndef adaboost(X, y, T=20):\n    w = np.full(len(y), 1 / len(y))\n    model = []\n    for _ in range(T):\n        e, j, t, s = stump(X, y, w)\n        a = 0.5 * np.log((1 - e) / max(e, 1e-12))\n        p = np.where(X[:, j] <= t, s, -s)\n        w = w * np.exp(-a * y * p)\n        w /= w.sum()\n        model.append((a, j, t, s))\n    return model\n\ndef predict(model, X):\n    f = np.zeros(len(X))\n    for a, j, t, s in model:\n        f += a * np.where(X[:, j] <= t, s, -s)\n    return np.sign(f)",
+   "keyLines": [
+    9,
+    19,
+    21
+   ],
+   "dryRun": [
+    "Weights: wᵢ = 1/n initially, Σᵢ wᵢ = 1",
+    "Weighted error: ε = Σᵢ wᵢ [h(xᵢ) ≠ yᵢ]",
+    "Vote weight: α = ½ log((1 − ε) / ε)",
+    "Update: wᵢ ← wᵢ exp(−α yᵢ h(xᵢ)), then renormalise",
+    "Model: F(x) = Σₜ αₜ hₜ(x), prediction ŷ = sign F(x)",
+    "Stump: h(x) = s if x_j ≤ t else −s, labels yᵢ ∈ {−1, +1}"
+   ],
+   "description": "Tabular classification with clean labels where a simple weak learner is available, as a fast strong baseline, and to learn boosting before moving to gradient boosting.",
+   "examples": [
+    {
+     "input": "How does AdaBoost reweight samples?",
+     "output": "It multiplies the weight of each sample by exp(−α y h(x)): misclassified points are scaled up, correct ones scaled down, then all weights are renormalised.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is a weak learner enough?",
+     "output": "The training error bound shrinks multiplicatively each round whenever the learner is even slightly better than chance on the current weights.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is AdaBoost sensitive to noise?",
+     "output": "The exponential loss grows quickly for misclassified points, so mislabelled samples receive ever larger weights and the ensemble bends to fit them.",
+     "explanation": ""
+    },
+    {
+     "input": "How is AdaBoost related to gradient boosting?",
+     "output": "It is gradient boosting with the exponential loss; gradient boosting generalises the idea to arbitrary differentiable losses.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of rounds T — more rounds fit more; use early stopping on validation data",
+    "Weak learner depth — stumps here, shallow trees are common",
+    "Learning rate — shrinks each vote to slow overfitting (fixed at one here)"
+   ],
+   "edgeCases": [
+    "Labels must be −1 and +1 in this code; sklearn takes any labels",
+    "Label noise and outliers get exponentially up-weighted and degrade the model",
+    "An error of exactly zero would give an infinite vote weight, so the code clips the error",
+    "The stump search here is the slow quadratic version; sort once per feature in practice"
+   ],
+   "related": [
+    "gradient-boosting",
+    "decision-tree",
+    "random-forest"
    ]
   },
   {
@@ -163,7 +330,8 @@
     "Dimensionality Reduction"
    ],
    "patterns": [
-    "Dimensionality reduction"
+    "Dimensionality reduction",
+    "Generative models"
    ],
    "summary": "Train a network to reproduce its input after squeezing it through a narrow bottleneck, so the bottleneck holds a compressed code.",
    "bruteForce": "If a linear projection is enough, PCA is exact and needs no training. A bottleneck-free autoencoder can learn the identity and nothing useful, and it is not a proper generative model.",
@@ -687,6 +855,80 @@
    ]
   },
   {
+   "slug": "causal-masking",
+   "title": "Causal Masking in Attention",
+   "platform": "NLP",
+   "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Transformers",
+    "Attention",
+    "Language Modeling"
+   ],
+   "patterns": [
+    "Attention and sequences"
+   ],
+   "summary": "Set the attention scores for future positions to minus infinity before the softmax, so each token mixes only itself and earlier tokens.",
+   "bruteForce": "Bidirectional encoders such as BERT, where each token should see the whole sequence. For padding, use a separate key-padding mask instead.",
+   "intuition": "A language model is trained to predict token t+1 from tokens up to t, so if position t could see later tokens it would simply copy the answer. Masking the upper triangle of the score matrix makes every row a distribution over the past only, which lets one forward pass train all next-token predictions in parallel without leaking the future.",
+   "whyItWorks": "After the softmax a −∞ score becomes a weight of exactly zero, so the output at position t is a function of Q[t] and of K, V rows up to t only. The diagonal is kept, so every row has at least one finite score and the softmax is well defined. Because future tokens contribute nothing, changing them cannot change earlier outputs.",
+   "approach": [
+    "Compute raw scores Q Kᵀ / √d — the usual scaled dot-product similarities",
+    "Build a boolean matrix that is true above the diagonal — marks every (query, future key) pair",
+    "Replace those scores with −∞ — exp(−∞) is exactly 0 after the softmax",
+    "Apply the softmax along each row — each row sums to 1 over visible keys only",
+    "Multiply by V — each output is a mix of past and current values"
+   ],
+   "time": "O(T²·d) for length T and width d",
+   "space": "O(T²) for the score matrix",
+   "solution": "import numpy as np\n\ndef softmax(s):\n    e = np.exp(s - s.max(axis=-1, keepdims=True))\n    return e / e.sum(axis=-1, keepdims=True)\n\ndef causal_attention(Q, K, V):\n    T, d = Q.shape\n    scores = Q @ K.T / np.sqrt(d)\n    future = np.triu(np.ones((T, T), dtype=bool), k=1)\n    scores = np.where(future, -np.inf, scores)\n    A = softmax(scores)\n    return A @ V, A",
+   "keyLines": [
+    10,
+    11,
+    12
+   ],
+   "dryRun": [
+    "S = Q Kᵀ / √d   (T × T)",
+    "Mᵢⱼ = 0 if j ≤ i,  −∞ if j > i",
+    "A = softmax(S + M)   (row-wise)",
+    "Aᵢⱼ = 0 for j > i,   Σⱼ Aᵢⱼ = 1",
+    "Output = A V"
+   ],
+   "description": "Decoder-only language models, the decoder of encoder-decoder models, and any autoregressive generator, during both training and prefill.",
+   "examples": [
+    {
+     "input": "Why mask before the softmax rather than zero the weights after?",
+     "output": "Zeroing after the softmax leaves rows that no longer sum to 1 and still lets the future affect the normaliser. Masking scores with −∞ gives exact zeros and a correct normalisation.",
+     "explanation": ""
+    },
+    {
+     "input": "How does one forward pass train every position at once?",
+     "output": "With the mask, row t only uses tokens up to t, so the loss on every next token can be computed together without the model seeing its own targets.",
+     "explanation": ""
+    },
+    {
+     "input": "How is a causal mask different from a padding mask?",
+     "output": "The causal mask hides future positions and is the same for every sequence; a padding mask hides pad tokens and depends on each sequence's length. They are usually combined.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Mask diagonal offset (k=1 keeps the token itself visible)",
+    "Sliding-window size, if attention is also limited to recent tokens",
+    "Mask value (−∞ or a large negative number)"
+   ],
+   "edgeCases": [
+    "A row that is fully masked gives NaN from the softmax; always keep the diagonal",
+    "Using a large negative number in half precision can overflow; −∞ or the dtype minimum is safer",
+    "This code builds the full T × T matrix; efficient kernels skip the masked blocks entirely"
+   ],
+   "related": [
+    "self-attention",
+    "multi-head-attention",
+    "positional-encoding"
+   ]
+  },
+  {
    "slug": "class-imbalance",
    "title": "Class Imbalance",
    "platform": "MLOps",
@@ -922,6 +1164,79 @@
    ]
   },
   {
+   "slug": "cosine-similarity-embeddings",
+   "title": "Cosine Similarity for Embeddings",
+   "platform": "NLP",
+   "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.cosine_similarity.html",
+   "difficulty": "Easy",
+   "topics": [
+    "Embeddings",
+    "Retrieval",
+    "Similarity"
+   ],
+   "patterns": [
+    "Text processing"
+   ],
+   "summary": "Compare two embedding vectors by the cosine of the angle between them, ignoring their lengths, and use it to rank nearest neighbours.",
+   "bruteForce": "When vector magnitude carries information you want to keep, for example confidence or popularity, or with sparse count data where other measures fit better. Zero vectors have no direction.",
+   "intuition": "Embedding length often reflects things like word frequency or text length rather than meaning, while direction carries the semantics. Dividing the dot product by both norms keeps only direction, and after normalising rows, a whole similarity matrix is a single matrix product.",
+   "whyItWorks": "The dot product equals the product of the norms times the cosine of the angle, so dividing by the norms leaves a pure angle between −1 and 1. For unit vectors the squared Euclidean distance is 2 minus twice the cosine, so ranking by cosine and by Euclidean distance agree once the vectors are normalised. Scaling either vector leaves the value unchanged.",
+   "approach": [
+    "Compute each row's L2 norm — the length to be removed",
+    "Divide each row by its norm, with a small floor — unit vectors, safe for zero rows",
+    "Multiply normalised queries by normalised keys transposed — every dot product is now a cosine",
+    "Sort scores in descending order and take the top k — the nearest neighbours by angle"
+   ],
+   "time": "O(m·n·d) for m queries, n items and width d",
+   "space": "O(m·n) for the similarity matrix",
+   "solution": "import numpy as np\n\ndef cosine_matrix(A, B, eps=1e-12):\n    na = np.linalg.norm(A, axis=1, keepdims=True)\n    nb = np.linalg.norm(B, axis=1, keepdims=True)\n    An = A / np.maximum(na, eps)\n    Bn = B / np.maximum(nb, eps)\n    return An @ Bn.T\n\ndef top_k_neighbors(q, E, k):\n    s = cosine_matrix(q[None, :], E)[0]\n    idx = np.argsort(-s)[:k]\n    return idx, s[idx]",
+   "keyLines": [
+    6,
+    7,
+    8
+   ],
+   "dryRun": [
+    "cos(a, b) = a·b / (‖a‖ ‖b‖)",
+    "Normalise: â = a / max(‖a‖, ε)",
+    "S = Â B̂ᵀ   (all pairwise cosines)",
+    "For unit vectors: ‖â − b̂‖² = 2 − 2 cos(a, b)",
+    "Cosine distance = 1 − cos(a, b)"
+   ],
+   "description": "Semantic search, retrieval for RAG, deduplication and clustering of text embeddings, and any model whose embeddings are trained with a cosine or contrastive objective.",
+   "examples": [
+    {
+     "input": "Why use cosine similarity instead of the raw dot product?",
+     "output": "The dot product grows with vector length, so long vectors look similar to everything. Cosine removes length and compares direction only.",
+     "explanation": ""
+    },
+    {
+     "input": "Is cosine distance a true metric?",
+     "output": "No. 1 − cos can violate the triangle inequality. The angle itself is a metric, and the Euclidean distance between normalised vectors is too.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you speed up cosine search over millions of vectors?",
+     "output": "Normalise once, then maximum inner product search with an approximate index works directly, since cosine becomes a dot product.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Epsilon floor for zero-norm vectors",
+    "Number of neighbours k",
+    "Whether embeddings are pre-normalised"
+   ],
+   "edgeCases": [
+    "Zero vectors divide by zero without the epsilon floor, and then give similarity 0",
+    "A cosine score is not calibrated; thresholds depend on the embedding model",
+    "Full argsort is O(n log n); real systems use partial selection or an approximate index"
+   ],
+   "related": [
+    "word2vec-skipgram",
+    "knn",
+    "pca"
+   ]
+  },
+  {
    "slug": "cross-validation",
    "title": "K-Fold Cross-Validation",
    "platform": "MLOps",
@@ -992,6 +1307,81 @@
    "related": [
     "bias-variance-tradeoff",
     "data-leakage"
+   ]
+  },
+  {
+   "slug": "data-augmentation",
+   "title": "Data Augmentation",
+   "platform": "Vision",
+   "url": "https://d2l.ai/chapter_computer-vision/image-augmentation.html",
+   "difficulty": "Easy",
+   "topics": [
+    "Regularisation",
+    "Images",
+    "Invariance"
+   ],
+   "patterns": [
+    "Regularisation",
+    "Convolution and vision"
+   ],
+   "summary": "Create new training examples on the fly by applying random, label-preserving transformations such as flips and crops to the existing images.",
+   "bruteForce": "Not on validation or test data (only deterministic preprocessing there), and not with transforms that change the label such as flipping text or digits.",
+   "intuition": "A flipped or slightly shifted cat is still a cat, so each random transform shows the model the same label under a new appearance. This teaches the invariances you care about without collecting more data, and it makes memorising exact pixel patterns much harder. Normalisation is applied last, with fixed statistics, so training and test inputs are on the same scale.",
+   "whyItWorks": "Augmentation enlarges the effective training distribution along directions where the true label does not change, which acts as a data-dependent regulariser and reduces variance. It only helps if the transform really preserves the label; a flipped digit or a crop that removes the object injects label noise.",
+   "approach": [
+    "Draw the random decisions (flip or not, crop offsets) — each epoch sees a different version",
+    "Flip the width axis when the coin says so — mirror symmetry preserves most labels",
+    "Slice a random crop of the target size — shifts and rescales what the model sees",
+    "Subtract the channel mean and divide by the channel std — same scaling at train and test"
+   ],
+   "time": "O(C·size²) per image",
+   "space": "O(C·size²) for the output; flips and crops are views",
+   "solution": "import numpy as np\n\ndef augment(x, rng, size, mean, std):\n    # x: (C, H, W) image; returns (C, size, size)\n    if rng.random() < 0.5:\n        x = x[:, :, ::-1]\n    top = rng.integers(0, x.shape[1] - size + 1)\n    left = rng.integers(0, x.shape[2] - size + 1)\n    x = x[:, top:top + size, left:left + size]\n    return (x - mean[:, None, None]) / std[:, None, None]",
+   "keyLines": [
+    6,
+    9,
+    10
+   ],
+   "dryRun": [
+    "Flip: x'[c,i,j] = x[c,i,W−1−j]  with probability 0.5",
+    "Crop: x'[c,i,j] = x[c,t+i,l+j],  t, l drawn at random",
+    "Normalise: x''[c] = (x'[c] − μ_c) / σ_c  per channel",
+    "Label unchanged: y' = y"
+   ],
+   "description": "Small or medium image datasets and any model prone to overfitting, with transforms matched to the task's real invariances.",
+   "examples": [
+    {
+     "input": "Why does augmentation reduce overfitting?",
+     "output": "It makes the model see many label-preserving variants of each image, so it cannot rely on exact pixels and learns the intended invariances.",
+     "explanation": ""
+    },
+    {
+     "input": "Should you augment at test time?",
+     "output": "Normally no, only deterministic preprocessing; test-time augmentation is a separate technique that averages predictions.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you choose augmentations?",
+     "output": "Pick transforms the label is truly invariant to in your domain and validate that they help.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Flip probability",
+    "Crop size (and padding or scale range in practice)",
+    "Strength of colour or geometric jitter (not modelled here)",
+    "Normalisation mean and std"
+   ],
+   "edgeCases": [
+    "Augmenting validation or test data hides the true generalisation",
+    "Transforms that change the label (flipped digits, over-aggressive crops) add noise",
+    "Normalise with training statistics, not per-batch statistics",
+    "This sketch only flips, crops and normalises; real pipelines add scale, rotation and colour changes"
+   ],
+   "related": [
+    "convolution-2d",
+    "dropout",
+    "feature-scaling"
    ]
   },
   {
@@ -1219,6 +1609,155 @@
     "random-forest",
     "gradient-boosting",
     "logistic-regression"
+   ]
+  },
+  {
+   "slug": "depthwise-separable-convolution",
+   "title": "Depthwise Separable Convolution",
+   "platform": "Vision",
+   "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv2d.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Convolutional Networks",
+    "Efficient Models",
+    "Factorisation"
+   ],
+   "patterns": [
+    "Convolution and vision"
+   ],
+   "summary": "Split a standard convolution into a per-channel spatial filter (depthwise) followed by a 1×1 convolution that mixes channels (pointwise).",
+   "bruteForce": "When compute is plentiful and accuracy matters most; the factorised layer is less expressive and depthwise operations can run inefficiently on some hardware despite fewer operations.",
+   "intuition": "A standard convolution does two jobs at once: it looks at spatial neighbourhoods and it mixes channels, with a separate weight for every pair. Factoring these apart gives each channel its own small spatial filter, then mixes channels per pixel. The product of two cheap steps approximates the expensive joint one, and the saving grows with the number of channels and the kernel area.",
+   "whyItWorks": "The factorised layer is a low-rank structure on the full kernel: the spatial pattern is shared across all output channels instead of being learned separately for each. Natural images often have features where spatial and cross-channel structure can be treated separately, so far fewer parameters and multiplications lose little accuracy.",
+   "approach": [
+    "Pad the input like an ordinary convolution — same output-size rules apply",
+    "For each position, take the patch of every channel separately — channels are not mixed yet",
+    "Multiply each channel's patch by that channel's own k×k filter and sum — the depthwise step",
+    "Mix channels at each pixel with a F×C matrix — the pointwise 1×1 step produces F maps"
+   ],
+   "time": "O(N·oH·oW·C·(kH·kW + F))",
+   "space": "O(N·C·oH·oW) for the intermediate maps",
+   "solution": "import numpy as np\n\ndef depthwise_separable(x, dw, pw, stride=1, pad=0):\n    # x: (N,C,H,W)  dw: (C,kh,kw)  pw: (F,C)\n    x = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)))\n    n, c, h, w = x.shape\n    _, kh, kw = dw.shape\n    oh = (h - kh) // stride + 1\n    ow = (w - kw) // stride + 1\n    mid = np.zeros((n, c, oh, ow))\n    for i in range(oh):\n        for j in range(ow):\n            r, s = i * stride, j * stride\n            patch = x[:, :, r:r + kh, s:s + kw]\n            mid[:, :, i, j] = (patch * dw).sum((2, 3))\n    return np.einsum(\"nchw,fc->nfhw\", mid, pw)",
+   "keyLines": [
+    14,
+    15
+   ],
+   "dryRun": [
+    "Depthwise: m[n,c,i,j] = Σ_u Σ_v d[c,u,v] · x[n,c,si+u,sj+v]",
+    "Pointwise: out[n,f,i,j] = Σ_c p[f,c] · m[n,c,i,j]",
+    "Standard parameters: F·C·k²;  separable: C·k² + F·C",
+    "Cost ratio (params): 1/F + 1/k²"
+   ],
+   "description": "Mobile and edge models (MobileNet, Xception, EfficientNet) where parameters and compute are limited.",
+   "examples": [
+    {
+     "input": "How does a depthwise separable convolution save parameters?",
+     "output": "It uses C·k² spatial weights plus F·C mixing weights instead of F·C·k² for the full kernel.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the depthwise step do?",
+     "output": "It filters each input channel independently with its own spatial kernel, so it mixes no information across channels.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the pointwise step do?",
+     "output": "A 1×1 convolution that linearly combines channels at every position, producing the output channels.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Kernel size of the depthwise filter",
+    "Stride and padding",
+    "Output channels F of the pointwise layer",
+    "Depth multiplier (not modelled; this uses one filter per channel)"
+   ],
+   "edgeCases": [
+    "Fewer multiply-adds do not always mean faster inference; memory-bound depthwise kernels can be slow",
+    "Normalisation and a nonlinearity between the two steps matter in real blocks; this sketch has none",
+    "Biases are omitted in this sketch",
+    "Compare parameter counts with equal accuracy, not with equal width"
+   ],
+   "related": [
+    "convolution-2d",
+    "receptive-field",
+    "residual-connections"
+   ]
+  },
+  {
+   "slug": "diffusion-forward-process",
+   "title": "Diffusion Forward (Noising) Process",
+   "platform": "Deep Learning",
+   "url": "https://arxiv.org/abs/2006.11239",
+   "difficulty": "Hard",
+   "topics": [
+    "Generative Models",
+    "Diffusion",
+    "Noise Schedules"
+   ],
+   "patterns": [
+    "Generative models"
+   ],
+   "summary": "Gradually turn data into Gaussian noise by adding a little noise at each step, and jump straight to any step t with one closed-form sample.",
+   "bruteForce": "Sampling new data, which needs the learned reverse process. The forward process alone is fixed and has no parameters to learn.",
+   "intuition": "Each noising step shrinks the signal slightly and adds fresh Gaussian noise, and a chain of Gaussian steps is itself Gaussian. Their combined effect collapses into a single draw with a scaled copy of the data plus noise, so training can pick a random t and corrupt x₀ in one shot instead of simulating t steps.",
+   "whyItWorks": "Each step maps x to a Gaussian with mean √(1−β)·x and variance β. A Gaussian pushed through a linear map plus independent Gaussian noise stays Gaussian, so the mean shrinks by √(1−βₜ) each step and the variance obeys v ← (1−βₜ)·v + βₜ. Solving these recursions gives mean √ᾱₜ x₀ and variance 1 − ᾱₜ, and variance one is preserved at the noise limit. This code uses a linear schedule; other schedules are common.",
+   "approach": [
+    "Choose a noise schedule β₁ … β_T — how much noise each step adds",
+    "Form ᾱₜ as the running product of (1 − βₜ) — the fraction of signal variance that survives to step t",
+    "Draw ε ~ N(0, I) — the only randomness",
+    "Output √ᾱₜ · x₀ + √(1 − ᾱₜ) · ε — a sample of q(xₜ | x₀) in one step",
+    "Optionally iterate √(1−βₜ) x + √βₜ ε — the same distribution by single steps"
+   ],
+   "time": "O(d) per sample at any t, versus O(t·d) by iterating",
+   "space": "O(T) for the schedule and O(d) per sample",
+   "solution": "import numpy as np\n\ndef make_schedule(T, b0=1e-4, b1=0.02):\n    betas = np.linspace(b0, b1, T)\n    return betas, np.cumprod(1 - betas)\n\ndef q_sample(x0, t, abar, eps):\n    return np.sqrt(abar[t]) * x0 + np.sqrt(1 - abar[t]) * eps\n\ndef q_step(x, t, betas, eps):\n    return np.sqrt(1 - betas[t]) * x + np.sqrt(betas[t]) * eps",
+   "keyLines": [
+    5,
+    8,
+    11
+   ],
+   "dryRun": [
+    "q(xₜ | xₜ₋₁) = N(√(1−βₜ) xₜ₋₁, βₜ I)",
+    "αₜ = 1 − βₜ,   ᾱₜ = Πₛ≤ₜ αₛ",
+    "q(xₜ | x₀) = N(√ᾱₜ x₀, (1 − ᾱₜ) I)",
+    "xₜ = √ᾱₜ x₀ + √(1 − ᾱₜ) ε,   ε ~ N(0, I)",
+    "Recursions: mₜ = √αₜ mₜ₋₁,   vₜ = αₜ vₜ₋₁ + βₜ",
+    "x₀ = (xₜ − √(1 − ᾱₜ) ε) / √ᾱₜ",
+    "SNR(t) = ᾱₜ / (1 − ᾱₜ)"
+   ],
+   "description": "Building the training pairs for denoising diffusion models, where a random t and fresh noise corrupt each clean example, and analysing a noise schedule such as its signal-to-noise ratio.",
+   "examples": [
+    {
+     "input": "Why can we sample xₜ directly from x₀?",
+     "output": "Each step is Gaussian and linear in the previous state, so composing t of them gives one Gaussian with mean √ᾱₜ x₀ and variance 1 − ᾱₜ.",
+     "explanation": ""
+    },
+    {
+     "input": "Why scale the signal by √(1−βₜ) instead of only adding noise?",
+     "output": "The shrinkage keeps the total variance bounded, so the chain ends near a standard normal instead of growing without limit.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the network learn in DDPM?",
+     "output": "It predicts the noise ε from xₜ and t, which is equivalent to estimating x₀ using the closed-form relation between the two.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of steps T",
+    "Schedule endpoints β₁ and β_T, or the schedule family (linear, cosine)",
+    "Data scaling, usually to [−1, 1]"
+   ],
+   "edgeCases": [
+    "Indexing off by one: array position t here is step t+1 of the maths",
+    "The final ᾱ_T must be near zero or the terminal distribution is not standard normal",
+    "The equivalence with iterating holds in distribution, not sample by sample for the same ε"
+   ],
+   "related": [
+    "vae-reparameterization",
+    "autoencoder",
+    "entropy-kl-divergence"
    ]
   },
   {
@@ -1526,6 +2065,157 @@
    ]
   },
   {
+   "slug": "focal-loss",
+   "title": "Focal Loss",
+   "platform": "Deep Learning",
+   "url": "https://docs.pytorch.org/vision/stable/generated/torchvision.ops.sigmoid_focal_loss.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Loss Functions",
+    "Class Imbalance",
+    "Object Detection"
+   ],
+   "patterns": [
+    "Information-theoretic losses"
+   ],
+   "summary": "Cross-entropy multiplied by (1 − pₜ)^γ, which down-weights examples the model already classifies confidently so training focuses on hard ones.",
+   "bruteForce": "Balanced problems where plain cross-entropy works, or when labels are noisy: the loss up-weights hard examples, which may be the mislabelled ones. Probabilities from a focal-trained model are also usually less calibrated.",
+   "intuition": "With extreme imbalance, such as thousands of easy background boxes per object, the many easy examples each contribute a tiny loss but their sum swamps the few hard ones. The modulating factor (1 − pₜ)^γ is near zero when the model is right and confident, and near one when it is wrong, so easy examples fade out of the gradient. Setting γ to zero recovers ordinary weighted cross-entropy.",
+   "whyItWorks": "The factor reshapes the per-example loss so confident-correct examples contribute far less, while misclassified ones keep nearly their full cross-entropy. The total gradient is then dominated by informative hard examples instead of the large pool of easy negatives. The α weight separately balances positive and negative classes.",
+   "approach": [
+    "Compute log pₜ stably from the logit with logaddexp — avoids log of zero for confident predictions",
+    "Get pₜ by exponentiating — the probability of the true class",
+    "Compute the class weight αₜ — balances positives against negatives",
+    "Multiply cross-entropy by αₜ·(1 − pₜ)^γ and average — easy examples contribute almost nothing"
+   ],
+   "time": "O(N) for N logits",
+   "space": "O(N) for intermediates",
+   "solution": "import numpy as np\n\ndef focal_loss(z, y, gamma=2.0, alpha=0.25):\n    s = 2 * y - 1\n    logpt = -np.logaddexp(0, -s * z)\n    pt = np.exp(logpt)\n    at = alpha * y + (1 - alpha) * (1 - y)\n    return -(at * (1 - pt) ** gamma * logpt).mean()\n\ndef focal_grad(z, y, gamma=2.0, alpha=0.25):\n    s = 2 * y - 1\n    logpt = -np.logaddexp(0, -s * z)\n    pt = np.exp(logpt)\n    at = alpha * y + (1 - alpha) * (1 - y)\n    g = s * at * (1 - pt) ** gamma\n    return g * (gamma * pt * logpt - (1 - pt)) / z.size",
+   "keyLines": [
+    5,
+    7,
+    15
+   ],
+   "dryRun": [
+    "p = σ(z),  pₜ = p if y = 1 else 1 − p",
+    "αₜ = α if y = 1 else 1 − α",
+    "FL = − αₜ · (1 − pₜ)^γ · log pₜ",
+    "With γ = 0 and α = 0.5: half of binary cross-entropy",
+    "∂FL/∂z = s·αₜ·(1−pₜ)^γ·[γ·pₜ·log pₜ − (1−pₜ)],  s = 2y − 1"
+   ],
+   "description": "Dense detectors (RetinaNet) and other classification problems with heavy class imbalance and many easy negatives.",
+   "examples": [
+    {
+     "input": "What does the (1 − pₜ)^γ factor do?",
+     "output": "It shrinks the loss of well-classified examples, so the few hard examples dominate training.",
+     "explanation": ""
+    },
+    {
+     "input": "How does focal loss differ from class weighting?",
+     "output": "Class weights rebalance by class, while the focal factor rebalances by difficulty, regardless of class.",
+     "explanation": ""
+    },
+    {
+     "input": "What happens when γ = 0?",
+     "output": "It reduces to α-weighted cross-entropy.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Focusing parameter γ",
+    "Class weight α",
+    "Reduction (mean here; sum or per-anchor normalisation in detectors)"
+   ],
+   "edgeCases": [
+    "Binary (sigmoid) form only; the multi-class softmax form is not covered here",
+    "α and γ interact, so tune them together",
+    "Initialise the final bias for the rare class's prior or training can be unstable at the start",
+    "Detectors normalise by the number of positive anchors; this sketch uses a plain mean"
+   ],
+   "related": [
+    "class-imbalance",
+    "softmax-cross-entropy",
+    "iou-and-nms"
+   ]
+  },
+  {
+   "slug": "gan-minimax-loss",
+   "title": "GAN Minimax Loss (Saturating vs Non-Saturating)",
+   "platform": "Deep Learning",
+   "url": "https://arxiv.org/abs/1406.2661",
+   "difficulty": "Hard",
+   "topics": [
+    "Generative Models",
+    "GANs",
+    "Adversarial Training"
+   ],
+   "patterns": [
+    "Generative models"
+   ],
+   "summary": "A discriminator learns to tell real data from generated data with a binary cross-entropy loss, while the generator is trained to make the discriminator fail, either by minimising log(1 − D(G(z))) or by maximising log D(G(z)).",
+   "bruteForce": "When you need stable training or a likelihood: GAN training is notoriously unstable and prone to mode collapse. Diffusion models or VAEs are often easier to train.",
+   "intuition": "The generator is trained only through the discriminator's verdict on its samples. Early in training the discriminator easily rejects fakes, and the original saturating loss then has almost no gradient exactly when the generator most needs a signal. Flipping the target to maximise log D(G(z)) has the same fixed point but a strong gradient when the discriminator is winning.",
+   "whyItWorks": "For a fixed generator the best discriminator is the density ratio of real to total, and plugging it in turns the game into a Jensen-Shannon divergence between real and generated distributions, minimised when they match. The non-saturating loss has the same fixed point but, as the logit of a fake goes very negative, its gradient stays near constant while the saturating gradient shrinks to zero. This code scores logits only; it does not model D or G networks.",
+   "approach": [
+    "Let D output a logit and treat σ(logit) as P(real) — keeps the loss stable in logit space",
+    "D loss is softplus(−logit on real) + softplus(logit on fake) — binary cross-entropy with labels 1 and 0",
+    "Saturating G loss is the negative of the fake term — the minimax game, G minimises log(1 − D(G(z)))",
+    "Non-saturating G loss is softplus(−logit on fake) — cross-entropy with the fake labelled real",
+    "Compare gradients with respect to the fake logit — the saturating one vanishes when D is confident"
+   ],
+   "time": "O(n) for n logits, plus the cost of running G and D",
+   "space": "O(n)",
+   "solution": "import numpy as np\n\ndef softplus(x):\n    return np.logaddexp(0, x)\n\ndef sigmoid(x):\n    return 1 / (1 + np.exp(-x))\n\ndef gan_losses(d_real, d_fake):\n    n = len(d_fake)\n    d_loss = softplus(-d_real).mean() + softplus(d_fake).mean()\n    g_sat = -softplus(d_fake).mean()\n    g_ns = softplus(-d_fake).mean()\n    grad_sat = -sigmoid(d_fake) / n\n    grad_ns = (sigmoid(d_fake) - 1) / n\n    return d_loss, g_sat, g_ns, grad_sat, grad_ns",
+   "keyLines": [
+    11,
+    12,
+    13
+   ],
+   "dryRun": [
+    "D(x) = σ(ℓ(x)),  ℓ = discriminator logit",
+    "L_D = −E[log D(x)] − E[log(1 − D(G(z)))]",
+    "L_G^sat = E[log(1 − D(G(z)))]   (G minimises)",
+    "L_G^ns = −E[log D(G(z))]",
+    "−log σ(ℓ) = softplus(−ℓ),  −log(1 − σ(ℓ)) = softplus(ℓ)",
+    "∂L_G^sat/∂ℓ_f = −σ(ℓ_f)/n,   ∂L_G^ns/∂ℓ_f = (σ(ℓ_f) − 1)/n",
+    "Optimal D* = p_data / (p_data + p_g)"
+   ],
+   "description": "Understanding and implementing adversarial training for image and other generators, and as the starting point for variants such as Wasserstein and hinge-loss GANs.",
+   "examples": [
+    {
+     "input": "Why is the original generator loss called saturating?",
+     "output": "When D confidently rejects a fake, D(G(z)) is near 0 and log(1 − D) is flat there, so the gradient to G is almost zero when G is worst.",
+     "explanation": ""
+    },
+    {
+     "input": "Does the non-saturating loss change the equilibrium?",
+     "output": "No, both are minimised when the generated distribution equals the data. Only the gradient strength away from equilibrium differs; it is a heuristic, not the exact minimax game.",
+     "explanation": ""
+    },
+    {
+     "input": "What is mode collapse?",
+     "output": "The generator maps many inputs to a few outputs that fool D, so it covers only part of the data distribution.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Ratio of discriminator to generator updates",
+    "Learning rates and Adam β₁ for each network",
+    "Latent noise dimension",
+    "Loss variant (saturating, non-saturating, hinge, Wasserstein)"
+   ],
+   "edgeCases": [
+    "Computing log(sigmoid) directly overflows; use softplus on logits as here",
+    "D should be updated with fake samples detached from G's graph",
+    "A very strong D starves G of gradient; balance the two networks"
+   ],
+   "related": [
+    "vae-reparameterization",
+    "softmax-cross-entropy",
+    "logistic-regression"
+   ]
+  },
+  {
    "slug": "gaussian-mixture-em",
    "title": "Gaussian Mixture Model (EM)",
    "platform": "Classical ML",
@@ -1691,6 +2381,80 @@
    ]
   },
   {
+   "slug": "gradient-clipping",
+   "title": "Gradient Clipping",
+   "platform": "Deep Learning",
+   "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.utils.clip_grad_norm_.html",
+   "difficulty": "Easy",
+   "topics": [
+    "Optimisation",
+    "Exploding Gradients",
+    "Stability"
+   ],
+   "patterns": [
+    "Gradient-based optimisation"
+   ],
+   "summary": "Cap the size of the gradient before the optimiser step, either by rescaling the whole gradient to a maximum norm or by clamping each entry to a range.",
+   "bruteForce": "If gradients are already well behaved it does nothing; if the loss spikes constantly, clipping hides a deeper problem such as a too high learning rate or bad initialisation.",
+   "intuition": "A rare, very steep region of the loss can produce a gradient so large that one step throws the weights far away and undoes long training. Clipping by global norm keeps the direction of the gradient and only shrinks its length, so the step stays reasonable. Clipping by value clamps each coordinate and so can change the direction.",
+   "whyItWorks": "Gradient descent is only justified for small steps where the local slope is a good guide. Bounding the gradient norm bounds the step length, which keeps updates inside the region where the linear approximation is trusted. Rescaling by a single global factor leaves the relative size of every parameter's gradient unchanged.",
+   "approach": [
+    "Compute the gradients as usual with backpropagation — clipping acts on finished gradients",
+    "Compute one global norm over all parameter gradients — a single scale keeps their relative sizes",
+    "Form the factor min(1, τ / (norm + ε)) — it is 1 when the gradient is already small",
+    "Multiply every gradient by the factor — shrinks the step without turning it",
+    "Call the optimiser step with the clipped gradients — clipping must come before the update"
+   ],
+   "time": "O(d) for d parameters",
+   "space": "O(d) for the clipped copies (libraries clip in place)",
+   "solution": "import numpy as np\n\ndef clip_by_global_norm(grads, max_norm, eps=1e-6):\n    total = np.sqrt(sum((g ** 2).sum() for g in grads))\n    scale = min(1.0, max_norm / (total + eps))\n    return [g * scale for g in grads], total\n\ndef clip_by_value(grads, c):\n    return [np.clip(g, -c, c) for g in grads]",
+   "keyLines": [
+    4,
+    5,
+    6
+   ],
+   "dryRun": [
+    "Global norm: ‖g‖ = √(Σ_p ‖g_p‖²) over all parameters p",
+    "Scale: c = min(1, τ / (‖g‖ + ε))  with threshold τ",
+    "Clip by norm: g_p ← c · g_p  (direction preserved)",
+    "Clip by value: g_p ← clamp(g_p, −κ, κ)  (direction may change)"
+   ],
+   "description": "Recurrent networks, transformers and any training that shows loss spikes or NaNs from occasional huge gradients.",
+   "examples": [
+    {
+     "input": "Why clip by global norm rather than by value?",
+     "output": "Global-norm clipping preserves the gradient direction; value clipping clamps coordinates independently and can bend the direction.",
+     "explanation": ""
+    },
+    {
+     "input": "Does clipping fix vanishing gradients?",
+     "output": "No. It only bounds large gradients; vanishing ones need better architecture, initialisation or normalisation.",
+     "explanation": ""
+    },
+    {
+     "input": "Where in the training loop does clipping go?",
+     "output": "After backward and before optimizer.step (and after unscaling with AMP).",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Max norm τ (or clip value κ)",
+    "Norm type (L2 here; others exist)",
+    "Whether to clip per-parameter or globally"
+   ],
+   "edgeCases": [
+    "Clipping each tensor's norm separately changes the direction of the full gradient",
+    "Clip after unscaling when using mixed-precision loss scaling",
+    "A threshold that is too low turns training into a slow normalised-gradient method",
+    "Log the pre-clip norm; it shows how often clipping fires"
+   ],
+   "related": [
+    "gradient-descent",
+    "backpropagation",
+    "rnn-cell"
+   ]
+  },
+  {
    "slug": "gradient-descent",
    "title": "Gradient Descent",
    "platform": "Math",
@@ -1761,6 +2525,91 @@
    "related": [
     "linear-regression",
     "logistic-regression"
+   ]
+  },
+  {
+   "slug": "hidden-markov-forward",
+   "title": "Hidden Markov Model (Forward Algorithm)",
+   "platform": "Classical ML",
+   "url": "https://en.wikipedia.org/wiki/Forward_algorithm",
+   "difficulty": "Medium",
+   "topics": [
+    "Sequence Models",
+    "Probabilistic",
+    "Dynamic Programming",
+    "HMM"
+   ],
+   "patterns": [
+    "Probabilistic models",
+    "Attention and sequences"
+   ],
+   "summary": "Compute the likelihood of an observation sequence under a hidden Markov model by carrying a running belief over hidden states. Dynamic programming turns a sum over exponentially many state paths into one pass.",
+   "bruteForce": "When the state or observation dependence is long-range (use RNNs or transformers), when states are continuous and non-linear, or when you need the single best state path rather than a likelihood (that is the Viterbi algorithm, which replaces the sum by a max).",
+   "intuition": "The brute-force likelihood adds up the probability of every possible hidden path, which grows exponentially with sequence length. But the future depends on the past only through the current state, so all paths that end in the same state can be merged into one number. The forward vector stores exactly that merged mass per state, and each new observation costs one small matrix-vector product.",
+   "whyItWorks": "The Markov property makes the probability of the next state and symbol depend only on the current state, so the joint sum factorises into nested sums that can be pushed inside each other (the distributive law). The forward variable αₜ(j) is the partial sum over all paths ending in state j. Rescaling αₜ to sum to one at each step avoids numerical underflow, and the log of the scale factors adds up to the exact log likelihood.",
+   "approach": [
+    "Start with α = π ⊙ B[:, o₁] — the joint probability of each first state and the first symbol",
+    "Normalise α by its sum c and store log c — keeps numbers near one so long sequences do not underflow",
+    "Propagate with α @ A — pushes the belief one step through the transition matrix, summing over previous states",
+    "Multiply by the emission column for the new symbol — conditions the belief on what was just observed",
+    "Rescale again and add log c to the running total — the scale factors multiply to the true likelihood",
+    "Return the accumulated log-likelihood — comparable across models for the same sequence"
+   ],
+   "time": "O(T·N²) for T observations and N hidden states",
+   "space": "O(N) for the running vector (O(T·N) if all αₜ are kept for smoothing)",
+   "solution": "import numpy as np\n\ndef forward(pi, A, B, obs):\n    alpha = pi * B[:, obs[0]]\n    c = alpha.sum()\n    alpha, ll = alpha / c, np.log(c)\n    for o in obs[1:]:\n        alpha = (alpha @ A) * B[:, o]\n        c = alpha.sum()\n        alpha = alpha / c\n        ll += np.log(c)\n    return ll",
+   "keyLines": [
+    8,
+    9,
+    11
+   ],
+   "dryRun": [
+    "Model: λ = (π, A, B), Aᵢⱼ = P(zₜ₊₁=j | zₜ=i), Bⱼ(o) = P(o | z=j)",
+    "Likelihood: P(o₁:T) = Σ over paths z₁:T of π(z₁) B(z₁,o₁) Π A B",
+    "Init: α₁(j) = πⱼ Bⱼ(o₁)",
+    "Recursion: αₜ₊₁(j) = [ Σᵢ αₜ(i) Aᵢⱼ ] Bⱼ(oₜ₊₁)",
+    "Result: P(o₁:T) = Σⱼ α_T(j)",
+    "Scaling: cₜ = Σⱼ α̃ₜ(j) before normalising; log P = Σₜ log cₜ",
+    "Cost: O(T·N²) instead of O(N^T) for the path sum"
+   ],
+   "description": "Scoring a sequence under a fitted HMM (speech, gesture, biological sequences, regime switching), model comparison between HMMs, and as the E-step ingredient of Baum-Welch training.",
+   "examples": [
+    {
+     "input": "Why is the forward algorithm polynomial when the path sum is exponential?",
+     "output": "Paths ending in the same state share an identical future, so their probabilities can be merged into one value per state; each step then costs N² work instead of multiplying the number of paths by N.",
+     "explanation": ""
+    },
+    {
+     "input": "How does Viterbi differ from the forward algorithm?",
+     "output": "Forward sums over predecessor states to get a likelihood; Viterbi takes a max and keeps back-pointers to recover the single most probable state path.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you avoid underflow?",
+     "output": "Normalise the forward vector at every step and accumulate the log of the normalisers, or work fully in log-space with log-sum-exp.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the forward pass used for in Baum-Welch?",
+     "output": "Together with the backward pass it gives the posterior probability of each state and transition at each time, which are the expected counts of the E-step.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of hidden states N — chosen by BIC or held-out likelihood",
+    "Initial distribution π, transition matrix A, emission matrix B — learned with Baum-Welch (EM)",
+    "Emission family — discrete table here, Gaussian or mixture for continuous data"
+   ],
+   "edgeCases": [
+    "Without rescaling or log-space, the raw forward probabilities underflow on long sequences",
+    "This code handles discrete emissions with a fixed model; training the parameters needs the backward pass too (Baum-Welch)",
+    "Zero entries in A or B make some sequences impossible, so smooth estimated parameters",
+    "Forward gives the likelihood, not the best state sequence; use Viterbi for decoding"
+   ],
+   "related": [
+    "gaussian-mixture-em",
+    "bayes-theorem",
+    "maximum-likelihood"
    ]
   },
   {
@@ -1989,6 +2838,89 @@
    ]
   },
   {
+   "slug": "kernel-trick-rbf",
+   "title": "Kernel Trick and RBF Kernel Ridge",
+   "platform": "Classical ML",
+   "url": "https://en.wikipedia.org/wiki/Radial_basis_function_kernel",
+   "difficulty": "Medium",
+   "topics": [
+    "Kernel Methods",
+    "Non-linear",
+    "Regression",
+    "Regularisation"
+   ],
+   "patterns": [
+    "Linear models"
+   ],
+   "summary": "Replace dot products by a kernel so a linear method works in a huge implicit feature space. With the RBF kernel and ridge regression this gives a smooth non-linear regressor using only an n by n Gram matrix.",
+   "bruteForce": "Large n, since the Gram matrix costs quadratic memory and the solve cubic time (use random features, Nyström or neural nets), or high-dimensional sparse data where a linear model already works.",
+   "intuition": "Many linear algorithms touch the data only through dot products between points. If you swap each dot product for a kernel k(x, z) that equals a dot product in some richer feature space, you get a non-linear model without ever building those features. The RBF kernel is a similarity that decays with distance, which corresponds to an infinite-dimensional feature space.",
+   "whyItWorks": "By the representer theorem the minimiser of a regularised loss lies in the span of the kernel functions centred on the training points, so the problem reduces to n coefficients. A positive semidefinite kernel is guaranteed (Mercer) to be an inner product in some feature space, and the ridge penalty keeps the solve well conditioned. The bandwidth γ sets how local the similarity is.",
+   "approach": [
+    "Compute squared distances through ‖x‖² + ‖z‖² − 2xᵀz — one matrix product instead of a double loop",
+    "Clip tiny negative distances to zero and apply exp(−γ d²) — rounding can push distances below zero",
+    "Build the training Gram matrix K — it holds all pairwise similarities",
+    "Solve (K + λI) α = y — the ridge term makes the system invertible and controls overfitting",
+    "Predict with the test-versus-train kernel matrix times α — a weighted sum of similarities to training points"
+   ],
+   "time": "O(n²·d) to build the Gram matrix plus O(n³) for the solve",
+   "space": "O(n²) for the Gram matrix",
+   "solution": "import numpy as np\n\ndef rbf(A, B, gamma):\n    d2 = (A ** 2).sum(1)[:, None] + (B ** 2).sum(1) - 2 * A @ B.T\n    return np.exp(-gamma * np.maximum(d2, 0))\n\ndef kernel_ridge(X, y, Xt, gamma, lam):\n    K = rbf(X, X, gamma)\n    alpha = np.linalg.solve(K + lam * np.eye(len(X)), y)\n    return rbf(Xt, X, gamma) @ alpha",
+   "keyLines": [
+    4,
+    5,
+    9
+   ],
+   "dryRun": [
+    "RBF: k(x, z) = exp(−γ ‖x − z‖²)",
+    "Expand: ‖x−z‖² = ‖x‖² + ‖z‖² − 2 xᵀz",
+    "Gram matrix: Kᵢⱼ = k(xᵢ, xⱼ), symmetric and PSD",
+    "Kernel ridge: α = (K + λI)⁻¹ y",
+    "Prediction: f(x) = Σᵢ αᵢ k(x, xᵢ)",
+    "Trick: k(x, z) = φ(x)ᵀ φ(z) without computing φ"
+   ],
+   "description": "Small to medium datasets (up to a few thousand points) with smooth non-linear structure, kernel SVMs and kernel ridge baselines, and Gaussian-process-style regression.",
+   "examples": [
+    {
+     "input": "What is the kernel trick?",
+     "output": "If an algorithm uses data only through inner products, you can replace them with a kernel function that equals an inner product in a richer feature space, getting non-linearity without computing the features.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the RBF bandwidth control?",
+     "output": "How fast similarity falls with distance: large γ gives very local, wiggly fits that can overfit; small γ gives smooth, nearly linear fits that can underfit.",
+     "explanation": ""
+    },
+    {
+     "input": "What makes a function a valid kernel?",
+     "output": "It must be symmetric and positive semidefinite, meaning every Gram matrix has non-negative eigenvalues (Mercer's condition).",
+     "explanation": ""
+    },
+    {
+     "input": "Kernel ridge versus SVM?",
+     "output": "Both use kernels; kernel ridge uses squared loss and has a closed form with all points contributing, while the SVM's hinge loss yields sparse support vectors via a quadratic program.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Bandwidth γ — large γ is local and can overfit, small γ approaches a linear fit",
+    "Regularisation λ — larger values smooth the fit",
+    "Kernel choice — RBF, polynomial, linear or others",
+    "Feature scaling — the RBF distance is dominated by large-scale features"
+   ],
+   "edgeCases": [
+    "Features must be scaled, otherwise γ means different things per dimension",
+    "Memory and time grow with n², so it does not scale to millions of rows",
+    "This is kernel ridge (squared loss, dense α), not an SVM: no sparse support vectors",
+    "Far from the training data the prediction decays toward zero because the kernel does, so extrapolation is poor"
+   ],
+   "related": [
+    "svm",
+    "ridge-lasso-regularization",
+    "linear-regression"
+   ]
+  },
+  {
    "slug": "knn",
    "title": "k-Nearest Neighbours",
    "platform": "Classical ML",
@@ -2060,6 +2992,227 @@
    "related": [
     "k-means",
     "logistic-regression"
+   ]
+  },
+  {
+   "slug": "knowledge-distillation",
+   "title": "Knowledge Distillation",
+   "platform": "Deep Learning",
+   "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.KLDivLoss.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Model Compression",
+    "Temperature",
+    "KL Divergence"
+   ],
+   "patterns": [
+    "Transfer and adaptation"
+   ],
+   "summary": "Train a small student to match the softened output distribution of a large teacher, in addition to the true labels.",
+   "bruteForce": "When no accurate teacher exists, or the student has too little capacity to follow it, where extra soft-target weight gives little benefit.",
+   "intuition": "A teacher's probabilities say more than the label: a cat image that gets some probability on dog and almost none on truck reveals which classes look alike. Raising the softmax temperature flattens the distribution so these small probabilities become visible and learnable. The student then learns the teacher's similarity structure, not just the right answer.",
+   "whyItWorks": "Soft targets carry far more information per example than one-hot labels, giving a richer gradient signal and acting as a regulariser. Multiplying the soft loss by T² keeps its gradient magnitude comparable to the hard-label loss as the temperature changes, since gradients through the softened softmax scale like 1/T².",
+   "approach": [
+    "Compute teacher and student log-probabilities at temperature T — exposes the small class probabilities",
+    "Compute the KL divergence from teacher to student, averaged over the batch — measures mismatch of the soft distributions",
+    "Compute the ordinary cross-entropy of the student at T = 1 — keeps the student anchored to the labels",
+    "Mix the two with weight α and scale the soft term by T² — balances gradient sizes across temperatures"
+   ],
+   "time": "O(N·K) per batch, plus the teacher's forward pass",
+   "space": "O(N·K) for the log-probabilities",
+   "solution": "import numpy as np\n\ndef log_softmax(z, T=1.0):\n    z = z / T\n    z = z - z.max(1, keepdims=True)\n    return z - np.log(np.exp(z).sum(1, keepdims=True))\n\ndef distill_loss(s, t, y, T=2.0, alpha=0.5):\n    lps, lpt = log_softmax(s, T), log_softmax(t, T)\n    kl = (np.exp(lpt) * (lpt - lps)).sum(1).mean()\n    hard = -log_softmax(s)[np.arange(len(y)), y].mean()\n    return (1 - alpha) * hard + alpha * T * T * kl",
+   "keyLines": [
+    9,
+    10,
+    12
+   ],
+   "dryRun": [
+    "p_T(z)_k = exp(z_k / T) / Σ_j exp(z_j / T)",
+    "Soft loss: KL(p_T(z_teacher) ‖ p_T(z_student))",
+    "Hard loss: CE(softmax(z_student), y)",
+    "L = (1 − α)·hard + α·T²·soft"
+   ],
+   "description": "Compressing a large model or ensemble into a smaller one for deployment, or when unlabelled data can be labelled by a teacher.",
+   "examples": [
+    {
+     "input": "Why use a temperature?",
+     "output": "It flattens the teacher's distribution so the small probabilities on wrong classes become a usable training signal.",
+     "explanation": ""
+    },
+    {
+     "input": "Why multiply the soft loss by T²?",
+     "output": "Gradients through the softened softmax scale like 1/T², so T² keeps the soft and hard terms comparable.",
+     "explanation": ""
+    },
+    {
+     "input": "Which direction of KL is used?",
+     "output": "KL(teacher ‖ student), so the student covers the classes the teacher considers likely.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Temperature T",
+    "Mixing weight α between soft and hard loss",
+    "Student size relative to the teacher",
+    "Whether the teacher's logits are precomputed"
+   ],
+   "edgeCases": [
+    "Forgetting the T² factor makes the soft term vanish at high temperature",
+    "Teacher gradients must not flow; use its outputs as fixed targets",
+    "The teacher must be in eval mode so dropout does not add noise",
+    "This is the logit-matching form; feature and attention distillation are not covered"
+   ],
+   "related": [
+    "softmax-cross-entropy",
+    "entropy-kl-divergence",
+    "label-smoothing"
+   ]
+  },
+  {
+   "slug": "kv-cache",
+   "title": "KV Cache for Autoregressive Decoding",
+   "platform": "NLP",
+   "url": "https://huggingface.co/docs/transformers/kv_cache",
+   "difficulty": "Medium",
+   "topics": [
+    "Transformers",
+    "Inference",
+    "Language Modeling"
+   ],
+   "patterns": [
+    "Attention and sequences"
+   ],
+   "summary": "Store the keys and values of all past tokens, so each new token only computes its own query, key and value and attends over the cache.",
+   "bruteForce": "Training and prompt prefill, which already process all positions in one parallel pass. Bidirectional models have nothing to cache because earlier outputs change when later tokens arrive.",
+   "intuition": "With causal attention, the keys and values of an earlier token never change when later tokens arrive, so recomputing them at every generation step is pure waste. Caching them turns the work for a new token from reprocessing the whole prefix into one projection plus one attention over stored rows, trading memory for speed.",
+   "whyItWorks": "Under a causal mask, token t's key and value depend only on token t and its fixed weights, and its attention output depends only on the keys and values up to t. A new token therefore needs the cached rows plus its own, and the result equals recomputing the full masked attention. Only the floating-point summation order can differ.",
+   "approach": [
+    "Project only the new token to q, k, v — earlier tokens were already projected",
+    "Append k and v to the cache — the cache grows by one row per step",
+    "Score q against all cached keys — gives the attention over the whole prefix",
+    "Softmax the scores and mix cached values — same output as full attention",
+    "Keep the cache for the next step — nothing is recomputed later"
+   ],
+   "time": "O(t·d) per new token at length t, instead of O(t·d²) to reproject the prefix",
+   "space": "O(t·d) per layer and head, growing linearly with length",
+   "solution": "import numpy as np\n\ndef softmax(s):\n    e = np.exp(s - s.max())\n    return e / e.sum()\n\ndef decode_step(x, W, cache):\n    q, k, v = x @ W[\"q\"], x @ W[\"k\"], x @ W[\"v\"]\n    cache[\"K\"] = np.vstack([cache[\"K\"], k])\n    cache[\"V\"] = np.vstack([cache[\"V\"], v])\n    w = softmax(cache[\"K\"] @ q / np.sqrt(len(q)))\n    return w @ cache[\"V\"]\n\ndef new_cache(d):\n    return {\"K\": np.zeros((0, d)), \"V\": np.zeros((0, d))}",
+   "keyLines": [
+    9,
+    10,
+    11
+   ],
+   "dryRun": [
+    "qₜ = xₜ W_q,  kₜ = xₜ W_k,  vₜ = xₜ W_v",
+    "K₁:ₜ = [K₁:ₜ₋₁ ; kₜ],   V₁:ₜ = [V₁:ₜ₋₁ ; vₜ]",
+    "oₜ = softmax(K₁:ₜ qₜ / √d)ᵀ V₁:ₜ",
+    "Cache size = 2 · layers · kv_heads · t · d_head · bytes per value"
+   ],
+   "description": "Any autoregressive generation with a transformer, which is almost every LLM serving stack, to make each step cost proportional to the context length instead of recomputing it.",
+   "examples": [
+    {
+     "input": "Why can we cache keys and values but not queries?",
+     "output": "A query is only used once, at its own step. Later tokens need the earlier tokens' keys and values to attend to, not their queries.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the cost of the KV cache?",
+     "output": "Memory grows linearly with context length, batch size, layers and heads, and often dominates GPU memory in long-context serving.",
+     "explanation": ""
+    },
+    {
+     "input": "How is the cache size reduced in practice?",
+     "output": "Multi-query or grouped-query attention shares keys and values across heads, and quantising or evicting cache entries also helps.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Maximum context length reserved for the cache",
+    "Number of KV heads (multi-head, grouped or multi-query)",
+    "Cache precision (float16, int8, ...)",
+    "Batch size"
+   ],
+   "edgeCases": [
+    "Growing the cache with vstack copies every step; real systems preallocate and write in place",
+    "Position information such as RoPE must use the true absolute position of the new token",
+    "This is one head and one layer; a real model keeps a separate cache for each layer"
+   ],
+   "related": [
+    "self-attention",
+    "multi-head-attention",
+    "beam-search"
+   ]
+  },
+  {
+   "slug": "label-smoothing",
+   "title": "Label Smoothing",
+   "platform": "Deep Learning",
+   "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html",
+   "difficulty": "Easy",
+   "topics": [
+    "Regularisation",
+    "Classification",
+    "Calibration"
+   ],
+   "patterns": [
+    "Regularisation",
+    "Information-theoretic losses"
+   ],
+   "summary": "Replace the one-hot target in cross-entropy by a softened distribution that puts a little probability on every class.",
+   "bruteForce": "When calibrated probabilities from the raw model are needed for downstream decisions, or when the model will serve as a teacher for distillation, where smoothing can discard useful similarity information between classes.",
+   "intuition": "A one-hot target can only be matched by pushing the correct logit infinitely far above the others, which rewards overconfidence and large weights. Spreading a small amount of mass over all classes gives the loss a finite optimum, so the model stops being rewarded for extreme certainty. The cost is that the model can no longer reproduce the training labels with full certainty.",
+   "whyItWorks": "The smoothed loss is a mix of ordinary cross-entropy and a penalty that pulls the predicted distribution toward uniform. That keeps logits bounded and the penultimate-layer clusters tight, which acts as a regulariser and often improves calibration. It is the same as cross-entropy to a target that is (1 − ε) one-hot plus ε uniform.",
+   "approach": [
+    "Compute log-probabilities with a stable log-softmax — avoids overflow and log of zero",
+    "Build the target: ε/K everywhere, then add 1 − ε at the true class — a valid probability vector",
+    "Take the cross-entropy between target and log-probabilities — the usual loss with a soft target",
+    "Average over the batch — gives one scalar to differentiate"
+   ],
+   "time": "O(N·K) for N samples and K classes",
+   "space": "O(N·K) for the target and log-probabilities",
+   "solution": "import numpy as np\n\ndef smoothed_ce(logits, y, eps=0.1):\n    z = logits - logits.max(1, keepdims=True)\n    logp = z - np.log(np.exp(z).sum(1, keepdims=True))\n    n, k = logits.shape\n    t = np.full((n, k), eps / k)\n    t[np.arange(n), y] += 1 - eps\n    return -(t * logp).sum(1).mean()",
+   "keyLines": [
+    5,
+    7,
+    8
+   ],
+   "dryRun": [
+    "Target: q_k = (1 − ε)·1[k = y] + ε / K  for K classes",
+    "log p_k = z_k − log Σ_j exp(z_j)",
+    "Loss = − Σ_k q_k · log p_k",
+    "Equivalent: (1 − ε)·(−log p_y) + ε·mean_k(−log p_k)"
+   ],
+   "description": "Large classifiers (image classification, translation) where labels may be noisy and overconfident predictions hurt generalisation.",
+   "examples": [
+    {
+     "input": "Why does label smoothing help?",
+     "output": "It stops the loss rewarding unbounded logits, which regularises the model and often improves calibration.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the smoothed target?",
+     "output": "(1 − ε) on the true class mixed with a uniform ε/K over all classes.",
+     "explanation": ""
+    },
+    {
+     "input": "How is it related to KL divergence?",
+     "output": "It adds a penalty that pulls predictions toward the uniform distribution, equal to a KL term up to a constant.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Smoothing ε",
+    "Number of classes K (sets how the mass is spread)"
+   ],
+   "edgeCases": [
+    "Too large ε underfits and weakens the signal from the true label",
+    "Some libraries spread ε over K classes, others over K − 1; check the convention",
+    "Smoothed models can give poorer teachers for distillation",
+    "Evaluate accuracy and calibration separately; smoothing can change both"
+   ],
+   "related": [
+    "softmax-cross-entropy",
+    "entropy-kl-divergence",
+    "probability-calibration"
    ]
   },
   {
@@ -2211,6 +3364,91 @@
    ]
   },
   {
+   "slug": "linear-discriminant-analysis",
+   "title": "Linear Discriminant Analysis",
+   "platform": "Classical ML",
+   "url": "https://scikit-learn.org/stable/modules/lda_qda.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Classification",
+    "Dimensionality Reduction",
+    "Supervised",
+    "Generative"
+   ],
+   "patterns": [
+    "Probabilistic models"
+   ],
+   "summary": "Find the linear projections that push class means far apart while keeping each class tight. The same model doubles as a Gaussian classifier with a shared covariance.",
+   "bruteForce": "When class covariances differ a lot (try QDA), when classes are multimodal or non-linear, when features outnumber samples (the within-class scatter is singular, so shrink it), or when you need probabilities that are well calibrated under heavy tails.",
+   "intuition": "PCA looks for directions of large variance and ignores labels, so the top direction may mix the classes. LDA scores a direction by the ratio of between-class spread to within-class spread, so it picks the direction along which the classes are best separated relative to their own noise. Whitening by the within-class scatter is what makes distances in the projected space meaningful.",
+   "whyItWorks": "If each class is Gaussian with the same covariance, the log posterior ratio between classes is linear in x, so a linear boundary is Bayes optimal. Maximising the Fisher ratio is a generalised eigenproblem of the between and within scatter matrices. At most one fewer directions than classes carry signal because the between-class scatter has rank at most that number.",
+   "approach": [
+    "Compute the class means and the overall mean — the summary of where classes sit",
+    "Accumulate within-class scatter from deviations to each class mean — the noise to be minimised",
+    "Accumulate between-class scatter from class means to the overall mean, weighted by class size — the signal to be maximised",
+    "Solve the eigenproblem of S_w⁻¹ S_b and keep the top k vectors — the directions with the best signal-to-noise ratio",
+    "Rescale each vector so wᵀ S_w w = 1 — distances in the projection then match the Gaussian classifier",
+    "Project with X @ W and classify by nearest class mean (equal priors) — the minimal decision rule"
+   ],
+   "time": "O(n·d² + d³) to build the scatters and solve the eigenproblem",
+   "space": "O(d²) for the two scatter matrices",
+   "solution": "import numpy as np\n\ndef lda_fit(X, y, k):\n    mu = X.mean(0)\n    d = X.shape[1]\n    Sw, Sb = np.zeros((d, d)), np.zeros((d, d))\n    for c in np.unique(y):\n        Xc = X[y == c]\n        m = Xc.mean(0)\n        Sw += (Xc - m).T @ (Xc - m)\n        g = (m - mu)[:, None]\n        Sb += len(Xc) * g @ g.T\n    vals, V = np.linalg.eig(np.linalg.solve(Sw, Sb))\n    V = V[:, np.argsort(-vals.real)[:k]].real\n    return V / np.sqrt(np.diag(V.T @ Sw @ V))",
+   "keyLines": [
+    10,
+    12,
+    13
+   ],
+   "dryRun": [
+    "μ = overall mean, μ_c = mean of class c, n_c = class size",
+    "Within: S_w = Σ_c Σ_{i∈c} (xᵢ−μ_c)(xᵢ−μ_c)ᵀ",
+    "Between: S_b = Σ_c n_c (μ_c−μ)(μ_c−μ)ᵀ",
+    "Fisher: J(w) = wᵀ S_b w / wᵀ S_w w",
+    "Optimum: S_w⁻¹ S_b w = λ w (top eigenvectors, at most C−1)",
+    "Scale: wᵀ S_w w = 1 so within-class variance is unit",
+    "Gaussian view: δ_c(x) = xᵀΣ⁻¹μ_c − ½ μ_cᵀΣ⁻¹μ_c + log π_c"
+   ],
+   "description": "Multiclass problems with roughly Gaussian, similarly shaped classes, small datasets where a low-variance linear model helps, and supervised dimensionality reduction before another classifier.",
+   "examples": [
+    {
+     "input": "How does LDA differ from PCA?",
+     "output": "PCA is unsupervised and maximises total variance; LDA uses labels and maximises between-class over within-class scatter, so it targets class separation instead.",
+     "explanation": ""
+    },
+    {
+     "input": "How many discriminant directions can you get?",
+     "output": "At most the number of classes minus one, because the between-class scatter is built from that many independent mean differences.",
+     "explanation": ""
+    },
+    {
+     "input": "LDA versus QDA?",
+     "output": "LDA assumes one shared covariance, giving linear boundaries and fewer parameters; QDA fits a covariance per class, giving quadratic boundaries but needing more data.",
+     "explanation": ""
+    },
+    {
+     "input": "What do you do when S_w is singular?",
+     "output": "Shrink it toward a scaled identity, reduce dimension with PCA first, or use the SVD solver, which avoids forming the covariance explicitly.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "n_components k — at most min(C−1, d)",
+    "solver — svd (no explicit covariance), eigen or lsqr (supports shrinkage)",
+    "shrinkage — regularises S_w when it is ill-conditioned",
+    "priors — class prior probabilities used by the classifier"
+   ],
+   "edgeCases": [
+    "S_w is singular when features outnumber samples or are collinear; this code would fail, so use shrinkage or PCA first",
+    "Only C−1 meaningful directions exist; extra eigenvectors have zero eigenvalue",
+    "Directions are defined up to sign, and scaling conventions differ between libraries; compare projections up to sign and scale",
+    "The shared-covariance Gaussian assumption is strong; outliers and unequal covariances hurt"
+   ],
+   "related": [
+    "pca",
+    "logistic-regression",
+    "naive-bayes"
+   ]
+  },
+  {
    "slug": "linear-regression",
    "title": "Linear Regression",
    "platform": "Classical ML",
@@ -2356,6 +3594,82 @@
    ]
   },
   {
+   "slug": "lora-low-rank-adaptation",
+   "title": "LoRA (Low-Rank Adaptation)",
+   "platform": "Deep Learning",
+   "url": "https://arxiv.org/abs/2106.09685",
+   "difficulty": "Medium",
+   "topics": [
+    "Fine-tuning",
+    "Parameter-Efficient Learning",
+    "Transformers"
+   ],
+   "patterns": [
+    "Transfer and adaptation"
+   ],
+   "summary": "Freeze a pretrained weight matrix W and learn a small low-rank update BA, so fine-tuning trains only a tiny fraction of the parameters.",
+   "bruteForce": "Tasks that need large changes to the base model, such as teaching entirely new knowledge at scale, where low rank may limit quality, or small models where full fine-tuning is cheap.",
+   "intuition": "The change needed to adapt a large model to a new task often has low intrinsic rank, so a full d_out × d_in update is mostly wasted. Writing the update as a product of a thin and a wide matrix stores it in far fewer numbers, and after training the product can be folded back into W so inference costs nothing extra.",
+   "whyItWorks": "The update ΔW = (α/r) B A has rank at most r, so it spans a small subspace of directions in weight space, which is enough when the fine-tuning change is low-dimensional. Gradients reach only A and B, so optimiser memory shrinks with the parameter count. Zero-initialising B makes ΔW zero at the start, and gradients to B are non-zero from the first step so learning begins. Merging is exact because the layer is linear in W.",
+   "approach": [
+    "Freeze the pretrained W — preserves the base model and needs no optimiser state for it",
+    "Add trainable A (r × d_in) and B (d_out × r) — a rank-r update with few parameters",
+    "Initialise B to zero and A small random — the adapted model starts identical to the base",
+    "Compute Wx + (α/r) B A x through the thin path — the scaling keeps the update size stable across ranks",
+    "After training merge W′ = W + (α/r) B A — the same outputs with no extra latency"
+   ],
+   "time": "O(n·r·(d_in + d_out)) extra per forward pass, none after merging",
+   "space": "O(r·(d_in + d_out)) trainable parameters per matrix",
+   "solution": "import numpy as np\n\ndef lora_forward(x, W, A, B, alpha):\n    s = alpha / A.shape[0]\n    return x @ W.T + s * (x @ A.T) @ B.T\n\ndef lora_merge(W, A, B, alpha):\n    return W + (alpha / A.shape[0]) * B @ A\n\ndef lora_grads(x, W, A, B, alpha, dy):\n    s = alpha / A.shape[0]\n    xa = x @ A.T\n    dB = s * dy.T @ xa\n    dA = s * (dy @ B).T @ x\n    dx = dy @ (W + s * B @ A)\n    return dB, dA, dx",
+   "keyLines": [
+    5,
+    13,
+    14
+   ],
+   "dryRun": [
+    "W′ = W + (α/r) · B A,   B: d_out × r,  A: r × d_in",
+    "y = x W′ᵀ = x Wᵀ + (α/r) · x Aᵀ Bᵀ",
+    "Trainable params = r (d_in + d_out)  vs  d_in · d_out",
+    "∂L/∂B = (α/r) · dyᵀ (x Aᵀ)",
+    "∂L/∂A = (α/r) · (dy B)ᵀ x",
+    "∂L/∂x = dy W′"
+   ],
+   "description": "Fine-tuning large language and diffusion models on limited GPU memory, keeping many task adapters for one base model, and swapping tasks by loading small files.",
+   "examples": [
+    {
+     "input": "Why initialise B to zero?",
+     "output": "It makes the update zero, so training starts from the pretrained model. A is random so that gradients to B are non-zero and the product can grow.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the α/r scale do?",
+     "output": "It sets the size of the update independently of the rank, so changing r does not require retuning the learning rate much.",
+     "explanation": ""
+    },
+    {
+     "input": "How is LoRA different from adding adapter layers?",
+     "output": "Adapters add sequential layers that increase inference latency. LoRA is parallel and mergeable into W, so inference cost is unchanged.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Rank r",
+    "Scaling α",
+    "Which weight matrices get adapters (attention q, v, all linears)",
+    "Dropout on the adapter path"
+   ],
+   "edgeCases": [
+    "Merging into quantised weights loses precision unless handled carefully",
+    "This code has one matrix without bias or dropout; real use wraps each target layer",
+    "Low rank too small underfits; too large wastes the savings"
+   ],
+   "related": [
+    "multi-head-attention",
+    "svd",
+    "backpropagation"
+   ]
+  },
+  {
    "slug": "lstm-cell",
    "title": "LSTM Cell",
    "platform": "Deep Learning",
@@ -2428,6 +3742,90 @@
     "rnn-cell",
     "activation-functions",
     "backpropagation"
+   ]
+  },
+  {
+   "slug": "matrix-factorization-recommender",
+   "title": "Matrix Factorisation for Recommenders (ALS)",
+   "platform": "Classical ML",
+   "url": "https://en.wikipedia.org/wiki/Matrix_factorization_(recommender_systems)",
+   "difficulty": "Medium",
+   "topics": [
+    "Recommender Systems",
+    "Matrix Factorisation",
+    "Latent Factors",
+    "Least Squares"
+   ],
+   "patterns": [
+    "Dimensionality reduction"
+   ],
+   "summary": "Approximate a sparse user-by-item rating matrix by a product of two low-rank factor matrices, fitted only on the observed entries by alternating least squares.",
+   "bruteForce": "Cold start (new users or items with no ratings have no data to learn from), when side features matter more than interactions, or when a very large sparse matrix needs SGD or distributed ALS.",
+   "intuition": "Tastes are not random: a few hidden factors (genre, mood, level) explain most ratings. Give each user and item a short vector and predict a rating as their dot product. With one side held fixed, finding the best vectors for the other side is an ordinary ridge regression for each user or item, so alternating the two solves a hard non-convex problem with easy convex steps.",
+   "whyItWorks": "The joint objective is non-convex in (U, V) but convex in each factor with the other fixed. Each ALS half-step solves its subproblem exactly, so the regularised loss can never increase and the iterates converge to a stationary point. Observed entries only are used, so missing ratings are not treated as zeros.",
+   "approach": [
+    "Initialise small random user and item factors — breaks symmetry without large values",
+    "For each user, gather the item vectors they rated and solve the ridge normal equations — the exact best user vector given the items",
+    "Swap roles and repeat per item using the transposed matrix and mask — the exact best item vector given the users",
+    "Evaluate the masked, regularised loss after each sweep — it must be non-increasing",
+    "Predict missing ratings with U @ V.T — the low-rank reconstruction fills the gaps"
+   ],
+   "time": "O(iters·(|Ω|·k² + (n+m)·k³)) for n users, m items, |Ω| ratings",
+   "space": "O((n+m)·k) for the factors plus the rating matrix",
+   "solution": "import numpy as np\n\ndef solve_side(R, M, V, lam):\n    k = V.shape[1]\n    U = np.zeros((R.shape[0], k))\n    for i in range(R.shape[0]):\n        Vi = V[M[i] > 0]\n        A = Vi.T @ Vi + lam * np.eye(k)\n        U[i] = np.linalg.solve(A, Vi.T @ R[i, M[i] > 0])\n    return U\n\ndef als(R, M, k=3, lam=0.1, iters=20, seed=0):\n    rng = np.random.default_rng(seed)\n    U = rng.normal(0, 0.1, (R.shape[0], k))\n    V = rng.normal(0, 0.1, (R.shape[1], k))\n    loss = []\n    for _ in range(iters):\n        U = solve_side(R, M, V, lam)\n        V = solve_side(R.T, M.T, U, lam)\n        E = M * (R - U @ V.T)\n        reg = lam * ((U ** 2).sum() + (V ** 2).sum())\n        loss.append((E ** 2).sum() + reg)\n    return U, V, loss",
+   "keyLines": [
+    8,
+    9,
+    19
+   ],
+   "dryRun": [
+    "Prediction: r̂ᵤᵢ = uᵤᵀ vᵢ",
+    "Loss: L = Σ_{(u,i)∈Ω} (rᵤᵢ − uᵤᵀvᵢ)² + λ(‖U‖² + ‖V‖²)",
+    "Ω = set of observed (user, item) pairs",
+    "User step: (VᵤᵀVᵤ + λI) uᵤ = Vᵤᵀ rᵤ",
+    "Vᵤ = rows of V for items rated by user u",
+    "Item step: (UᵢᵀUᵢ + λI) vᵢ = Uᵢᵀ rᵢ",
+    "Each half-step is an exact ridge regression"
+   ],
+   "description": "Collaborative filtering with explicit ratings or implicit feedback, filling in missing entries of a low-rank matrix, and learning embeddings that feed other models.",
+   "examples": [
+    {
+     "input": "Why alternate instead of optimising U and V jointly?",
+     "output": "The joint problem is non-convex, but with one factor fixed it is a set of independent ridge regressions with exact closed-form solutions.",
+     "explanation": ""
+    },
+    {
+     "input": "How does ALS handle missing entries?",
+     "output": "It only sums over observed ratings, using the mask to select each user's rated items, so missing values are ignored rather than treated as zero.",
+     "explanation": ""
+    },
+    {
+     "input": "ALS versus SGD for matrix factorisation?",
+     "output": "ALS parallelises easily across users or items and each step is exact; SGD is cheaper per update and handles streaming or very large data.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you evaluate a recommender factorisation?",
+     "output": "Hold out some observed ratings and compare RMSE against simple baselines like the global or per-item mean; also use ranking metrics when top-N matters.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Rank k — number of latent factors",
+    "Regularisation λ — controls overfitting, tuned on held-out ratings",
+    "Number of ALS sweeps",
+    "Implicit versus explicit feedback — implicit uses confidence weights (not shown)"
+   ],
+   "edgeCases": [
+    "R is a dense array with a 0/1 mask M here; real systems use sparse formats",
+    "A user or item with no ratings gets a zero vector, so cold start needs other signals",
+    "Plain λ is not scaled by the number of ratings per user (the weighted-λ variant does); a simplification",
+    "No user or item bias terms, so subtract the global mean or add biases for better accuracy"
+   ],
+   "related": [
+    "svd",
+    "pca",
+    "ridge-lasso-regularization"
    ]
   },
   {
@@ -2580,6 +3978,90 @@
    ]
   },
   {
+   "slug": "metropolis-hastings",
+   "title": "Metropolis-Hastings Sampling",
+   "platform": "Math",
+   "url": "https://en.wikipedia.org/wiki/Metropolis%E2%80%93Hastings_algorithm",
+   "difficulty": "Hard",
+   "topics": [
+    "MCMC",
+    "Sampling",
+    "Bayesian Inference",
+    "Markov Chains"
+   ],
+   "patterns": [
+    "Probabilistic models"
+   ],
+   "summary": "Draw samples from a distribution known only up to a constant by running a Markov chain that proposes random moves and accepts them with a probability that favours higher density.",
+   "bruteForce": "High dimensions or strongly correlated, multimodal targets, where random walks mix very slowly (use HMC/NUTS or variational inference), or when a direct sampler or a deterministic integrator is available.",
+   "intuition": "You can evaluate how probable a point is relative to another, but you cannot sample from the distribution directly. Wander randomly: propose a nearby point, always move uphill in density, and move downhill only with probability equal to the density ratio. Time spent at each place then ends up proportional to its probability, and the unknown normalising constant cancels because only ratios appear.",
+   "whyItWorks": "The acceptance rule is chosen so the chain satisfies detailed balance with respect to the target: probability flow from x to y equals flow from y to x at stationarity. Detailed balance implies the target is the stationary distribution, and with an irreducible aperiodic chain the samples converge to it. Consecutive samples are correlated, so the effective sample size is smaller than the number of draws.",
+   "approach": [
+    "Start at an initial point and evaluate its log density — logs avoid underflow",
+    "Propose a Gaussian step from the current point — a symmetric random-walk move",
+    "Compute the log density ratio of proposal to current — the normaliser cancels",
+    "Accept if log u is below the ratio, otherwise stay — uphill is always taken, downhill sometimes",
+    "Record the current state every iteration, including repeats — rejected moves must be counted",
+    "Discard a burn-in and check the acceptance rate — too high means tiny steps, too low means huge ones"
+   ],
+   "time": "O(n) target evaluations for n iterations",
+   "space": "O(n) for stored samples (O(1) if only running statistics are kept)",
+   "solution": "import numpy as np\n\ndef metropolis(logp, x0, n, step, seed=0):\n    rng = np.random.default_rng(seed)\n    x, lp = x0, logp(x0)\n    out, acc = np.empty(n), 0\n    for i in range(n):\n        y = x + step * rng.normal()\n        lq = logp(y)\n        if np.log(rng.random()) < lq - lp:\n            x, lp = y, lq\n            acc += 1\n        out[i] = x\n    return out, acc / n",
+   "keyLines": [
+    8,
+    10,
+    11
+   ],
+   "dryRun": [
+    "Target: π(x) ∝ p(x), normaliser unknown",
+    "Proposal: y ~ q(y|x), here symmetric y = x + σ ε, ε ~ N(0,1)",
+    "Accept: a(x→y) = min(1, p(y) q(x|y) / (p(x) q(y|x)))",
+    "Symmetric q: a = min(1, p(y)/p(x))",
+    "Log form: accept if log u < log p(y) − log p(x), u ~ U(0,1)",
+    "Detailed balance: π(x) q(y|x) a(x→y) = π(y) q(x|y) a(y→x)"
+   ],
+   "description": "Bayesian posteriors with unnormalised densities, low-dimensional problems with no conjugate form, and as the base for HMC and Gibbs-style samplers.",
+   "examples": [
+    {
+     "input": "Why does the normalising constant not matter?",
+     "output": "The acceptance probability depends only on the ratio p(y)/p(x), in which the unknown constant cancels.",
+     "explanation": ""
+    },
+    {
+     "input": "What is detailed balance and why does it matter?",
+     "output": "It says stationary probability flow x to y equals y to x; any chain satisfying it with respect to π has π as a stationary distribution, which is the correctness condition.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you choose the proposal step size?",
+     "output": "Tune it so the acceptance rate is moderate, neither near zero nor near one; both extremes give highly autocorrelated samples.",
+     "explanation": ""
+    },
+    {
+     "input": "How does Metropolis-Hastings differ from Gibbs sampling?",
+     "output": "Gibbs draws each variable from its exact conditional and always accepts; Metropolis-Hastings proposes from any distribution and corrects with an accept-reject step, so it needs no conditionals.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Proposal step size σ — tune for a moderate acceptance rate",
+    "Burn-in length — samples discarded before the chain is near stationary",
+    "Number of iterations n and thinning — set by effective sample size",
+    "Starting point and number of chains — several chains diagnose non-convergence"
+   ],
+   "edgeCases": [
+    "This is a 1-D random walk with a symmetric proposal; asymmetric proposals need the Hastings correction",
+    "Tiny steps accept almost everything but explore slowly; huge steps are mostly rejected",
+    "Samples are autocorrelated, so naive standard errors are too small",
+    "A single chain can look converged while stuck in one mode; run several and compare"
+   ],
+   "related": [
+    "bayes-theorem",
+    "maximum-likelihood",
+    "entropy-kl-divergence"
+   ]
+  },
+  {
    "slug": "mlp-forward-pass",
    "title": "MLP Forward Pass",
    "platform": "Deep Learning",
@@ -2656,6 +4138,81 @@
    ]
   },
   {
+   "slug": "momentum-sgd",
+   "title": "SGD with Momentum",
+   "platform": "Deep Learning",
+   "url": "https://docs.pytorch.org/docs/stable/generated/torch.optim.SGD.html",
+   "difficulty": "Easy",
+   "topics": [
+    "Optimisation",
+    "Momentum",
+    "Nesterov"
+   ],
+   "patterns": [
+    "Gradient-based optimisation"
+   ],
+   "summary": "Gradient descent that adds a velocity: a running sum of past gradients, so the update keeps moving in directions where gradients consistently agree.",
+   "bruteForce": "When you want little tuning on sparse or badly scaled gradients, an adaptive method such as Adam is often easier. Too high a momentum with a large learning rate can oscillate or diverge.",
+   "intuition": "Think of a ball rolling down the loss surface rather than a walker taking independent steps. Gradients that point the same way accumulate into fast progress along narrow valleys, while components that flip sign from step to step cancel out. Nesterov momentum looks ahead by applying the gradient at the position momentum is about to reach, which corrects overshoot a little earlier.",
+   "whyItWorks": "The velocity is an exponentially weighted sum of past gradients, so consistent directions are amplified and oscillating ones are damped. On ill-conditioned quadratics this allows a larger effective step along the shallow direction without diverging along the steep one.",
+   "approach": [
+    "Start the velocity buffer at zero — no history yet",
+    "Update v ← μ·v + g — accumulates gradients with exponential decay",
+    "Pick the step direction: v for classical, g + μ·v for Nesterov — Nesterov peeks ahead",
+    "Move the weights by −η times that direction — the usual descent step"
+   ],
+   "time": "O(d) per step for d parameters",
+   "space": "O(d) extra for the velocity buffer",
+   "solution": "import numpy as np\n\ndef sgd_step(w, g, buf, lr=0.1, mu=0.9, nesterov=False):\n    buf = mu * buf + g\n    step = g + mu * buf if nesterov else buf\n    return w - lr * step, buf",
+   "keyLines": [
+    4,
+    5,
+    6
+   ],
+   "dryRun": [
+    "v ← μ·v + g",
+    "Classical: w ← w − η·v",
+    "Nesterov: w ← w − η·(g + μ·v)  (using the updated v)",
+    "Unrolled: v_t = Σ_k μ^(t−k) g_k  (weighted sum of gradients)",
+    "Common choice: μ = 0.9"
+   ],
+   "description": "Training CNNs and other deep nets with SGD, especially with a tuned learning-rate schedule, where it often generalises well.",
+   "examples": [
+    {
+     "input": "What problem does momentum solve?",
+     "output": "It speeds progress along consistent gradient directions and damps oscillation across steep, narrow valleys.",
+     "explanation": ""
+    },
+    {
+     "input": "How does Nesterov differ from classical momentum?",
+     "output": "It uses a lookahead gradient direction, g + μ·v after updating v, which reacts sooner when momentum overshoots.",
+     "explanation": ""
+    },
+    {
+     "input": "How does momentum change the effective learning rate?",
+     "output": "For a steady gradient the velocity approaches a geometric series in μ, so the effective step is larger by 1 / (1 − μ).",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Learning rate η",
+    "Momentum μ",
+    "Nesterov on or off",
+    "Dampening (not modelled here)"
+   ],
+   "edgeCases": [
+    "Libraries differ in where the learning rate multiplies the velocity; this follows PyTorch's convention",
+    "The effective step grows with momentum, so lower the learning rate when raising μ",
+    "Weight decay and dampening are omitted here",
+    "Reset the buffer when you restart or change the optimiser"
+   ],
+   "related": [
+    "gradient-descent",
+    "adam-optimizer",
+    "learning-rate-schedules"
+   ]
+  },
+  {
    "slug": "multi-head-attention",
    "title": "Multi-Head Attention",
    "platform": "NLP",
@@ -2728,6 +4285,90 @@
     "self-attention",
     "positional-encoding",
     "layer-normalization"
+   ]
+  },
+  {
+   "slug": "multiclass-metrics",
+   "title": "Multiclass Metrics (Macro, Micro, Weighted F1)",
+   "platform": "MLOps",
+   "url": "https://scikit-learn.org/stable/modules/generated/sklearn.metrics.f1_score.html",
+   "difficulty": "Easy",
+   "topics": [
+    "Evaluation",
+    "Classification Metrics",
+    "Multiclass",
+    "Confusion Matrix"
+   ],
+   "patterns": [
+    "Classification metrics"
+   ],
+   "summary": "Reduce a K-class confusion matrix to per-class precision, recall and F1, then average them three ways. The choice of averaging decides whether rare classes count.",
+   "bruteForce": "When costs differ strongly between error types (use a cost matrix or per-class thresholds), for multilabel problems without adapting the counts, or when probability quality matters (use log loss or calibration instead of a hard-label metric).",
+   "intuition": "A single accuracy number hides which classes fail. Per-class F1 exposes that, but you still need one headline score. Macro averaging gives every class equal say, so a failing rare class drags it down; micro averaging pools all decisions, so frequent classes dominate; weighted averaging sits between by weighting each class by its support.",
+   "whyItWorks": "Everything derives from the confusion matrix: the diagonal holds true positives, column sums are predicted counts and row sums are true counts. Micro averaging pools true positives, false positives and false negatives across classes; for single-label problems every error is one false positive and one false negative, so micro precision, recall and F1 all equal accuracy. Macro and weighted differ only in the weights on the per-class F1 values.",
+   "approach": [
+    "Build the confusion matrix by counting (true, predicted) pairs — the single object all metrics come from",
+    "Take true positives from the diagonal and divide by column and row sums — per-class precision and recall",
+    "Guard the divisions with a floor — a class that is never predicted or absent should score zero, not NaN",
+    "Combine into per-class F1 — the harmonic mean punishes a gap between precision and recall",
+    "Average unweighted for macro and by support for weighted — rare classes count fully versus in proportion",
+    "Divide total true positives by n for micro — pooled counts reduce to accuracy"
+   ],
+   "time": "O(n + K²) to count pairs and aggregate",
+   "space": "O(K²) for the confusion matrix",
+   "solution": "import numpy as np\n\ndef confusion(y, p, K):\n    C = np.zeros((K, K), dtype=int)\n    np.add.at(C, (y, p), 1)\n    return C\n\ndef f1_report(C):\n    tp = np.diag(C).astype(float)\n    prec = tp / np.maximum(C.sum(0), 1)\n    rec = tp / np.maximum(C.sum(1), 1)\n    f1 = 2 * prec * rec / np.maximum(prec + rec, 1e-12)\n    sup = C.sum(1)\n    macro = f1.mean()\n    weighted = (f1 * sup).sum() / sup.sum()\n    micro = tp.sum() / C.sum()\n    return f1, macro, weighted, micro",
+   "keyLines": [
+    12,
+    14,
+    16
+   ],
+   "dryRun": [
+    "Confusion: C[i,j] = # samples of true class i predicted as j",
+    "TPₖ = C[k,k],  predictedₖ = Σᵢ C[i,k],  supportₖ = Σⱼ C[k,j]",
+    "Precisionₖ = TPₖ / predictedₖ,  Recallₖ = TPₖ / supportₖ",
+    "F1ₖ = 2 Pₖ Rₖ / (Pₖ + Rₖ)",
+    "Macro: F1_macro = (1/K) Σₖ F1ₖ",
+    "Weighted: Σₖ supportₖ F1ₖ / Σₖ supportₖ",
+    "Micro: F1_micro = Σₖ TPₖ / n = accuracy"
+   ],
+   "description": "Reporting multiclass classifiers, choosing the average to match the business goal (macro when every class matters, micro or accuracy when overall hit rate matters, weighted for a support-aware compromise), and diagnosing which class pairs get confused.",
+   "examples": [
+    {
+     "input": "When use macro over micro F1?",
+     "output": "When all classes matter equally, especially with imbalance: macro exposes poor performance on rare classes that micro or accuracy would hide.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does micro F1 equal accuracy in multiclass?",
+     "output": "Each misclassification is exactly one false positive for the predicted class and one false negative for the true class, so pooled precision and recall both equal the fraction correct.",
+     "explanation": ""
+    },
+    {
+     "input": "What does weighted F1 do?",
+     "output": "It averages per-class F1 with weights proportional to class support, so it tracks frequent classes but still reflects per-class balance of precision and recall.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you handle a class that is never predicted?",
+     "output": "Its precision is undefined; set it to zero (zero_division) so its F1 is zero, and flag it explicitly in the report.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "average — macro, micro or weighted",
+    "zero_division — value used when a class has no predictions or no samples",
+    "Class labels and order — fix them so the matrix aligns across runs"
+   ],
+   "edgeCases": [
+    "Labels must be integers 0 to K−1 here; map strings first",
+    "Micro F1 equals accuracy for single-label problems, so it adds nothing beyond accuracy",
+    "Macro F1 swings on tiny classes with few support samples, so report supports too",
+    "A class missing from the true labels gives a zero F1 that still enters the macro mean in this code (sklearn behaves the same only if its labels are listed)"
+   ],
+   "related": [
+    "precision-recall-f1",
+    "class-imbalance",
+    "roc-auc"
    ]
   },
   {
@@ -2882,6 +4523,79 @@
     "k-means",
     "linear-regression",
     "ridge-lasso-regularization"
+   ]
+  },
+  {
+   "slug": "perplexity",
+   "title": "Perplexity of a Language Model",
+   "platform": "NLP",
+   "url": "https://huggingface.co/docs/transformers/perplexity",
+   "difficulty": "Easy",
+   "topics": [
+    "Evaluation",
+    "Language Modeling",
+    "Information Theory"
+   ],
+   "patterns": [
+    "Text processing"
+   ],
+   "summary": "The exponential of the average negative log-likelihood per token; how many equally likely choices the model is effectively hesitating between at each step.",
+   "bruteForce": "Comparing models with different tokenizers or vocabularies, where values are not comparable, or judging quality of generated text, since low perplexity does not guarantee helpful or factual output.",
+   "intuition": "Cross-entropy in nats is hard to feel, but its exponential has a concrete reading: a model that spreads probability uniformly over V tokens has perplexity V. A lower value therefore means the model is effectively choosing among fewer candidates, so it assigns higher probability to the text it actually sees.",
+   "whyItWorks": "Perplexity is exp of the empirical cross-entropy between the data and the model, so minimising training loss is the same as minimising perplexity. The exponential of an entropy is the effective number of equally likely outcomes, and the geometric mean of inverse token probabilities has the same value, which explains the branching-factor reading.",
+   "approach": [
+    "Turn logits into log-probabilities with a stable log-softmax — avoids overflow and log of zero",
+    "Pick the log-probability of each true next token — the model's probability for the actual data",
+    "Negate and average over all tokens — this is the cross-entropy in nats",
+    "Exponentiate the mean — converts nats into an effective branching factor"
+   ],
+   "time": "O(N·V) for N tokens and vocabulary size V",
+   "space": "O(N·V) for the log-probabilities",
+   "solution": "import numpy as np\n\ndef perplexity(logits, targets):\n    z = logits - logits.max(axis=-1, keepdims=True)\n    lse = np.log(np.exp(z).sum(axis=-1, keepdims=True))\n    logp = z - lse\n    nll = -logp[np.arange(len(targets)), targets]\n    return np.exp(nll.mean())",
+   "keyLines": [
+    5,
+    6,
+    7
+   ],
+   "dryRun": [
+    "log pᵢ = zᵢ − log Σⱼ exp(zⱼ)",
+    "CE = −(1/N) Σₙ log p(yₙ | contextₙ)",
+    "PPL = exp(CE)",
+    "PPL = (Πₙ 1 / p(yₙ | contextₙ))^(1/N)",
+    "Uniform over V tokens: PPL = V"
+   ],
+   "description": "Comparing language models on the same text and tokenizer, tracking validation loss during pretraining, and detecting distribution shift.",
+   "examples": [
+    {
+     "input": "What does a perplexity of V mean?",
+     "output": "On average the model is as uncertain as if it picked uniformly among V tokens at each step.",
+     "explanation": ""
+    },
+    {
+     "input": "Why must the tokenizer be the same when comparing perplexities?",
+     "output": "Perplexity is per token. A tokenizer that splits text into more tokens spreads the same information over more steps, so per-token numbers are not comparable.",
+     "explanation": ""
+    },
+    {
+     "input": "How is perplexity related to bits per token?",
+     "output": "Bits per token is the cross-entropy in base 2, and perplexity equals 2 raised to that value, the same quantity as the natural-log version.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Context window used to condition each token",
+    "Stride when evaluating with a sliding window",
+    "Tokenizer and vocabulary"
+   ],
+   "edgeCases": [
+    "Average over all tokens, not per sequence, or short sequences are over-weighted",
+    "Evaluate with enough context; truncated windows inflate perplexity",
+    "Mask padding tokens in real code; this version assumes every target is a real token"
+   ],
+   "related": [
+    "softmax-cross-entropy",
+    "entropy-kl-divergence",
+    "maximum-likelihood"
    ]
   },
   {
@@ -3267,6 +4981,82 @@
    ]
   },
   {
+   "slug": "receptive-field",
+   "title": "Receptive Field",
+   "platform": "Vision",
+   "url": "https://d2l.ai/chapter_convolutional-neural-networks/conv-layer.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Convolutional Networks",
+    "Receptive Field",
+    "Stride"
+   ],
+   "patterns": [
+    "Convolution and vision"
+   ],
+   "summary": "The receptive field of a unit is the patch of the input that can influence its value. It grows layer by layer, and strides make it grow faster.",
+   "bruteForce": "This theoretical field ignores how much each pixel actually matters. Actual influence is concentrated near the centre, so for what the network uses, measure gradients instead. It also does not describe attention layers, whose field is global.",
+   "intuition": "Each layer looks at a k-wide window of the previous layer, but one step in a deeper layer already spans several input pixels. Every new kernel therefore adds (k − 1) steps of the current spacing between neighbouring units, and strides multiply that spacing. This is why a stack of small kernels can see a large region, and why a unit can only reason about context inside its own receptive field.",
+   "whyItWorks": "Unrolling the dependency of an output on its inputs layer by layer gives a simple recurrence: the field is the previous field plus (k − 1) times the product of all earlier strides (the jump). The recurrence is exact for a plain stack of convolutions or pooling layers, because each layer's window is a contiguous block of the layer below.",
+   "approach": [
+    "Start with field 1 and jump 1 at the input — a single pixel sees only itself",
+    "For each layer add (k − 1) · jump to the field — a wider window over spaced-out units",
+    "Multiply the jump by the layer's stride — later units sit further apart in input pixels",
+    "To locate one unit, walk the layers backwards expanding its index interval — gives the exact input window"
+   ],
+   "time": "O(L) for L layers",
+   "space": "O(1) extra",
+   "solution": "def receptive_field(layers):\n    rf, jump = 1, 1\n    for k, s in layers:\n        rf += (k - 1) * jump\n        jump *= s\n    return rf, jump\n\ndef input_span(layers, i):\n    lo, hi = i, i\n    for k, s in reversed(layers):\n        lo = lo * s\n        hi = hi * s + k - 1\n    return lo, hi",
+   "keyLines": [
+    4,
+    5,
+    12
+   ],
+   "dryRun": [
+    "k_l: kernel size, s_l: stride of layer l (dilation 1)",
+    "Jump: j₀ = 1,  j_l = j_{l−1} · s_l",
+    "Field: r₀ = 1,  r_l = r_{l−1} + (k_l − 1) · j_{l−1}",
+    "Output index i maps back to input [lo, hi] with lo = i · jump",
+    "Backwards: lo ← lo · s,  hi ← hi · s + k − 1 for each layer",
+    "Padding shifts the interval but does not change its width"
+   ],
+   "description": "Designing a conv backbone so the final features can see enough context for the task (segmentation, detection), or debugging why a model misses large objects.",
+   "examples": [
+    {
+     "input": "How does the receptive field grow with depth?",
+     "output": "Each layer adds (k − 1) times the product of earlier strides, so it grows linearly with depth at stride 1 and much faster once strides or pooling are used.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the effective receptive field?",
+     "output": "The region that actually carries significant gradient; it is roughly Gaussian and smaller than the theoretical field.",
+     "explanation": ""
+    },
+    {
+     "input": "How can you enlarge the field without more parameters?",
+     "output": "Use strides, pooling or dilated convolutions, which spread the same kernel weights over a wider window.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Kernel size k of each layer",
+    "Stride s of each layer (multiplies the growth)",
+    "Depth (number of layers)",
+    "Dilation (not modelled here; it widens the window per layer)"
+   ],
+   "edgeCases": [
+    "The theoretical field is much larger than the effective field that actually influences the output",
+    "This code assumes no dilation and no padding offsets; dilation replaces k by an effective kernel size",
+    "Forgetting that strides multiply across layers underestimates growth",
+    "Pooling layers count as layers with their own kernel and stride"
+   ],
+   "related": [
+    "convolution-2d",
+    "max-pooling",
+    "depthwise-separable-convolution"
+   ]
+  },
+  {
    "slug": "reinforce-policy-gradient",
    "title": "REINFORCE Policy Gradient",
    "platform": "RL",
@@ -3644,6 +5434,80 @@
    ]
   },
   {
+   "slug": "rotary-position-embedding",
+   "title": "Rotary Position Embedding (RoPE)",
+   "platform": "NLP",
+   "url": "https://arxiv.org/abs/2104.09864",
+   "difficulty": "Hard",
+   "topics": [
+    "Transformers",
+    "Positional Encoding",
+    "Attention"
+   ],
+   "patterns": [
+    "Attention and sequences"
+   ],
+   "summary": "Rotate each pair of query and key coordinates by an angle proportional to the token position, so attention scores depend on relative offsets.",
+   "bruteForce": "Cases where absolute position matters more than offsets, or when the head width is odd. Beyond the trained length it needs rescaling methods to extrapolate.",
+   "intuition": "If you rotate a query by m·θ and a key by n·θ, their dot product depends only on the angle difference (m−n)·θ, because rotations are orthogonal and compose by adding angles. RoPE therefore injects relative position directly into the attention score with no learned position table, and each coordinate pair uses its own frequency so both short and long ranges are covered.",
+   "whyItWorks": "Treat each coordinate pair as a complex number; rotating by angle φ is multiplication by e^{iφ}. The score is the real part of the product of one rotated number and the conjugate of the other, so the two position angles combine into e^{i(m−n)θ}. The score is thus a function of the content vectors and the offset m−n alone, and rotations preserve norms so magnitudes are untouched.",
+   "approach": [
+    "Pair up coordinates (x₀, x₁), (x₂, x₃), … — each pair is a point in a 2-D plane",
+    "Give pair i a frequency θᵢ = base^(−2i/d) — a spread of fast and slow rotations",
+    "Multiply position m by each θᵢ to get an angle — the angle grows linearly with position",
+    "Rotate every pair by its angle using cos and sin — a norm-preserving position encoding",
+    "Apply to queries and keys only, not values — only the score q·k needs relative position"
+   ],
+   "time": "O(T·d) to rotate T vectors of width d",
+   "space": "O(T·d) for the rotated copy",
+   "solution": "import numpy as np\n\ndef rope(x, base=10000.0):\n    T, d = x.shape\n    theta = base ** (-np.arange(0, d, 2) / d)\n    ang = np.arange(T)[:, None] * theta[None, :]\n    cos, sin = np.cos(ang), np.sin(ang)\n    x1, x2 = x[:, 0::2], x[:, 1::2]\n    out = np.empty_like(x)\n    out[:, 0::2] = x1 * cos - x2 * sin\n    out[:, 1::2] = x1 * sin + x2 * cos\n    return out",
+   "keyLines": [
+    6,
+    10,
+    11
+   ],
+   "dryRun": [
+    "θᵢ = base^(−2i/d),   i = 0 … d/2 − 1",
+    "Pair i at position m: zᵢ = x₂ᵢ + i·x₂ᵢ₊₁",
+    "RoPE(x, m)ᵢ = zᵢ · e^{i·m·θᵢ}",
+    "(x′₂ᵢ, x′₂ᵢ₊₁) = R(mθᵢ)(x₂ᵢ, x₂ᵢ₊₁)",
+    "⟨RoPE(q, m), RoPE(k, n)⟩ = Re Σᵢ qᵢ · conj(kᵢ) · e^{i(m−n)θᵢ}"
+   ],
+   "description": "Decoder language models and long-context models that want relative position information without a learned table; used in many open LLMs.",
+   "examples": [
+    {
+     "input": "Why does RoPE give relative position?",
+     "output": "Rotations compose by adding angles and preserve dot products, so the query-key score depends on the rotation by m−n and not on m and n separately.",
+     "explanation": ""
+    },
+    {
+     "input": "Why rotate only queries and keys?",
+     "output": "Position needs to enter the attention score q·k. Values are just averaged, so rotating them would corrupt the content being passed along.",
+     "explanation": ""
+    },
+    {
+     "input": "How does RoPE differ from sinusoidal positional encoding?",
+     "output": "Sinusoidal encoding is added to the embeddings once at the input. RoPE multiplies q and k by rotations inside every attention layer and adds no parameters.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Frequency base (larger bases favour longer contexts)",
+    "Head width d (must be even)",
+    "Position scaling factor for context extension"
+   ],
+   "edgeCases": [
+    "Pairing convention differs between libraries (adjacent pairs here, split halves in others); weights are not interchangeable",
+    "Apply it per head, to q and k after the projection and before the dot product",
+    "In float16 the angles for large positions lose precision; compute cos and sin in float32"
+   ],
+   "related": [
+    "positional-encoding",
+    "self-attention",
+    "multi-head-attention"
+   ]
+  },
+  {
    "slug": "self-attention",
    "title": "Self-Attention",
    "platform": "NLP",
@@ -3790,6 +5654,87 @@
    "related": [
     "logistic-regression",
     "gradient-descent"
+   ]
+  },
+  {
+   "slug": "stratified-split",
+   "title": "Stratified Train/Test Split",
+   "platform": "MLOps",
+   "url": "https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.train_test_split.html",
+   "difficulty": "Easy",
+   "topics": [
+    "Data Splitting",
+    "Evaluation",
+    "Class Imbalance",
+    "Sampling"
+   ],
+   "patterns": [
+    "Validation hygiene"
+   ],
+   "summary": "Split data by shuffling and sampling each class separately so train and test keep (almost) the same class proportions as the full dataset.",
+   "bruteForce": "Time series or grouped data, where the split must respect time order or keep groups together instead (use a temporal or group split); also regression targets unless you bin them first.",
+   "intuition": "A purely random split of an imbalanced dataset can, by bad luck, put too few or even zero minority samples in the test set, making the metric noisy or undefined. Sampling the same fraction from each class removes that source of variance: every class appears in test in proportion to its overall share, up to rounding.",
+   "whyItWorks": "Random sampling gives test class counts that vary like a hypergeometric draw, which is noisy for small classes. Stratifying fixes each class's test count by design, so only rounding remains and the class proportions in train and test differ from the population by at most a single sample per class. This lowers the variance of the evaluation without introducing bias for the overall population.",
+   "approach": [
+    "Seed a random generator — makes the split reproducible",
+    "For each class, shuffle the indices of that class — random choice within the class",
+    "Take the first round(f · n_c) shuffled indices for test — same fraction from every class",
+    "Collect test indices, then train is the complement — a clean partition with no overlap",
+    "Check proportions in both parts — confirms the stratification worked"
+   ],
+   "time": "O(n) plus shuffling each class",
+   "space": "O(n) for the index arrays",
+   "solution": "import numpy as np\n\ndef stratified_split(y, test_frac=0.2, seed=0):\n    rng = np.random.default_rng(seed)\n    test = []\n    for c in np.unique(y):\n        idx = rng.permutation(np.flatnonzero(y == c))\n        k = int(round(test_frac * len(idx)))\n        test.extend(idx[:k])\n    test = np.array(sorted(test))\n    train = np.setdiff1d(np.arange(len(y)), test)\n    return train, test",
+   "keyLines": [
+    7,
+    8,
+    9
+   ],
+   "dryRun": [
+    "Class share: π_c = n_c / n",
+    "Test count per class: k_c = round(f · n_c)",
+    "Test set T = ∪_c (k_c random indices of class c), train = rest",
+    "Proportion gap: | k_c/|T| − π_c | stays within rounding of f·n_c",
+    "Unstratified: k_c ~ Hypergeometric, var > 0 for small n_c"
+   ],
+   "description": "Classification with imbalanced or small classes, small datasets where one rare sample matters, and cross-validation folds (stratified k-fold).",
+   "examples": [
+    {
+     "input": "Why stratify?",
+     "output": "It keeps class proportions the same in train and test, so rare classes are represented in evaluation and metrics have lower variance.",
+     "explanation": ""
+    },
+    {
+     "input": "Does stratifying introduce bias?",
+     "output": "No for population-level estimates: each sample still has the same inclusion probability within its class, and the only change is removing class-count variance.",
+     "explanation": ""
+    },
+    {
+     "input": "When is stratifying the wrong tool?",
+     "output": "For temporal or grouped data, where you must split by time or by group to avoid leakage, and for continuous targets unless they are binned.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you stratify on several columns?",
+     "output": "Combine them into one composite label (for example class and region) and stratify on that, making sure each combination has enough samples.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "test_frac — fraction held out",
+    "seed — fixes the shuffle for reproducibility",
+    "stratify target — the label (or a combined label or binned target)"
+   ],
+   "edgeCases": [
+    "Per-class rounding can make the total test size differ slightly from f·n; sklearn allocates counts to hit it exactly, so splits are close but not identical",
+    "A class with a single sample cannot appear in both parts; sklearn raises an error here, this code silently keeps it in train",
+    "Stratifying does not fix leakage: duplicates or related rows can still straddle the split",
+    "Split before preprocessing or feature selection, otherwise test statistics leak into training"
+   ],
+   "related": [
+    "cross-validation",
+    "class-imbalance",
+    "data-leakage"
    ]
   },
   {
@@ -4031,6 +5976,306 @@
    ]
   },
   {
+   "slug": "top-k-top-p-sampling",
+   "title": "Top-k and Top-p (Nucleus) Sampling",
+   "platform": "NLP",
+   "url": "https://arxiv.org/abs/1904.09751",
+   "difficulty": "Medium",
+   "topics": [
+    "Decoding",
+    "Language Modeling",
+    "Sampling"
+   ],
+   "patterns": [
+    "Text processing"
+   ],
+   "summary": "Truncate the next-token distribution to the k most likely tokens, or to the smallest set whose probability reaches p, then renormalise and sample from what is left.",
+   "bruteForce": "Tasks with one right answer, such as translation or code, where greedy or beam search is better, and likelihood evaluation, where the full distribution must be used.",
+   "intuition": "Sampling from the full distribution occasionally picks a token from the long, unreliable tail and derails the text, while greedy decoding is repetitive. Cutting the tail removes the junk and keeps real randomness among plausible tokens; top-p adapts the cut to the model's confidence, keeping few tokens when it is sure and many when it is not.",
+   "whyItWorks": "Truncation sets the probability of unreliable tail tokens to exactly zero while keeping the relative odds among the survivors after renormalising. Top-p measures the cut in probability mass rather than token count, so the candidate set shrinks when the distribution is peaked and grows when it is flat. The token that crosses the threshold is kept, so the nucleus is never empty.",
+   "approach": [
+    "Sort tokens by logit, highest first — fixes the order used for both cuts",
+    "Top-k: set every logit beyond the k-th to −∞ — keeps a fixed number of candidates",
+    "Softmax the survivors and take cumulative sums — the mass collected so far",
+    "Top-p: drop a token once the mass before it is at least p — keeps the smallest nucleus reaching p",
+    "Sample from the renormalised survivors — the softmax gives zero weight to −∞"
+   ],
+   "time": "O(V log V) for the sort over vocabulary size V",
+   "space": "O(V) for the filtered logits",
+   "solution": "import numpy as np\n\ndef softmax(z):\n    e = np.exp(z - z.max())\n    return e / e.sum()\n\ndef filter_logits(logits, top_k=0, top_p=1.0):\n    z = logits.astype(float).copy()\n    order = np.argsort(-z, kind=\"stable\")\n    if top_k > 0:\n        z[order[top_k:]] = -np.inf\n    p = softmax(z)[order]\n    drop = np.cumsum(p) - p >= top_p\n    z[order[drop]] = -np.inf\n    return z\n\ndef sample(logits, rng, temperature=1.0, **kw):\n    z = filter_logits(logits / temperature, **kw)\n    return rng.choice(len(z), p=softmax(z))",
+   "keyLines": [
+    11,
+    13,
+    14
+   ],
+   "dryRun": [
+    "pᵢ = exp(zᵢ / τ) / Σⱼ exp(zⱼ / τ)",
+    "Top-k: keep i if rank(i) ≤ k",
+    "Sort p₍₁₎ ≥ p₍₂₎ ≥ …; cumulative Cⱼ = Σ_{m ≤ j} p₍ₘ₎",
+    "Top-p: keep rank j if Cⱼ₋₁ < p   (C₀ = 0)",
+    "p′ᵢ = pᵢ · 1[kept] / Σⱼ pⱼ · 1[kept]"
+   ],
+   "description": "Open-ended generation such as chat, stories and brainstorming, where diversity is wanted but low-probability tokens cause incoherence.",
+   "examples": [
+    {
+     "input": "How does top-p differ from top-k?",
+     "output": "Top-k keeps a fixed number of tokens whatever the distribution looks like. Top-p keeps the smallest set reaching probability mass p, so its size adapts to how confident the model is.",
+     "explanation": ""
+    },
+    {
+     "input": "Why renormalise after truncating?",
+     "output": "The kept probabilities no longer sum to one. The softmax over the remaining logits rescales them so the sample is drawn from a valid distribution.",
+     "explanation": ""
+    },
+    {
+     "input": "What does temperature do and in what order is it applied?",
+     "output": "It divides the logits before the softmax; low values sharpen and high values flatten the distribution. It is normally applied first, then the truncation.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Top-k (0 disables)",
+    "Top-p threshold in (0, 1]",
+    "Temperature τ",
+    "Order of temperature, top-k and top-p"
+   ],
+   "edgeCases": [
+    "Libraries differ on whether top-p uses the distribution before or after top-k; here top-p sees the renormalised top-k survivors",
+    "top_p = 0 would drop every token; use a value above zero",
+    "Ties at the cut are broken by sort order, so which tied token is kept is arbitrary"
+   ],
+   "related": [
+    "beam-search",
+    "softmax-cross-entropy",
+    "entropy-kl-divergence"
+   ]
+  },
+  {
+   "slug": "transfer-learning-fine-tuning",
+   "title": "Transfer Learning and Fine-Tuning",
+   "platform": "Deep Learning",
+   "url": "https://d2l.ai/chapter_computer-vision/fine-tuning.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Transfer Learning",
+    "Freezing Layers",
+    "Pretraining"
+   ],
+   "patterns": [
+    "Transfer and adaptation"
+   ],
+   "summary": "Start from a network pretrained on a large dataset, freeze some of its layers and train the rest, usually a new output head, on your small task.",
+   "bruteForce": "When the target domain is very different from the pretraining data and you have lots of data, training from scratch or unfreezing most layers may fit better. Frozen features also carry the pretraining biases.",
+   "intuition": "Early layers of a network trained on a big dataset learn generic features such as edges and textures that are useful for many tasks. Keeping them frozen reuses that knowledge and leaves very few parameters to fit on your small dataset, so the model overfits less and trains faster. Unfreezing more layers with a small learning rate lets the features adapt when the new task differs more.",
+   "whyItWorks": "A pretrained network is a strong prior in weight space, far better than random initialisation when data is scarce. Freezing means no gradient flows into those weights, so they stay at the prior, and only the head has to learn the task-specific mapping on top of fixed features.",
+   "approach": [
+    "Run the forward pass through backbone and head — gives logits and the activations needed later",
+    "Compute the output error p − y — the starting signal for backpropagation",
+    "Always compute the head gradient — the head is the part being trained",
+    "Compute the backbone gradient only if it is not frozen — skipping it saves compute and keeps weights fixed",
+    "Update only parameters that received a gradient — frozen weights never change"
+   ],
+   "time": "O(N·(D·H + H·K)) forward; the backbone backward is skipped when frozen",
+   "space": "O(N·H) activations plus gradients only for trainable weights",
+   "solution": "import numpy as np\n\ndef finetune_step(params, x, y, lr, frozen=()):\n    W1, W2 = params[\"W1\"], params[\"W2\"]\n    h = np.maximum(x @ W1, 0)\n    z = h @ W2\n    p = np.exp(z - z.max(1, keepdims=True))\n    p /= p.sum(1, keepdims=True)\n    p[np.arange(len(y)), y] -= 1\n    dz = p / len(y)\n    grads = {}\n    if \"W2\" not in frozen:\n        grads[\"W2\"] = h.T @ dz\n    if \"W1\" not in frozen:\n        grads[\"W1\"] = x.T @ ((dz @ W2.T) * (h > 0))\n    new = dict(params)\n    for k, g in grads.items():\n        new[k] = params[k] - lr * g\n    return new, grads",
+   "keyLines": [
+    12,
+    14,
+    18
+   ],
+   "dryRun": [
+    "Features h = relu(x W₁),  logits z = h W₂",
+    "Loss L = CE(softmax(z), y)",
+    "Head gradient: ∂L/∂W₂ = hᵀ · (p − y) / N",
+    "Backbone gradient: ∂L/∂W₁ = xᵀ · (((p − y) W₂ᵀ) ⊙ 1[h > 0]) / N",
+    "Frozen set F: update w ← w − η · ∂L/∂w only for w ∉ F"
+   ],
+   "description": "Small labelled datasets in a domain related to a large pretraining set, such as images, text or audio with a public pretrained model.",
+   "examples": [
+    {
+     "input": "What is the difference between feature extraction and fine-tuning?",
+     "output": "Feature extraction freezes the whole backbone and trains only a new head; fine-tuning also updates some or all backbone weights.",
+     "explanation": ""
+    },
+    {
+     "input": "Why use a smaller learning rate for pretrained layers?",
+     "output": "Their weights are already good, so small steps adapt them without erasing the pretrained features.",
+     "explanation": ""
+    },
+    {
+     "input": "When does freezing help most?",
+     "output": "When the target dataset is small and similar to the pretraining data, so fixed features are good and few parameters need fitting.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Which layers to freeze (and when to unfreeze)",
+    "Learning rate (smaller for pretrained layers than for the new head)",
+    "Head architecture",
+    "Number of fine-tuning epochs"
+   ],
+   "edgeCases": [
+    "Frozen batch-norm layers still update running statistics unless put in eval mode",
+    "A large learning rate on pretrained layers destroys the features it should keep",
+    "Input preprocessing must match what the pretrained model expects",
+    "This toy has two layers and no biases; real fine-tuning uses deep pretrained backbones loaded from a model zoo"
+   ],
+   "related": [
+    "backpropagation",
+    "mlp-forward-pass",
+    "early-stopping"
+   ]
+  },
+  {
+   "slug": "transformer-block",
+   "title": "Pre-Norm Transformer Block",
+   "platform": "NLP",
+   "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/transformer.html",
+   "difficulty": "Hard",
+   "topics": [
+    "Transformers",
+    "Architecture",
+    "Language Modeling"
+   ],
+   "patterns": [
+    "Attention and sequences"
+   ],
+   "summary": "One decoder layer: layer-normalise, apply causal multi-head attention, add the result back, then layer-normalise and apply a feed-forward network with a second residual connection.",
+   "bruteForce": "Very long inputs where quadratic attention is too costly, or small tabular and low-data problems where a simpler network suffices.",
+   "intuition": "Attention moves information between tokens, and the feed-forward network transforms each token on its own; stacking the two gives a layer that both gathers context and processes it. Keeping a clean residual path x + f(norm(x)) lets each layer make a small correction to the stream, so gradients reach early layers and deep stacks train.",
+   "whyItWorks": "Residual connections give an identity path through the layer, so the signal and its gradient pass unchanged through any depth. Placing the norm inside each branch (pre-norm) keeps that path free of normalisation and is easier to optimise than post-norm, at some cost in final quality. Attention handles cross-token interaction while the MLP, which holds most of the parameters, handles per-token features.",
+   "approach": [
+    "Normalise x with LayerNorm — keeps the attention input at a stable scale",
+    "Project to Q, K, V and split into heads — each head attends in its own subspace",
+    "Apply causal softmax attention per head — mixes past tokens into each position",
+    "Merge heads, project with Wo and add to x — the first residual update",
+    "Normalise, then apply Linear → GELU → Linear and add — position-wise processing with the second residual update"
+   ],
+   "time": "O(T²·d + T·d²) per layer",
+   "space": "O(h·T²) for attention plus O(T·d) activations",
+   "solution": "import numpy as np\nfrom math import erf\n\ndef layer_norm(x, g, b, eps=1e-5):\n    mu = x.mean(-1, keepdims=True)\n    var = x.var(-1, keepdims=True)\n    return g * (x - mu) / np.sqrt(var + eps) + b\n\ndef gelu(x):\n    return 0.5 * x * (1 + np.vectorize(erf)(x / np.sqrt(2)))\n\ndef transformer_block(x, P, h):\n    T, d = x.shape\n    y = layer_norm(x, P[\"g1\"], P[\"b1\"])\n    q, k, v = (y @ P[w] for w in (\"Wq\", \"Wk\", \"Wv\"))\n    q, k, v = (m.reshape(T, h, d // h).transpose(1, 0, 2)\n               for m in (q, k, v))\n    s = q @ k.transpose(0, 2, 1) / np.sqrt(d // h)\n    s = np.where(np.triu(np.ones((T, T), bool), 1), -np.inf, s)\n    e = np.exp(s - s.max(-1, keepdims=True))\n    a = (e / e.sum(-1, keepdims=True)) @ v\n    x = x + a.transpose(1, 0, 2).reshape(T, d) @ P[\"Wo\"]\n    y = layer_norm(x, P[\"g2\"], P[\"b2\"])\n    return x + gelu(y @ P[\"W1\"] + P[\"c1\"]) @ P[\"W2\"] + P[\"c2\"]",
+   "keyLines": [
+    19,
+    22,
+    24
+   ],
+   "dryRun": [
+    "y₁ = LN(x) = γ ⊙ (x − μ) / √(σ² + ε) + β",
+    "x′ = x + MHA_causal(y₁) W_o",
+    "y₂ = LN(x′)",
+    "out = x′ + W₂ · GELU(W₁ y₂ + c₁) + c₂",
+    "GELU(u) = u · Φ(u) = ½ u (1 + erf(u / √2))"
+   ],
+   "description": "The building block of GPT-style decoder language models and of most modern transformer variants; stack it N times with embeddings in front and an output projection behind.",
+   "examples": [
+    {
+     "input": "What is the difference between pre-norm and post-norm?",
+     "output": "Pre-norm normalises the input of each sublayer and keeps the residual path clean, which trains stably in deep stacks. Post-norm normalises after the addition, as in the original Transformer, and usually needs warmup.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does the block have a feed-forward network after attention?",
+     "output": "Attention only takes weighted averages of values, which is linear in V. The MLP adds a non-linearity and most of the capacity, applied to each position independently.",
+     "explanation": ""
+    },
+    {
+     "input": "Where are most of the parameters in a block?",
+     "output": "In the MLP, whose hidden width is usually a few times d, so its two matrices outweigh the four attention projections.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Model width d and number of heads h",
+    "MLP hidden width (commonly a small multiple of d)",
+    "Pre-norm or post-norm placement",
+    "Number of stacked blocks and dropout rate"
+   ],
+   "edgeCases": [
+    "This code has no dropout, attention biases or weight tying; real models add some of these",
+    "It uses exact erf GELU; some libraries use the tanh approximation, which differs slightly",
+    "A final LayerNorm after the last block is still needed in pre-norm models"
+   ],
+   "related": [
+    "multi-head-attention",
+    "layer-normalization",
+    "residual-connections"
+   ]
+  },
+  {
+   "slug": "transposed-convolution",
+   "title": "Transposed Convolution",
+   "platform": "Vision",
+   "url": "https://d2l.ai/chapter_computer-vision/transposed-conv.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Upsampling",
+    "Convolutional Networks",
+    "Segmentation"
+   ],
+   "patterns": [
+    "Convolution and vision"
+   ],
+   "summary": "A learned upsampling layer: each input value paints a scaled copy of the kernel onto a larger output, and overlapping copies add up.",
+   "bruteForce": "When checkerboard artefacts matter, resize with fixed interpolation and then apply a normal convolution, or choose a kernel size divisible by the stride.",
+   "intuition": "A normal strided convolution shrinks a map by reading windows; the transposed one runs the same wiring backwards, so a small map grows. Instead of gathering a patch into one number, every input pixel scatters its value times the kernel into the output at stride spacing. Where those stamps overlap they sum, which is why mismatched kernel and stride produce a checkerboard pattern.",
+   "whyItWorks": "The layer is the transpose of the matrix that implements a convolution, so it maps gradients of a convolution's output back to its input shape. Because the kernel is learned, the network can learn a good interpolation rather than using a fixed one like bilinear upsampling.",
+   "approach": [
+    "Allocate the full output of size (H − 1)·s + k — large enough for every stamp",
+    "For each input position, multiply its channel vector with the kernel — one k×k stamp per output channel",
+    "Add the stamp into the output at offset (s·i, s·j) — overlapping stamps accumulate",
+    "Crop p rows and columns from each border — padding shrinks the output instead of growing it"
+   ],
+   "time": "O(N·C·F·H·W·kH·kW)",
+   "space": "O(N·F·oH·oW) for the output",
+   "solution": "import numpy as np\n\ndef conv_transpose2d(x, w, stride=1, pad=0):\n    # x: (N,C,H,W)  w: (C,F,kh,kw)\n    n, c, h, wd = x.shape\n    _, f, kh, kw = w.shape\n    oh = (h - 1) * stride + kh\n    ow = (wd - 1) * stride + kw\n    full = np.zeros((n, f, oh, ow))\n    for i in range(h):\n        for j in range(wd):\n            stamp = np.tensordot(x[:, :, i, j], w, axes=([1], [0]))\n            r, s = i * stride, j * stride\n            full[:, :, r:r + kh, s:s + kw] += stamp\n    return full[:, :, pad:oh - pad, pad:ow - pad]",
+   "keyLines": [
+    12,
+    14
+   ],
+   "dryRun": [
+    "Input x: (N, C, H, W); kernel w: (C, F, kH, kW)",
+    "full[n,f,si+u,sj+v] += Σ_c w[c,f,u,v] · x[n,c,i,j]",
+    "Full size: (H − 1)·s + kH  (same for width)",
+    "Output size: (H − 1)·s − 2p + kH",
+    "Padding p crops p entries from each border of the full map"
+   ],
+   "description": "Decoders of segmentation networks, autoencoders and GAN generators that must produce a higher resolution map from a coarse one.",
+   "examples": [
+    {
+     "input": "What is the output size of a transposed convolution?",
+     "output": "(H − 1)·s − 2p + k along each spatial dimension, plus any output padding.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is it called transposed?",
+     "output": "Its forward pass multiplies by the transpose of the matrix that represents the corresponding convolution.",
+     "explanation": ""
+    },
+    {
+     "input": "Why do checkerboard artefacts appear?",
+     "output": "Stamps from neighbouring inputs overlap unevenly when the kernel size is not a multiple of the stride.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Kernel size",
+    "Stride (upsampling factor)",
+    "Padding (crops the output)",
+    "Output padding (not modelled here; it resolves size ambiguity)"
+   ],
+   "edgeCases": [
+    "Kernel size not divisible by stride gives uneven overlap and checkerboard artefacts",
+    "Called deconvolution, but it does not invert a convolution's values, only its shape",
+    "Dilation and output padding are not modelled in this sketch",
+    "The same output size can come from several input sizes of a strided convolution"
+   ],
+   "related": [
+    "convolution-2d",
+    "autoencoder",
+    "receptive-field"
+   ]
+  },
+  {
    "slug": "vae-reparameterization",
    "title": "VAE and the Reparameterisation Trick",
    "platform": "Deep Learning",
@@ -4042,7 +6287,8 @@
     "Latent Variables"
    ],
    "patterns": [
-    "Information-theoretic losses"
+    "Information-theoretic losses",
+    "Generative models"
    ],
    "summary": "A variational autoencoder encodes each input as a Gaussian over latent codes, samples a code, decodes it, and trains on reconstruction error plus a KL penalty toward a standard normal prior.",
    "bruteForce": "Discrete latent variables cannot be reparameterised this way, and samples are often blurrier than those of GANs or diffusion models. Watch for posterior collapse, where the decoder ignores z.",
@@ -4107,6 +6353,88 @@
     "autoencoder",
     "entropy-kl-divergence",
     "backpropagation"
+   ]
+  },
+  {
+   "slug": "value-iteration",
+   "title": "Value Iteration",
+   "platform": "RL",
+   "url": "https://en.wikipedia.org/wiki/Markov_decision_process",
+   "difficulty": "Medium",
+   "topics": [
+    "Dynamic Programming",
+    "Markov Decision Process",
+    "Planning",
+    "Bellman Equation"
+   ],
+   "patterns": [
+    "Reinforcement learning"
+   ],
+   "summary": "Compute the optimal state values of a known MDP by repeatedly applying the Bellman optimality backup until the values stop changing, then read off the greedy policy.",
+   "bruteForce": "When the model is unknown (use Q-learning or policy gradients), when the state space is huge or continuous (the sweep touches every state), or when γ is close to one and convergence becomes slow.",
+   "intuition": "If you knew the best achievable future value of every state, the best action in a state would be the one maximising reward now plus discounted value of where it lands. Start with a guess of zero and apply that one-step lookahead everywhere over and over: information about rewards spreads outward one step per sweep until the guess is self-consistent.",
+   "whyItWorks": "The Bellman optimality operator is a contraction in the sup norm with factor equal to the discount γ < 1, so by the Banach fixed-point theorem repeated application converges to its unique fixed point, the optimal value function, from any start. The error shrinks at least geometrically, and a policy greedy with respect to the converged values is optimal.",
+   "approach": [
+    "Initialise V to zeros — any start converges, zero is neutral",
+    "Compute Q = r + γ V[next] for every state and action at once — a one-step lookahead using the current values",
+    "Take the max over actions and force terminal states to zero — the Bellman optimality backup, with no future after a terminal",
+    "Stop when the largest change is below a tolerance — contraction guarantees a small change means a small error",
+    "Recompute Q from the final V and take argmax per state — the greedy policy"
+   ],
+   "time": "O(sweeps·|S|·|A|) for deterministic transitions (O(|S|²|A|) per sweep if stochastic)",
+   "space": "O(|S|·|A|) for Q and the reward and next-state tables",
+   "solution": "import numpy as np\n\ndef value_iteration(nxt, rew, done, gamma=0.9, tol=1e-10):\n    V = np.zeros(len(done))\n    for _ in range(10000):\n        Q = rew + gamma * V[nxt]\n        V2 = np.where(done, 0.0, Q.max(1))\n        if np.abs(V2 - V).max() < tol:\n            break\n        V = V2\n    Q = rew + gamma * V2[nxt]\n    return V2, Q",
+   "keyLines": [
+    6,
+    7,
+    8
+   ],
+   "dryRun": [
+    "Bellman optimality: V*(s) = maxₐ [ r(s,a) + γ V*(s') ]",
+    "s' = next state (deterministic); stochastic: Σₛ' P(s'|s,a)[…]",
+    "Backup: Q_k(s,a) = r(s,a) + γ V_k(s'),  V_{k+1}(s) = maxₐ Q_k(s,a)",
+    "Terminal states: V(s) = 0",
+    "Contraction: ‖V_{k+1} − V*‖∞ ≤ γ ‖V_k − V*‖∞",
+    "Policy: π(s) = argmaxₐ [ r(s,a) + γ V*(s') ]"
+   ],
+   "description": "Small known MDPs (gridworlds, inventory, scheduling) where the transition model is available, as the exact reference to check model-free methods like Q-learning, and to teach dynamic programming in RL.",
+   "examples": [
+    {
+     "input": "Why does value iteration converge?",
+     "output": "The Bellman optimality backup is a γ-contraction in the max norm, so repeated application converges geometrically to the unique optimal value function.",
+     "explanation": ""
+    },
+    {
+     "input": "Value iteration versus policy iteration?",
+     "output": "Policy iteration alternates full policy evaluation with greedy improvement and often needs few outer iterations; value iteration folds one evaluation step and improvement into a single max backup per sweep.",
+     "explanation": ""
+    },
+    {
+     "input": "How does value iteration relate to Q-learning?",
+     "output": "Both aim at the fixed point of the Bellman optimality equation; value iteration applies the exact backup with a known model, Q-learning applies it to sampled transitions.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you get a policy from V*?",
+     "output": "Pick in each state the action maximising reward plus discounted value of the next state, which is the greedy policy and is optimal.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Discount γ — closer to one looks further ahead but converges more slowly",
+    "Tolerance — stopping threshold on the largest value change",
+    "Maximum sweeps — a safeguard against slow convergence"
+   ],
+   "edgeCases": [
+    "Needs the full model (next state and reward for every state-action pair); Q-learning does not",
+    "Deterministic transitions only here; a stochastic MDP needs an expectation over next states",
+    "Rows of Q for terminal states are not meaningful; their value is fixed at zero",
+    "The conventions (reward on the transition, terminal value zero) must match the environment, or comparisons with other methods will disagree"
+   ],
+   "related": [
+    "q-learning",
+    "bayes-theorem",
+    "gradient-descent"
    ]
   },
   {
@@ -4295,84 +6623,134 @@
      "order": 5
     },
     {
-     "slug": "adam-optimizer",
+     "slug": "momentum-sgd",
      "section": "Training setup",
      "order": 6
     },
     {
-     "slug": "learning-rate-schedules",
+     "slug": "adam-optimizer",
      "section": "Training setup",
      "order": 7
     },
     {
-     "slug": "batch-normalization",
-     "section": "Normalisation and regularisation",
+     "slug": "learning-rate-schedules",
+     "section": "Training setup",
      "order": 8
     },
     {
-     "slug": "layer-normalization",
-     "section": "Normalisation and regularisation",
+     "slug": "gradient-clipping",
+     "section": "Training setup",
      "order": 9
     },
     {
-     "slug": "dropout",
+     "slug": "batch-normalization",
      "section": "Normalisation and regularisation",
      "order": 10
     },
     {
-     "slug": "early-stopping",
+     "slug": "layer-normalization",
      "section": "Normalisation and regularisation",
      "order": 11
     },
     {
-     "slug": "residual-connections",
+     "slug": "dropout",
      "section": "Normalisation and regularisation",
      "order": 12
     },
     {
+     "slug": "early-stopping",
+     "section": "Normalisation and regularisation",
+     "order": 13
+    },
+    {
+     "slug": "residual-connections",
+     "section": "Normalisation and regularisation",
+     "order": 14
+    },
+    {
+     "slug": "data-augmentation",
+     "section": "Normalisation and regularisation",
+     "order": 15
+    },
+    {
+     "slug": "label-smoothing",
+     "section": "Normalisation and regularisation",
+     "order": 16
+    },
+    {
+     "slug": "focal-loss",
+     "section": "Loss design and compression",
+     "order": 17
+    },
+    {
+     "slug": "knowledge-distillation",
+     "section": "Loss design and compression",
+     "order": 18
+    },
+    {
+     "slug": "transfer-learning-fine-tuning",
+     "section": "Transfer and adaptation",
+     "order": 19
+    },
+    {
+     "slug": "lora-low-rank-adaptation",
+     "section": "Transfer and adaptation",
+     "order": 20
+    },
+    {
      "slug": "rnn-cell",
      "section": "Sequence models",
-     "order": 13
+     "order": 21
     },
     {
      "slug": "lstm-cell",
      "section": "Sequence models",
-     "order": 14
+     "order": 22
     },
     {
      "slug": "convolution-2d",
      "section": "Architectures",
-     "order": 15
+     "order": 23
     },
     {
      "slug": "max-pooling",
      "section": "Architectures",
-     "order": 16
+     "order": 24
     },
     {
      "slug": "self-attention",
      "section": "Architectures",
-     "order": 17
+     "order": 25
     },
     {
      "slug": "multi-head-attention",
      "section": "Architectures",
-     "order": 18
+     "order": 26
     },
     {
      "slug": "positional-encoding",
      "section": "Architectures",
-     "order": 19
+     "order": 27
     },
     {
      "slug": "autoencoder",
      "section": "Generative models",
-     "order": 20
+     "order": 28
     },
     {
      "slug": "vae-reparameterization",
      "section": "Generative models",
-     "order": 21
+     "order": 29
+    },
+    {
+     "slug": "gan-minimax-loss",
+     "section": "Generative models",
+     "order": 30
+    },
+    {
+     "slug": "diffusion-forward-process",
+     "section": "Generative models",
+     "order": 31
     }
    ]
   },
@@ -4402,124 +6780,169 @@
      "order": 4
     },
     {
-     "slug": "linear-regression",
-     "section": "Regression",
+     "slug": "metropolis-hastings",
+     "section": "Foundations",
      "order": 5
     },
     {
-     "slug": "ridge-lasso-regularization",
+     "slug": "linear-regression",
      "section": "Regression",
      "order": 6
     },
     {
-     "slug": "logistic-regression",
-     "section": "Classification",
+     "slug": "ridge-lasso-regularization",
+     "section": "Regression",
      "order": 7
     },
     {
-     "slug": "naive-bayes",
+     "slug": "logistic-regression",
      "section": "Classification",
      "order": 8
     },
     {
-     "slug": "knn",
+     "slug": "naive-bayes",
      "section": "Classification",
      "order": 9
     },
     {
-     "slug": "svm",
+     "slug": "knn",
      "section": "Classification",
      "order": 10
     },
     {
-     "slug": "decision-tree",
+     "slug": "svm",
      "section": "Classification",
      "order": 11
     },
     {
+     "slug": "decision-tree",
+     "section": "Classification",
+     "order": 12
+    },
+    {
+     "slug": "linear-discriminant-analysis",
+     "section": "Classification",
+     "order": 13
+    },
+    {
+     "slug": "kernel-trick-rbf",
+     "section": "Classification",
+     "order": 14
+    },
+    {
      "slug": "random-forest",
      "section": "Ensembles",
-     "order": 12
+     "order": 15
     },
     {
      "slug": "gradient-boosting",
      "section": "Ensembles",
-     "order": 13
+     "order": 16
+    },
+    {
+     "slug": "adaboost",
+     "section": "Ensembles",
+     "order": 17
+    },
+    {
+     "slug": "hidden-markov-forward",
+     "section": "Sequences and recommenders",
+     "order": 18
+    },
+    {
+     "slug": "matrix-factorization-recommender",
+     "section": "Sequences and recommenders",
+     "order": 19
     },
     {
      "slug": "k-means",
      "section": "Unsupervised",
-     "order": 14
+     "order": 20
     },
     {
      "slug": "gaussian-mixture-em",
      "section": "Unsupervised",
-     "order": 15
+     "order": 21
     },
     {
      "slug": "dbscan",
      "section": "Unsupervised",
-     "order": 16
+     "order": 22
     },
     {
      "slug": "pca",
      "section": "Unsupervised",
-     "order": 17
+     "order": 23
     },
     {
      "slug": "feature-scaling",
      "section": "Preprocessing and linear algebra",
-     "order": 18
+     "order": 24
     },
     {
      "slug": "svd",
      "section": "Preprocessing and linear algebra",
-     "order": 19
+     "order": 25
     },
     {
      "slug": "bias-variance-tradeoff",
      "section": "Evaluation and generalisation",
-     "order": 20
+     "order": 26
     },
     {
      "slug": "cross-validation",
      "section": "Evaluation and generalisation",
-     "order": 21
+     "order": 27
     },
     {
      "slug": "precision-recall-f1",
      "section": "Evaluation and generalisation",
-     "order": 22
+     "order": 28
     },
     {
      "slug": "roc-auc",
      "section": "Evaluation and generalisation",
-     "order": 23
+     "order": 29
     },
     {
      "slug": "class-imbalance",
      "section": "Evaluation and generalisation",
-     "order": 24
+     "order": 30
     },
     {
      "slug": "probability-calibration",
      "section": "Evaluation and generalisation",
-     "order": 25
+     "order": 31
     },
     {
      "slug": "hyperparameter-search",
      "section": "Evaluation and generalisation",
-     "order": 26
+     "order": 32
     },
     {
      "slug": "data-leakage",
      "section": "Evaluation and generalisation",
-     "order": 27
+     "order": 33
+    },
+    {
+     "slug": "multiclass-metrics",
+     "section": "Evaluation and generalisation",
+     "order": 34
+    },
+    {
+     "slug": "stratified-split",
+     "section": "Evaluation and generalisation",
+     "order": 35
+    },
+    {
+     "slug": "ab-test-significance",
+     "section": "Evaluation and generalisation",
+     "order": 36
     },
     {
      "slug": "concept-drift",
      "section": "Production monitoring",
-     "order": 28
+     "order": 37
     }
    ]
   },
@@ -4564,29 +6987,89 @@
      "order": 7
     },
     {
+     "slug": "causal-masking",
+     "section": "NLP",
+     "order": 8
+    },
+    {
+     "slug": "transformer-block",
+     "section": "NLP",
+     "order": 9
+    },
+    {
+     "slug": "rotary-position-embedding",
+     "section": "NLP",
+     "order": 10
+    },
+    {
+     "slug": "kv-cache",
+     "section": "NLP",
+     "order": 11
+    },
+    {
+     "slug": "top-k-top-p-sampling",
+     "section": "NLP",
+     "order": 12
+    },
+    {
+     "slug": "perplexity",
+     "section": "NLP",
+     "order": 13
+    },
+    {
+     "slug": "cosine-similarity-embeddings",
+     "section": "NLP",
+     "order": 14
+    },
+    {
      "slug": "convolution-2d",
      "section": "Vision",
-     "order": 8
+     "order": 15
     },
     {
      "slug": "max-pooling",
      "section": "Vision",
-     "order": 9
+     "order": 16
     },
     {
      "slug": "iou-and-nms",
      "section": "Vision",
-     "order": 10
+     "order": 17
+    },
+    {
+     "slug": "receptive-field",
+     "section": "Vision",
+     "order": 18
+    },
+    {
+     "slug": "depthwise-separable-convolution",
+     "section": "Vision",
+     "order": 19
+    },
+    {
+     "slug": "transposed-convolution",
+     "section": "Vision",
+     "order": 20
+    },
+    {
+     "slug": "data-augmentation",
+     "section": "Vision",
+     "order": 21
     },
     {
      "slug": "q-learning",
      "section": "Reinforcement learning",
-     "order": 11
+     "order": 22
     },
     {
      "slug": "reinforce-policy-gradient",
      "section": "Reinforcement learning",
-     "order": 12
+     "order": 23
+    },
+    {
+     "slug": "value-iteration",
+     "section": "Reinforcement learning",
+     "order": 24
     }
    ]
   }
@@ -4612,7 +7095,8 @@
     "linear-regression",
     "logistic-regression",
     "svm",
-    "ridge-lasso-regularization"
+    "ridge-lasso-regularization",
+    "kernel-trick-rbf"
    ],
    "aliases": [
     "Linear models"
@@ -4638,7 +7122,9 @@
     "ridge-lasso-regularization",
     "dropout",
     "early-stopping",
-    "bias-variance-tradeoff"
+    "bias-variance-tradeoff",
+    "data-augmentation",
+    "label-smoothing"
    ],
    "aliases": [
     "Regularisation"
@@ -4665,7 +7151,9 @@
     "adam-optimizer",
     "learning-rate-schedules",
     "backpropagation",
-    "weight-initialization"
+    "weight-initialization",
+    "gradient-clipping",
+    "momentum-sgd"
    ],
    "aliases": [
     "Gradient-based optimisation"
@@ -4690,7 +7178,8 @@
    "problems": [
     "decision-tree",
     "random-forest",
-    "gradient-boosting"
+    "gradient-boosting",
+    "adaboost"
    ],
    "aliases": [
     "Tree ensembles"
@@ -4716,7 +7205,10 @@
     "naive-bayes",
     "bayes-theorem",
     "maximum-likelihood",
-    "gaussian-mixture-em"
+    "gaussian-mixture-em",
+    "linear-discriminant-analysis",
+    "hidden-markov-forward",
+    "metropolis-hastings"
    ],
    "aliases": [
     "Probabilistic models"
@@ -4767,7 +7259,8 @@
     "precision-recall-f1",
     "roc-auc",
     "probability-calibration",
-    "class-imbalance"
+    "class-imbalance",
+    "multiclass-metrics"
    ],
    "aliases": [
     "Classification metrics"
@@ -4793,7 +7286,9 @@
     "cross-validation",
     "data-leakage",
     "hyperparameter-search",
-    "concept-drift"
+    "concept-drift",
+    "ab-test-significance",
+    "stratified-split"
    ],
    "aliases": [
     "Validation hygiene"
@@ -4845,7 +7340,12 @@
     "multi-head-attention",
     "positional-encoding",
     "rnn-cell",
-    "lstm-cell"
+    "lstm-cell",
+    "causal-masking",
+    "transformer-block",
+    "rotary-position-embedding",
+    "kv-cache",
+    "hidden-markov-forward"
    ],
    "aliases": [
     "Attention and sequences"
@@ -4870,7 +7370,8 @@
    "problems": [
     "pca",
     "svd",
-    "autoencoder"
+    "autoencoder",
+    "matrix-factorization-recommender"
    ],
    "aliases": [
     "Dimensionality reduction"
@@ -4896,7 +7397,9 @@
     "entropy-kl-divergence",
     "softmax-cross-entropy",
     "maximum-likelihood",
-    "vae-reparameterization"
+    "vae-reparameterization",
+    "focal-loss",
+    "label-smoothing"
    ],
    "aliases": [
     "Information-theoretic losses"
@@ -4946,7 +7449,11 @@
    "problems": [
     "convolution-2d",
     "max-pooling",
-    "iou-and-nms"
+    "iou-and-nms",
+    "receptive-field",
+    "depthwise-separable-convolution",
+    "transposed-convolution",
+    "data-augmentation"
    ],
    "aliases": [
     "Convolution and vision"
@@ -4972,7 +7479,10 @@
     "tf-idf",
     "word2vec-skipgram",
     "bpe-tokenization",
-    "beam-search"
+    "beam-search",
+    "top-k-top-p-sampling",
+    "perplexity",
+    "cosine-similarity-embeddings"
    ],
    "aliases": [
     "Text processing"
@@ -4996,10 +7506,62 @@
    ],
    "problems": [
     "q-learning",
-    "reinforce-policy-gradient"
+    "reinforce-policy-gradient",
+    "value-iteration"
    ],
    "aliases": [
     "Reinforcement learning"
+   ]
+  },
+  {
+   "id": "generative-models",
+   "name": "Generative models",
+   "summary": "Learn the data distribution well enough to sample new examples from it.",
+   "whenToUse": [
+    "You need to create new images, text or other data.",
+    "You want a compact latent representation you can sample from.",
+    "Labels are scarce but raw data is plentiful."
+   ],
+   "keyIdea": "Every generative model turns simple noise into data. VAEs do it with an encoder and a decoder trained on a likelihood bound, GANs with a generator trained against a critic, and diffusion models by learning to undo gradual noising.",
+   "template": "import numpy as np\n\ndef reparameterise(mu, logvar, rng):\n    eps = rng.standard_normal(mu.shape)\n    return mu + np.exp(0.5 * logvar) * eps     # z ~ N(mu, sigma^2)\n\ndef noise_step(x0, abar_t, rng):\n    eps = rng.standard_normal(x0.shape)\n    return np.sqrt(abar_t) * x0 + np.sqrt(1 - abar_t) * eps",
+   "complexity": "Training is usually the expensive part; diffusion sampling needs many network passes.",
+   "pitfalls": [
+    "GAN training can oscillate or collapse to few modes.",
+    "VAE samples tend to be blurry compared with GANs and diffusion."
+   ],
+   "problems": [
+    "autoencoder",
+    "vae-reparameterization",
+    "gan-minimax-loss",
+    "diffusion-forward-process"
+   ],
+   "aliases": [
+    "Generative models"
+   ]
+  },
+  {
+   "id": "transfer-and-adaptation",
+   "name": "Transfer and adaptation",
+   "summary": "Reuse a trained model by fine-tuning it cheaply or compressing it into a smaller one.",
+   "whenToUse": [
+    "You have little data for the target task.",
+    "A large pretrained model exists for a related domain.",
+    "You must fit a model into a small memory or latency budget."
+   ],
+   "keyIdea": "Pretrained weights already encode useful features, so train only a small part (a head or low-rank update) or let a small student imitate the big teacher's outputs. You keep most of the accuracy for a fraction of the cost.",
+   "template": "import numpy as np\n\ndef lora_forward(x, W, A, B, alpha, r):\n    return x @ W + (alpha / r) * (x @ A) @ B   # W frozen\n\ndef distill_loss(student_logits, teacher_logits, T=2.0):\n    def sm(z):\n        e = np.exp((z - z.max(-1, keepdims=True)) / T)\n        return e / e.sum(-1, keepdims=True)\n    p, q = sm(teacher_logits), sm(student_logits)\n    return np.sum(p * (np.log(p) - np.log(q)), -1).mean() * T * T",
+   "complexity": "LoRA trains O(r·(d_in + d_out)) parameters per layer instead of O(d_in·d_out).",
+   "pitfalls": [
+    "Fine-tuning with too large a learning rate destroys pretrained features.",
+    "A student cannot exceed what the teacher's outputs reveal."
+   ],
+   "problems": [
+    "transfer-learning-fine-tuning",
+    "lora-low-rank-adaptation",
+    "knowledge-distillation"
+   ],
+   "aliases": [
+    "Transfer and adaptation"
    ]
   }
  ]

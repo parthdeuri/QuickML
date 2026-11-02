@@ -1,0 +1,86 @@
+slug: gan-minimax-loss
+title: GAN Minimax Loss (Saturating vs Non-Saturating)
+url: https://arxiv.org/abs/1406.2661
+difficulty: Hard
+area: Deep Learning
+topics: [Generative Models, GANs, Adversarial Training]
+summary: |
+  A discriminator learns to tell real data from generated data with a
+  binary cross-entropy loss, while the generator is trained to make the
+  discriminator fail, either by minimising log(1 − D(G(z))) or by
+  maximising log D(G(z)).
+intuition: |
+  The generator is trained only through the discriminator's verdict on
+  its samples. Early in training the discriminator easily rejects fakes,
+  and the original saturating loss then has almost no gradient exactly
+  when the generator most needs a signal. Flipping the target to
+  maximise log D(G(z)) has the same fixed point but a strong gradient
+  when the discriminator is winning.
+approach:
+  - "Let D output a logit and treat σ(logit) as P(real) — keeps the loss stable in logit space"
+  - "D loss is softplus(−logit on real) + softplus(logit on fake) — binary cross-entropy with labels 1 and 0"
+  - "Saturating G loss is the negative of the fake term — the minimax game, G minimises log(1 − D(G(z)))"
+  - "Non-saturating G loss is softplus(−logit on fake) — cross-entropy with the fake labelled real"
+  - "Compare gradients with respect to the fake logit — the saturating one vanishes when D is confident"
+code: |
+  import numpy as np
+
+  def softplus(x):
+      return np.logaddexp(0, x)
+
+  def sigmoid(x):
+      return 1 / (1 + np.exp(-x))
+
+  def gan_losses(d_real, d_fake):
+      n = len(d_fake)
+      d_loss = softplus(-d_real).mean() + softplus(d_fake).mean()
+      g_sat = -softplus(d_fake).mean()
+      g_ns = softplus(-d_fake).mean()
+      grad_sat = -sigmoid(d_fake) / n
+      grad_ns = (sigmoid(d_fake) - 1) / n
+      return d_loss, g_sat, g_ns, grad_sat, grad_ns
+key_lines: [11, 12, 13]
+time: "O(n) for n logits, plus the cost of running G and D"
+space: "O(n)"
+when_to_use: |
+  Understanding and implementing adversarial training for image
+  and other generators, and as the starting point for variants such as
+  Wasserstein and hinge-loss GANs.
+when_not_to_use: |
+  When you need stable training or a likelihood: GAN training is
+  notoriously unstable and prone to mode collapse. Diffusion models or
+  VAEs are often easier to train.
+why_it_works: |
+  For a fixed generator the best discriminator is the density ratio of
+  real to total, and plugging it in turns the game into a
+  Jensen-Shannon divergence between real and generated distributions,
+  minimised when they match. The non-saturating loss has the same fixed
+  point but, as the logit of a fake goes very negative, its gradient
+  stays near constant while the saturating gradient shrinks to zero.
+  This code scores logits only; it does not model D or G networks.
+math:
+  - "D(x) = σ(ℓ(x)),  ℓ = discriminator logit"
+  - "L_D = −E[log D(x)] − E[log(1 − D(G(z)))]"
+  - "L_G^sat = E[log(1 − D(G(z)))]   (G minimises)"
+  - "L_G^ns = −E[log D(G(z))]"
+  - "−log σ(ℓ) = softplus(−ℓ),  −log(1 − σ(ℓ)) = softplus(ℓ)"
+  - "∂L_G^sat/∂ℓ_f = −σ(ℓ_f)/n,   ∂L_G^ns/∂ℓ_f = (σ(ℓ_f) − 1)/n"
+  - "Optimal D* = p_data / (p_data + p_g)"
+interview_qa:
+  - q: "Why is the original generator loss called saturating?"
+    a: "When D confidently rejects a fake, D(G(z)) is near 0 and log(1 − D) is flat there, so the gradient to G is almost zero when G is worst."
+  - q: "Does the non-saturating loss change the equilibrium?"
+    a: "No, both are minimised when the generated distribution equals the data. Only the gradient strength away from equilibrium differs; it is a heuristic, not the exact minimax game."
+  - q: "What is mode collapse?"
+    a: "The generator maps many inputs to a few outputs that fool D, so it covers only part of the data distribution."
+hyperparameters:
+  - "Ratio of discriminator to generator updates"
+  - "Learning rates and Adam β₁ for each network"
+  - "Latent noise dimension"
+  - "Loss variant (saturating, non-saturating, hinge, Wasserstein)"
+pitfalls:
+  - "Computing log(sigmoid) directly overflows; use softplus on logits as here"
+  - "D should be updated with fake samples detached from G's graph"
+  - "A very strong D starves G of gradient; balance the two networks"
+related: [vae-reparameterization, softmax-cross-entropy, logistic-regression]
+patterns: ["Generative models"]

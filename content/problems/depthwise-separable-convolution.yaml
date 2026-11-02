@@ -1,0 +1,80 @@
+slug: depthwise-separable-convolution
+title: Depthwise Separable Convolution
+url: https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
+difficulty: Medium
+area: Vision
+topics: [Convolutional Networks, Efficient Models, Factorisation]
+summary: |
+  Split a standard convolution into a per-channel spatial filter
+  (depthwise) followed by a 1×1 convolution that mixes channels
+  (pointwise).
+intuition: |
+  A standard convolution does two jobs at once: it looks at spatial
+  neighbourhoods and it mixes channels, with a separate weight for every
+  pair. Factoring these apart gives each channel its own small spatial
+  filter, then mixes channels per pixel. The product of two cheap
+  steps approximates the expensive joint one, and the saving grows with
+  the number of channels and the kernel area.
+why_it_works: |
+  The factorised layer is a low-rank structure on the full kernel:
+  the spatial pattern is shared across all output channels instead of
+  being learned separately for each. Natural images often have
+  features where spatial and cross-channel structure can be treated
+  separately, so far fewer parameters and multiplications lose
+  little accuracy.
+when_to_use: |
+  Mobile and edge models (MobileNet, Xception, EfficientNet) where
+  parameters and compute are limited.
+when_not_to_use: |
+  When compute is plentiful and accuracy matters most; the factorised
+  layer is less expressive and depthwise operations can run
+  inefficiently on some hardware despite fewer operations.
+math:
+  - "Depthwise: m[n,c,i,j] = Σ_u Σ_v d[c,u,v] · x[n,c,si+u,sj+v]"
+  - "Pointwise: out[n,f,i,j] = Σ_c p[f,c] · m[n,c,i,j]"
+  - "Standard parameters: F·C·k²;  separable: C·k² + F·C"
+  - "Cost ratio (params): 1/F + 1/k²"
+approach:
+  - "Pad the input like an ordinary convolution — same output-size rules apply"
+  - "For each position, take the patch of every channel separately — channels are not mixed yet"
+  - "Multiply each channel's patch by that channel's own k×k filter and sum — the depthwise step"
+  - "Mix channels at each pixel with a F×C matrix — the pointwise 1×1 step produces F maps"
+code: |
+  import numpy as np
+
+  def depthwise_separable(x, dw, pw, stride=1, pad=0):
+      # x: (N,C,H,W)  dw: (C,kh,kw)  pw: (F,C)
+      x = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)))
+      n, c, h, w = x.shape
+      _, kh, kw = dw.shape
+      oh = (h - kh) // stride + 1
+      ow = (w - kw) // stride + 1
+      mid = np.zeros((n, c, oh, ow))
+      for i in range(oh):
+          for j in range(ow):
+              r, s = i * stride, j * stride
+              patch = x[:, :, r:r + kh, s:s + kw]
+              mid[:, :, i, j] = (patch * dw).sum((2, 3))
+      return np.einsum("nchw,fc->nfhw", mid, pw)
+key_lines: [14, 15]
+time: "O(N·oH·oW·C·(kH·kW + F))"
+space: "O(N·C·oH·oW) for the intermediate maps"
+hyperparameters:
+  - "Kernel size of the depthwise filter"
+  - "Stride and padding"
+  - "Output channels F of the pointwise layer"
+  - "Depth multiplier (not modelled; this uses one filter per channel)"
+pitfalls:
+  - "Fewer multiply-adds do not always mean faster inference; memory-bound depthwise kernels can be slow"
+  - "Normalisation and a nonlinearity between the two steps matter in real blocks; this sketch has none"
+  - "Biases are omitted in this sketch"
+  - "Compare parameter counts with equal accuracy, not with equal width"
+interview_qa:
+  - q: "How does a depthwise separable convolution save parameters?"
+    a: "It uses C·k² spatial weights plus F·C mixing weights instead of F·C·k² for the full kernel."
+  - q: "What does the depthwise step do?"
+    a: "It filters each input channel independently with its own spatial kernel, so it mixes no information across channels."
+  - q: "What does the pointwise step do?"
+    a: "A 1×1 convolution that linearly combines channels at every position, producing the output channels."
+related: [convolution-2d, receptive-field, residual-connections]
+patterns: ["Convolution and vision"]

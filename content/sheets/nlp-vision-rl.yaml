@@ -11,12 +11,24 @@ sections:
   - self-attention
   - multi-head-attention
   - beam-search
+  - causal-masking
+  - transformer-block
+  - rotary-position-embedding
+  - kv-cache
+  - top-k-top-p-sampling
+  - perplexity
+  - cosine-similarity-embeddings
 - name: Vision
   problems:
   - convolution-2d
   - max-pooling
   - iou-and-nms
+  - receptive-field
+  - depthwise-separable-convolution
+  - transposed-convolution
+  - data-augmentation
 - name: Reinforcement learning
   problems:
   - q-learning
   - reinforce-policy-gradient
+  - value-iteration

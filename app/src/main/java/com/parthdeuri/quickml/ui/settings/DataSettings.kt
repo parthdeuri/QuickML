@@ -112,7 +112,7 @@ fun DataSettingsCard(container: AppContainer, onRestored: () -> Unit) {
     ) {
         ActionRow(
             title = "Back up progress",
-            subtitle = "Save solved problems, reviews, notes, own problems and settings to a file",
+            subtitle = "Save learned cards, reviews, notes, own cards and settings to a file",
             enabled = !busy,
             onClick = { createLauncher.launch("quickml-backup-" + LocalDate.now() + ".json") }
         )
@@ -125,8 +125,8 @@ fun DataSettingsCard(container: AppContainer, onRestored: () -> Unit) {
             }
         )
         ActionRow(
-            title = "Import solved problems",
-            subtitle = "Paste LeetCode / GFG links, slugs or titles to mark them solved",
+            title = "Import learned cards",
+            subtitle = "Paste card titles or slugs to mark them learned",
             enabled = !busy,
             onClick = { showImport = true }
         )
@@ -194,8 +194,8 @@ fun DataSettingsCard(container: AppContainer, onRestored: () -> Unit) {
             repository = container.repository,
             onDone = { count ->
                 showImport = false
-                val noun = if (count == 1) " problem" else " problems"
-                toast("Marked " + count + noun + " solved")
+                val noun = if (count == 1) " card" else " cards"
+                toast("Marked " + count + noun + " learned")
             },
             onDismiss = { showImport = false }
         )
@@ -238,7 +238,7 @@ private fun ImportSolvedDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Import solved problems") },
+        title = { Text("Import learned cards") },
         text = {
             Column(
                 modifier = Modifier
@@ -248,7 +248,7 @@ private fun ImportSolvedDialog(
             ) {
                 if (current == null) {
                     Text(
-                        text = "LeetCode / GFG links, slugs or exact titles, one per line or " +
+                        text = "Card slugs or exact titles, one per line or " +
                             "separated by commas.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -258,13 +258,13 @@ private fun ImportSolvedDialog(
                         onValueChange = { text = it },
                         minLines = 5,
                         maxLines = 10,
-                        placeholder = { Text("https://leetcode.com/problems/two-sum/\nvalid-anagram\nContains Duplicate") },
+                        placeholder = { Text("linear-regression\nGradient Descent\nself-attention") },
                         modifier = Modifier.fillMaxWidth()
                     )
                 } else {
                     Text(
                         text = "Matched " + current.toMark.size +
-                            " · Already solved " + current.alreadySolved +
+                            " · Already learned " + current.alreadySolved +
                             " · Not found " + current.notFound.size,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold
@@ -327,7 +327,7 @@ private fun ImportSolvedDialog(
                             }
                         }
                     }
-                ) { Text("Mark " + count + " solved", color = if (count > 0) QuickMLTheme.colors.accent else MaterialTheme.colorScheme.onSurfaceVariant) }
+                ) { Text("Mark " + count + " learned", color = if (count > 0) QuickMLTheme.colors.accent else MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         },
         dismissButton = {

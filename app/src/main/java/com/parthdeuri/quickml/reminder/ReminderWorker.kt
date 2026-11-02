@@ -47,8 +47,8 @@ class ReminderWorker(
         val streak = currentStreak(viewDays, today)
 
         val message: String? = when {
-            due == 1 -> "1 problem due for revision"
-            due > 1 -> due.toString() + " problems due for revision"
+            due == 1 -> "1 card due for revision"
+            due > 1 -> due.toString() + " cards due for revision"
             !viewedToday && streak > 0 -> "Keep your " + streak + "-day streak going"
             !viewedToday -> "A few minutes of revision today?"
             else -> null

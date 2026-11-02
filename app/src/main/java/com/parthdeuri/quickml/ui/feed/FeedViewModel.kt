@@ -160,7 +160,7 @@ class FeedViewModel(private val container: AppContainer) : ViewModel() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                importStatus.value = ImportStatus.Failed(e.message ?: "Could not load problems")
+                importStatus.value = ImportStatus.Failed(e.message ?: "Could not load cards")
             }
         }
     }

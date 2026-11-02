@@ -29,5 +29,8 @@ problems:
 - bayes-theorem
 - maximum-likelihood
 - gaussian-mixture-em
+- linear-discriminant-analysis
+- hidden-markov-forward
+- metropolis-hastings
 aliases:
 - Probabilistic models

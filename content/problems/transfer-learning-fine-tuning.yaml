@@ -1,0 +1,85 @@
+slug: transfer-learning-fine-tuning
+title: Transfer Learning and Fine-Tuning
+url: https://d2l.ai/chapter_computer-vision/fine-tuning.html
+difficulty: Medium
+area: Deep Learning
+topics: [Transfer Learning, Freezing Layers, Pretraining]
+summary: |
+  Start from a network pretrained on a large dataset, freeze some of
+  its layers and train the rest, usually a new output head, on your
+  small task.
+intuition: |
+  Early layers of a network trained on a big dataset learn generic
+  features such as edges and textures that are useful for many tasks.
+  Keeping them frozen reuses that knowledge and leaves very few
+  parameters to fit on your small dataset, so the model overfits less
+  and trains faster. Unfreezing more layers with a small learning
+  rate lets the features adapt when the new task differs more.
+why_it_works: |
+  A pretrained network is a strong prior in weight space, far better
+  than random initialisation when data is scarce. Freezing means no
+  gradient flows into those weights, so they stay at the prior, and
+  only the head has to learn the task-specific mapping on top of
+  fixed features.
+when_to_use: |
+  Small labelled datasets in a domain related to a large pretraining
+  set, such as images, text or audio with a public pretrained model.
+when_not_to_use: |
+  When the target domain is very different from the pretraining data
+  and you have lots of data, training from scratch or unfreezing most
+  layers may fit better. Frozen features also carry the pretraining
+  biases.
+math:
+  - "Features h = relu(x W₁),  logits z = h W₂"
+  - "Loss L = CE(softmax(z), y)"
+  - "Head gradient: ∂L/∂W₂ = hᵀ · (p − y) / N"
+  - "Backbone gradient: ∂L/∂W₁ = xᵀ · (((p − y) W₂ᵀ) ⊙ 1[h > 0]) / N"
+  - "Frozen set F: update w ← w − η · ∂L/∂w only for w ∉ F"
+approach:
+  - "Run the forward pass through backbone and head — gives logits and the activations needed later"
+  - "Compute the output error p − y — the starting signal for backpropagation"
+  - "Always compute the head gradient — the head is the part being trained"
+  - "Compute the backbone gradient only if it is not frozen — skipping it saves compute and keeps weights fixed"
+  - "Update only parameters that received a gradient — frozen weights never change"
+code: |
+  import numpy as np
+
+  def finetune_step(params, x, y, lr, frozen=()):
+      W1, W2 = params["W1"], params["W2"]
+      h = np.maximum(x @ W1, 0)
+      z = h @ W2
+      p = np.exp(z - z.max(1, keepdims=True))
+      p /= p.sum(1, keepdims=True)
+      p[np.arange(len(y)), y] -= 1
+      dz = p / len(y)
+      grads = {}
+      if "W2" not in frozen:
+          grads["W2"] = h.T @ dz
+      if "W1" not in frozen:
+          grads["W1"] = x.T @ ((dz @ W2.T) * (h > 0))
+      new = dict(params)
+      for k, g in grads.items():
+          new[k] = params[k] - lr * g
+      return new, grads
+key_lines: [12, 14, 18]
+time: "O(N·(D·H + H·K)) forward; the backbone backward is skipped when frozen"
+space: "O(N·H) activations plus gradients only for trainable weights"
+hyperparameters:
+  - "Which layers to freeze (and when to unfreeze)"
+  - "Learning rate (smaller for pretrained layers than for the new head)"
+  - "Head architecture"
+  - "Number of fine-tuning epochs"
+pitfalls:
+  - "Frozen batch-norm layers still update running statistics unless put in eval mode"
+  - "A large learning rate on pretrained layers destroys the features it should keep"
+  - "Input preprocessing must match what the pretrained model expects"
+  - "This toy has two layers and no biases; real fine-tuning uses deep pretrained backbones loaded from a model zoo"
+interview_qa:
+  - q: "What is the difference between feature extraction and fine-tuning?"
+    a: "Feature extraction freezes the whole backbone and trains only a new head; fine-tuning also updates some or all backbone weights."
+  - q: "Why use a smaller learning rate for pretrained layers?"
+    a: "Their weights are already good, so small steps adapt them without erasing the pretrained features."
+  - q: "When does freezing help most?"
+    a: "When the target dataset is small and similar to the pretraining data, so fixed features are good and few parameters need fitting."
+related: [backpropagation, mlp-forward-pass, early-stopping]
+patterns: ["Transfer and adaptation"]

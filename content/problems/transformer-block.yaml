@@ -1,0 +1,88 @@
+slug: transformer-block
+title: Pre-Norm Transformer Block
+url: https://d2l.ai/chapter_attention-mechanisms-and-transformers/transformer.html
+difficulty: Hard
+area: NLP
+topics: [Transformers, Architecture, Language Modeling]
+summary: |
+  One decoder layer: layer-normalise, apply causal multi-head attention,
+  add the result back, then layer-normalise and apply a feed-forward
+  network with a second residual connection.
+intuition: |
+  Attention moves information between tokens, and the feed-forward
+  network transforms each token on its own; stacking the two gives a
+  layer that both gathers context and processes it. Keeping a clean
+  residual path x + f(norm(x)) lets each layer make a small correction
+  to the stream, so gradients reach early layers and deep stacks train.
+approach:
+  - "Normalise x with LayerNorm — keeps the attention input at a stable scale"
+  - "Project to Q, K, V and split into heads — each head attends in its own subspace"
+  - "Apply causal softmax attention per head — mixes past tokens into each position"
+  - "Merge heads, project with Wo and add to x — the first residual update"
+  - "Normalise, then apply Linear → GELU → Linear and add — position-wise processing with the second residual update"
+code: |
+  import numpy as np
+  from math import erf
+
+  def layer_norm(x, g, b, eps=1e-5):
+      mu = x.mean(-1, keepdims=True)
+      var = x.var(-1, keepdims=True)
+      return g * (x - mu) / np.sqrt(var + eps) + b
+
+  def gelu(x):
+      return 0.5 * x * (1 + np.vectorize(erf)(x / np.sqrt(2)))
+
+  def transformer_block(x, P, h):
+      T, d = x.shape
+      y = layer_norm(x, P["g1"], P["b1"])
+      q, k, v = (y @ P[w] for w in ("Wq", "Wk", "Wv"))
+      q, k, v = (m.reshape(T, h, d // h).transpose(1, 0, 2)
+                 for m in (q, k, v))
+      s = q @ k.transpose(0, 2, 1) / np.sqrt(d // h)
+      s = np.where(np.triu(np.ones((T, T), bool), 1), -np.inf, s)
+      e = np.exp(s - s.max(-1, keepdims=True))
+      a = (e / e.sum(-1, keepdims=True)) @ v
+      x = x + a.transpose(1, 0, 2).reshape(T, d) @ P["Wo"]
+      y = layer_norm(x, P["g2"], P["b2"])
+      return x + gelu(y @ P["W1"] + P["c1"]) @ P["W2"] + P["c2"]
+key_lines: [19, 22, 24]
+time: "O(T²·d + T·d²) per layer"
+space: "O(h·T²) for attention plus O(T·d) activations"
+when_to_use: |
+  The building block of GPT-style decoder language models and of most
+  modern transformer variants; stack it N times with embeddings in front
+  and an output projection behind.
+when_not_to_use: |
+  Very long inputs where quadratic attention is too costly, or small
+  tabular and low-data problems where a simpler network suffices.
+why_it_works: |
+  Residual connections give an identity path through the layer, so the
+  signal and its gradient pass unchanged through any depth. Placing the
+  norm inside each branch (pre-norm) keeps that path free of
+  normalisation and is easier to optimise than post-norm, at some cost in
+  final quality. Attention handles cross-token interaction while the
+  MLP, which holds most of the parameters, handles per-token features.
+math:
+  - "y₁ = LN(x) = γ ⊙ (x − μ) / √(σ² + ε) + β"
+  - "x′ = x + MHA_causal(y₁) W_o"
+  - "y₂ = LN(x′)"
+  - "out = x′ + W₂ · GELU(W₁ y₂ + c₁) + c₂"
+  - "GELU(u) = u · Φ(u) = ½ u (1 + erf(u / √2))"
+interview_qa:
+  - q: "What is the difference between pre-norm and post-norm?"
+    a: "Pre-norm normalises the input of each sublayer and keeps the residual path clean, which trains stably in deep stacks. Post-norm normalises after the addition, as in the original Transformer, and usually needs warmup."
+  - q: "Why does the block have a feed-forward network after attention?"
+    a: "Attention only takes weighted averages of values, which is linear in V. The MLP adds a non-linearity and most of the capacity, applied to each position independently."
+  - q: "Where are most of the parameters in a block?"
+    a: "In the MLP, whose hidden width is usually a few times d, so its two matrices outweigh the four attention projections."
+hyperparameters:
+  - "Model width d and number of heads h"
+  - "MLP hidden width (commonly a small multiple of d)"
+  - "Pre-norm or post-norm placement"
+  - "Number of stacked blocks and dropout rate"
+pitfalls:
+  - "This code has no dropout, attention biases or weight tying; real models add some of these"
+  - "It uses exact erf GELU; some libraries use the tanh approximation, which differs slightly"
+  - "A final LayerNorm after the last block is still needed in pre-norm models"
+related: [multi-head-attention, layer-normalization, residual-connections]
+patterns: ["Attention and sequences"]

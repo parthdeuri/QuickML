@@ -31,5 +31,7 @@ problems:
 - dropout
 - early-stopping
 - bias-variance-tradeoff
+- data-augmentation
+- label-smoothing
 aliases:
 - Regularisation

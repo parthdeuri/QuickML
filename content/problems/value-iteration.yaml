@@ -1,0 +1,79 @@
+slug: value-iteration
+title: Value Iteration
+url: https://en.wikipedia.org/wiki/Markov_decision_process
+difficulty: Medium
+area: RL
+topics: [Dynamic Programming, Markov Decision Process, Planning, Bellman Equation]
+summary: |
+  Compute the optimal state values of a known MDP by repeatedly applying
+  the Bellman optimality backup until the values stop changing, then read
+  off the greedy policy.
+intuition: |
+  If you knew the best achievable future value of every state, the best
+  action in a state would be the one maximising reward now plus discounted
+  value of where it lands. Start with a guess of zero and apply that
+  one-step lookahead everywhere over and over: information about rewards
+  spreads outward one step per sweep until the guess is self-consistent.
+why_it_works: |
+  The Bellman optimality operator is a contraction in the sup norm with
+  factor equal to the discount γ < 1, so by the Banach fixed-point theorem
+  repeated application converges to its unique fixed point, the optimal
+  value function, from any start. The error shrinks at least geometrically,
+  and a policy greedy with respect to the converged values is optimal.
+when_to_use: |
+  Small known MDPs (gridworlds, inventory, scheduling) where the transition
+  model is available, as the exact reference to check model-free methods
+  like Q-learning, and to teach dynamic programming in RL.
+when_not_to_use: |
+  When the model is unknown (use Q-learning or policy gradients), when the
+  state space is huge or continuous (the sweep touches every state), or
+  when γ is close to one and convergence becomes slow.
+math:
+  - "Bellman optimality: V*(s) = maxₐ [ r(s,a) + γ V*(s') ]"
+  - "s' = next state (deterministic); stochastic: Σₛ' P(s'|s,a)[…]"
+  - "Backup: Q_k(s,a) = r(s,a) + γ V_k(s'),  V_{k+1}(s) = maxₐ Q_k(s,a)"
+  - "Terminal states: V(s) = 0"
+  - "Contraction: ‖V_{k+1} − V*‖∞ ≤ γ ‖V_k − V*‖∞"
+  - "Policy: π(s) = argmaxₐ [ r(s,a) + γ V*(s') ]"
+approach:
+  - "Initialise V to zeros — any start converges, zero is neutral"
+  - "Compute Q = r + γ V[next] for every state and action at once — a one-step lookahead using the current values"
+  - "Take the max over actions and force terminal states to zero — the Bellman optimality backup, with no future after a terminal"
+  - "Stop when the largest change is below a tolerance — contraction guarantees a small change means a small error"
+  - "Recompute Q from the final V and take argmax per state — the greedy policy"
+code: |
+  import numpy as np
+
+  def value_iteration(nxt, rew, done, gamma=0.9, tol=1e-10):
+      V = np.zeros(len(done))
+      for _ in range(10000):
+          Q = rew + gamma * V[nxt]
+          V2 = np.where(done, 0.0, Q.max(1))
+          if np.abs(V2 - V).max() < tol:
+              break
+          V = V2
+      Q = rew + gamma * V2[nxt]
+      return V2, Q
+key_lines: [6, 7, 8]
+time: "O(sweeps·|S|·|A|) for deterministic transitions (O(|S|²|A|) per sweep if stochastic)"
+space: "O(|S|·|A|) for Q and the reward and next-state tables"
+hyperparameters:
+  - "Discount γ — closer to one looks further ahead but converges more slowly"
+  - "Tolerance — stopping threshold on the largest value change"
+  - "Maximum sweeps — a safeguard against slow convergence"
+pitfalls:
+  - "Needs the full model (next state and reward for every state-action pair); Q-learning does not"
+  - "Deterministic transitions only here; a stochastic MDP needs an expectation over next states"
+  - "Rows of Q for terminal states are not meaningful; their value is fixed at zero"
+  - "The conventions (reward on the transition, terminal value zero) must match the environment, or comparisons with other methods will disagree"
+interview_qa:
+  - q: "Why does value iteration converge?"
+    a: "The Bellman optimality backup is a γ-contraction in the max norm, so repeated application converges geometrically to the unique optimal value function."
+  - q: "Value iteration versus policy iteration?"
+    a: "Policy iteration alternates full policy evaluation with greedy improvement and often needs few outer iterations; value iteration folds one evaluation step and improvement into a single max backup per sweep."
+  - q: "How does value iteration relate to Q-learning?"
+    a: "Both aim at the fixed point of the Bellman optimality equation; value iteration applies the exact backup with a known model, Q-learning applies it to sampled transitions."
+  - q: "How do you get a policy from V*?"
+    a: "Pick in each state the action maximising reward plus discounted value of the next state, which is the greedy policy and is optimal."
+related: [q-learning, bayes-theorem, gradient-descent]
+patterns: ["Reinforcement learning"]

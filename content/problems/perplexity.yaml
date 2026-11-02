@@ -1,0 +1,70 @@
+slug: perplexity
+title: Perplexity of a Language Model
+url: https://huggingface.co/docs/transformers/perplexity
+difficulty: Easy
+area: NLP
+topics: [Evaluation, Language Modeling, Information Theory]
+summary: |
+  The exponential of the average negative log-likelihood per token; how
+  many equally likely choices the model is effectively hesitating
+  between at each step.
+intuition: |
+  Cross-entropy in nats is hard to feel, but its exponential has a
+  concrete reading: a model that spreads probability uniformly over V
+  tokens has perplexity V. A lower value therefore means the model is
+  effectively choosing among fewer candidates, so it assigns higher
+  probability to the text it actually sees.
+approach:
+  - "Turn logits into log-probabilities with a stable log-softmax — avoids overflow and log of zero"
+  - "Pick the log-probability of each true next token — the model's probability for the actual data"
+  - "Negate and average over all tokens — this is the cross-entropy in nats"
+  - "Exponentiate the mean — converts nats into an effective branching factor"
+code: |
+  import numpy as np
+
+  def perplexity(logits, targets):
+      z = logits - logits.max(axis=-1, keepdims=True)
+      lse = np.log(np.exp(z).sum(axis=-1, keepdims=True))
+      logp = z - lse
+      nll = -logp[np.arange(len(targets)), targets]
+      return np.exp(nll.mean())
+key_lines: [5, 6, 7]
+time: "O(N·V) for N tokens and vocabulary size V"
+space: "O(N·V) for the log-probabilities"
+when_to_use: |
+  Comparing language models on the same text and tokenizer, tracking
+  validation loss during pretraining, and detecting distribution shift.
+when_not_to_use: |
+  Comparing models with different tokenizers or vocabularies, where
+  values are not comparable, or judging quality of generated text, since
+  low perplexity does not guarantee helpful or factual output.
+why_it_works: |
+  Perplexity is exp of the empirical cross-entropy between the data and
+  the model, so minimising training loss is the same as minimising
+  perplexity. The exponential of an entropy is the effective number of
+  equally likely outcomes, and the geometric mean of inverse token
+  probabilities has the same value, which explains the branching-factor
+  reading.
+math:
+  - "log pᵢ = zᵢ − log Σⱼ exp(zⱼ)"
+  - "CE = −(1/N) Σₙ log p(yₙ | contextₙ)"
+  - "PPL = exp(CE)"
+  - "PPL = (Πₙ 1 / p(yₙ | contextₙ))^(1/N)"
+  - "Uniform over V tokens: PPL = V"
+interview_qa:
+  - q: "What does a perplexity of V mean?"
+    a: "On average the model is as uncertain as if it picked uniformly among V tokens at each step."
+  - q: "Why must the tokenizer be the same when comparing perplexities?"
+    a: "Perplexity is per token. A tokenizer that splits text into more tokens spreads the same information over more steps, so per-token numbers are not comparable."
+  - q: "How is perplexity related to bits per token?"
+    a: "Bits per token is the cross-entropy in base 2, and perplexity equals 2 raised to that value, the same quantity as the natural-log version."
+hyperparameters:
+  - "Context window used to condition each token"
+  - "Stride when evaluating with a sliding window"
+  - "Tokenizer and vocabulary"
+pitfalls:
+  - "Average over all tokens, not per sequence, or short sequences are over-weighted"
+  - "Evaluate with enough context; truncated windows inflate perplexity"
+  - "Mask padding tokens in real code; this version assumes every target is a real token"
+related: [softmax-cross-entropy, entropy-kl-divergence, maximum-likelihood]
+patterns: ["Text processing"]

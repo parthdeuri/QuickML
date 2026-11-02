@@ -28,5 +28,6 @@ problems:
 - logistic-regression
 - svm
 - ridge-lasso-regularization
+- kernel-trick-rbf
 aliases:
 - Linear models

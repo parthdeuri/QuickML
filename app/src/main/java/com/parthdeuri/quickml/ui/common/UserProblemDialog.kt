@@ -58,7 +58,7 @@ fun UserProblemDialog(
 ) {
     var draft by remember { mutableStateOf(initial ?: UserProblemDraft()) }
     FullScreenDialog(
-        title = if (initial == null) "Add problem" else "Edit problem",
+        title = if (initial == null) "Add card" else "Edit card",
         onDismiss = onDismiss,
         onConfirm = { onSave(draft) },
         confirmEnabled = draft.isValid
@@ -152,7 +152,7 @@ fun UserProblemDialog(
             OutlinedTextField(
                 value = draft.solution,
                 onValueChange = { draft = draft.copy(solution = it) },
-                label = { Text("Solution") },
+                label = { Text("Code") },
                 minLines = 6,
                 textStyle = CodeFieldStyle,
                 keyboardOptions = CodeKeyboard,
@@ -195,14 +195,14 @@ fun SolutionEditorDialog(
 ) {
     var code by remember { mutableStateOf(initial) }
     FullScreenDialog(
-        title = "My solution",
+        title = "My implementation",
         onDismiss = onDismiss,
         onConfirm = { onSave(code) }
     ) {
         OutlinedTextField(
             value = code,
             onValueChange = { code = it },
-            placeholder = { Text("Paste or type your solution", style = CodeFieldStyle) },
+            placeholder = { Text("Paste or type your implementation", style = CodeFieldStyle) },
             textStyle = CodeFieldStyle,
             keyboardOptions = CodeKeyboard,
             modifier = Modifier

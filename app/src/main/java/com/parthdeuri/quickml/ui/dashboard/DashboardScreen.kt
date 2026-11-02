@@ -96,7 +96,7 @@ private fun DashboardContent(state: DashboardState, modifier: Modifier = Modifie
             )
             StatTile(
                 value = state.solved.toString() + " / " + state.total,
-                label = "Solved",
+                label = "Learned",
                 subtext = "$percent% of the sheet",
                 modifier = Modifier.weight(1f)
             )
@@ -222,7 +222,7 @@ private fun DashboardContent(state: DashboardState, modifier: Modifier = Modifie
 
         // 7. Footer
         Text(
-            text = "Full notes available for " + state.fullCount + " of " + state.total + " problems",
+            text = "Full notes available for " + state.fullCount + " of " + state.total + " cards",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 16.dp)

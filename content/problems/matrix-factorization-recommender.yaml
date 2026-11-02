@@ -1,0 +1,93 @@
+slug: matrix-factorization-recommender
+title: Matrix Factorisation for Recommenders (ALS)
+url: https://en.wikipedia.org/wiki/Matrix_factorization_(recommender_systems)
+difficulty: Medium
+area: Classical ML
+topics: [Recommender Systems, Matrix Factorisation, Latent Factors, Least Squares]
+summary: |
+  Approximate a sparse user-by-item rating matrix by a product of two
+  low-rank factor matrices, fitted only on the observed entries by
+  alternating least squares.
+intuition: |
+  Tastes are not random: a few hidden factors (genre, mood, level) explain
+  most ratings. Give each user and item a short vector and predict a
+  rating as their dot product. With one side held fixed, finding the best
+  vectors for the other side is an ordinary ridge regression for each
+  user or item, so alternating the two solves a hard non-convex problem
+  with easy convex steps.
+why_it_works: |
+  The joint objective is non-convex in (U, V) but convex in each factor
+  with the other fixed. Each ALS half-step solves its subproblem exactly,
+  so the regularised loss can never increase and the iterates converge to
+  a stationary point. Observed entries only are used, so missing ratings
+  are not treated as zeros.
+when_to_use: |
+  Collaborative filtering with explicit ratings or implicit feedback,
+  filling in missing entries of a low-rank matrix, and learning embeddings
+  that feed other models.
+when_not_to_use: |
+  Cold start (new users or items with no ratings have no data to learn
+  from), when side features matter more than interactions, or when a very
+  large sparse matrix needs SGD or distributed ALS.
+math:
+  - "Prediction: r̂ᵤᵢ = uᵤᵀ vᵢ"
+  - "Loss: L = Σ_{(u,i)∈Ω} (rᵤᵢ − uᵤᵀvᵢ)² + λ(‖U‖² + ‖V‖²)"
+  - "Ω = set of observed (user, item) pairs"
+  - "User step: (VᵤᵀVᵤ + λI) uᵤ = Vᵤᵀ rᵤ"
+  - "Vᵤ = rows of V for items rated by user u"
+  - "Item step: (UᵢᵀUᵢ + λI) vᵢ = Uᵢᵀ rᵢ"
+  - "Each half-step is an exact ridge regression"
+approach:
+  - "Initialise small random user and item factors — breaks symmetry without large values"
+  - "For each user, gather the item vectors they rated and solve the ridge normal equations — the exact best user vector given the items"
+  - "Swap roles and repeat per item using the transposed matrix and mask — the exact best item vector given the users"
+  - "Evaluate the masked, regularised loss after each sweep — it must be non-increasing"
+  - "Predict missing ratings with U @ V.T — the low-rank reconstruction fills the gaps"
+code: |
+  import numpy as np
+
+  def solve_side(R, M, V, lam):
+      k = V.shape[1]
+      U = np.zeros((R.shape[0], k))
+      for i in range(R.shape[0]):
+          Vi = V[M[i] > 0]
+          A = Vi.T @ Vi + lam * np.eye(k)
+          U[i] = np.linalg.solve(A, Vi.T @ R[i, M[i] > 0])
+      return U
+
+  def als(R, M, k=3, lam=0.1, iters=20, seed=0):
+      rng = np.random.default_rng(seed)
+      U = rng.normal(0, 0.1, (R.shape[0], k))
+      V = rng.normal(0, 0.1, (R.shape[1], k))
+      loss = []
+      for _ in range(iters):
+          U = solve_side(R, M, V, lam)
+          V = solve_side(R.T, M.T, U, lam)
+          E = M * (R - U @ V.T)
+          reg = lam * ((U ** 2).sum() + (V ** 2).sum())
+          loss.append((E ** 2).sum() + reg)
+      return U, V, loss
+key_lines: [8, 9, 19]
+time: "O(iters·(|Ω|·k² + (n+m)·k³)) for n users, m items, |Ω| ratings"
+space: "O((n+m)·k) for the factors plus the rating matrix"
+hyperparameters:
+  - "Rank k — number of latent factors"
+  - "Regularisation λ — controls overfitting, tuned on held-out ratings"
+  - "Number of ALS sweeps"
+  - "Implicit versus explicit feedback — implicit uses confidence weights (not shown)"
+pitfalls:
+  - "R is a dense array with a 0/1 mask M here; real systems use sparse formats"
+  - "A user or item with no ratings gets a zero vector, so cold start needs other signals"
+  - "Plain λ is not scaled by the number of ratings per user (the weighted-λ variant does); a simplification"
+  - "No user or item bias terms, so subtract the global mean or add biases for better accuracy"
+interview_qa:
+  - q: "Why alternate instead of optimising U and V jointly?"
+    a: "The joint problem is non-convex, but with one factor fixed it is a set of independent ridge regressions with exact closed-form solutions."
+  - q: "How does ALS handle missing entries?"
+    a: "It only sums over observed ratings, using the mask to select each user's rated items, so missing values are ignored rather than treated as zero."
+  - q: "ALS versus SGD for matrix factorisation?"
+    a: "ALS parallelises easily across users or items and each step is exact; SGD is cheaper per update and handles streaming or very large data."
+  - q: "How do you evaluate a recommender factorisation?"
+    a: "Hold out some observed ratings and compare RMSE against simple baselines like the global or per-item mean; also use ranking metrics when top-N matters."
+related: [svd, pca, ridge-lasso-regularization]
+patterns: ["Dimensionality reduction"]

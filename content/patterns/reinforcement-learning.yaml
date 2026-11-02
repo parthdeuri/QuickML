@@ -24,5 +24,6 @@ pitfalls:
 problems:
 - q-learning
 - reinforce-policy-gradient
+- value-iteration
 aliases:
 - Reinforcement learning

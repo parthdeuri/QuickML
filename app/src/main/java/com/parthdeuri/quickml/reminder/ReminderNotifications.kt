@@ -15,7 +15,7 @@ object ReminderNotifications {
             "Daily reminder",
             NotificationManager.IMPORTANCE_DEFAULT
         )
-        channel.description = "A nudge to revise your solved problems"
+        channel.description = "A nudge to revise the concepts you have learned"
         manager.createNotificationChannel(channel)
     }
 }

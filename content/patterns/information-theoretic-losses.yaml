@@ -29,5 +29,7 @@ problems:
 - softmax-cross-entropy
 - maximum-likelihood
 - vae-reparameterization
+- focal-loss
+- label-smoothing
 aliases:
 - Information-theoretic losses

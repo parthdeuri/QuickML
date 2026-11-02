@@ -255,7 +255,7 @@ fun AiSettingsCard(container: AppContainer) {
                     }
             )
             Text(
-                text = "Your questions and the problem text are sent to Google. Free-tier " +
+                text = "Your questions and the card text are sent to Google. Free-tier " +
                     "prompts may be used to improve Google products. Your key stays encrypted " +
                     "on this phone and is not included in backups.",
                 style = MaterialTheme.typography.bodySmall,
@@ -273,7 +273,7 @@ fun AiSettingsCard(container: AppContainer) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Delete all chats?") },
-            text = { Text("The Ask conversations of every problem will be deleted.") },
+            text = { Text("The Ask conversations of every card will be deleted.") },
             confirmButton = {
                 TextButton(
                     onClick = {

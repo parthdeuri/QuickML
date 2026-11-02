@@ -1,0 +1,99 @@
+slug: adaboost
+title: AdaBoost (Discrete, Decision Stumps)
+url: https://en.wikipedia.org/wiki/AdaBoost
+difficulty: Medium
+area: Classical ML
+topics: [Ensembles, Boosting, Classification]
+summary: |
+  Build a strong classifier as a weighted vote of weak ones, training each
+  new stump on the data re-weighted to emphasise earlier mistakes.
+intuition: |
+  A stump alone is barely better than guessing, but different stumps can
+  be wrong on different points. AdaBoost keeps a weight on every sample
+  and, after each round, raises the weight of the points just misclassified
+  so the next weak learner is forced to fix them. Stumps that do well get
+  a larger say in the final vote.
+why_it_works: |
+  AdaBoost is stagewise minimisation of the exponential loss over additive
+  models. Given the current ensemble, the best new weak learner minimises
+  the weighted error, and the optimal vote weight for it has the closed
+  form of half the log odds of that error. The training error of the
+  ensemble falls exponentially as long as every learner beats chance on
+  the reweighted data.
+when_to_use: |
+  Tabular classification with clean labels where a simple weak learner is
+  available, as a fast strong baseline, and to learn boosting before
+  moving to gradient boosting.
+when_not_to_use: |
+  With noisy or mislabelled data, since the exponential loss keeps raising
+  the weight of bad points and the ensemble chases them. Also when you
+  need calibrated probabilities or very large datasets (gradient boosting
+  libraries are faster and more flexible).
+math:
+  - "Weights: wᵢ = 1/n initially, Σᵢ wᵢ = 1"
+  - "Weighted error: ε = Σᵢ wᵢ [h(xᵢ) ≠ yᵢ]"
+  - "Vote weight: α = ½ log((1 − ε) / ε)"
+  - "Update: wᵢ ← wᵢ exp(−α yᵢ h(xᵢ)), then renormalise"
+  - "Model: F(x) = Σₜ αₜ hₜ(x), prediction ŷ = sign F(x)"
+  - "Stump: h(x) = s if x_j ≤ t else −s, labels yᵢ ∈ {−1, +1}"
+approach:
+  - "Start with uniform sample weights — every point matters equally at first"
+  - "Search every feature, threshold and sign for the stump with the smallest weighted error — the best weak learner for the current weights"
+  - "Set the vote weight α = ½ log((1−ε)/ε) — accurate stumps get larger votes, chance-level ones get none"
+  - "Multiply each weight by exp(−α y h(x)) and renormalise — mistakes grow, hits shrink"
+  - "Repeat for T rounds and store (α, stump) pairs — the ensemble"
+  - "Predict the sign of the α-weighted sum of stump outputs — a weighted majority vote"
+code: |
+  import numpy as np
+
+  def stump(X, y, w):
+      best = (np.inf, 0, 0.0, 1)
+      for j in range(X.shape[1]):
+          for t in np.unique(X[:, j])[:-1]:
+              for s in (1, -1):
+                  p = np.where(X[:, j] <= t, s, -s)
+                  e = w[p != y].sum()
+                  if e < best[0]:
+                      best = (e, j, t, s)
+      return best
+
+  def adaboost(X, y, T=20):
+      w = np.full(len(y), 1 / len(y))
+      model = []
+      for _ in range(T):
+          e, j, t, s = stump(X, y, w)
+          a = 0.5 * np.log((1 - e) / max(e, 1e-12))
+          p = np.where(X[:, j] <= t, s, -s)
+          w = w * np.exp(-a * y * p)
+          w /= w.sum()
+          model.append((a, j, t, s))
+      return model
+
+  def predict(model, X):
+      f = np.zeros(len(X))
+      for a, j, t, s in model:
+          f += a * np.where(X[:, j] <= t, s, -s)
+      return np.sign(f)
+key_lines: [9, 19, 21]
+time: "O(T·d·n²) as written (O(T·d·n log n) with sorted splits)"
+space: "O(n + T) for the weights and the stored stumps"
+hyperparameters:
+  - "Number of rounds T — more rounds fit more; use early stopping on validation data"
+  - "Weak learner depth — stumps here, shallow trees are common"
+  - "Learning rate — shrinks each vote to slow overfitting (fixed at one here)"
+pitfalls:
+  - "Labels must be −1 and +1 in this code; sklearn takes any labels"
+  - "Label noise and outliers get exponentially up-weighted and degrade the model"
+  - "An error of exactly zero would give an infinite vote weight, so the code clips the error"
+  - "The stump search here is the slow quadratic version; sort once per feature in practice"
+interview_qa:
+  - q: "How does AdaBoost reweight samples?"
+    a: "It multiplies the weight of each sample by exp(−α y h(x)): misclassified points are scaled up, correct ones scaled down, then all weights are renormalised."
+  - q: "Why is a weak learner enough?"
+    a: "The training error bound shrinks multiplicatively each round whenever the learner is even slightly better than chance on the current weights."
+  - q: "Why is AdaBoost sensitive to noise?"
+    a: "The exponential loss grows quickly for misclassified points, so mislabelled samples receive ever larger weights and the ensemble bends to fit them."
+  - q: "How is AdaBoost related to gradient boosting?"
+    a: "It is gradient boosting with the exponential loss; gradient boosting generalises the idea to arbitrary differentiable losses."
+related: [gradient-boosting, decision-tree, random-forest]
+patterns: ["Tree ensembles"]

@@ -1,0 +1,77 @@
+slug: stratified-split
+title: Stratified Train/Test Split
+url: https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.train_test_split.html
+difficulty: Easy
+area: MLOps
+topics: [Data Splitting, Evaluation, Class Imbalance, Sampling]
+summary: |
+  Split data by shuffling and sampling each class separately so train and
+  test keep (almost) the same class proportions as the full dataset.
+intuition: |
+  A purely random split of an imbalanced dataset can, by bad luck, put too
+  few or even zero minority samples in the test set, making the metric
+  noisy or undefined. Sampling the same fraction from each class removes
+  that source of variance: every class appears in test in proportion to
+  its overall share, up to rounding.
+why_it_works: |
+  Random sampling gives test class counts that vary like a hypergeometric
+  draw, which is noisy for small classes. Stratifying fixes each class's
+  test count by design, so only rounding remains and the class
+  proportions in train and test differ from the population by at most a
+  single sample per class. This lowers the variance of the evaluation
+  without introducing bias for the overall population.
+when_to_use: |
+  Classification with imbalanced or small classes, small datasets where
+  one rare sample matters, and cross-validation folds (stratified k-fold).
+when_not_to_use: |
+  Time series or grouped data, where the split must respect time order or
+  keep groups together instead (use a temporal or group split); also
+  regression targets unless you bin them first.
+math:
+  - "Class share: π_c = n_c / n"
+  - "Test count per class: k_c = round(f · n_c)"
+  - "Test set T = ∪_c (k_c random indices of class c), train = rest"
+  - "Proportion gap: | k_c/|T| − π_c | stays within rounding of f·n_c"
+  - "Unstratified: k_c ~ Hypergeometric, var > 0 for small n_c"
+approach:
+  - "Seed a random generator — makes the split reproducible"
+  - "For each class, shuffle the indices of that class — random choice within the class"
+  - "Take the first round(f · n_c) shuffled indices for test — same fraction from every class"
+  - "Collect test indices, then train is the complement — a clean partition with no overlap"
+  - "Check proportions in both parts — confirms the stratification worked"
+code: |
+  import numpy as np
+
+  def stratified_split(y, test_frac=0.2, seed=0):
+      rng = np.random.default_rng(seed)
+      test = []
+      for c in np.unique(y):
+          idx = rng.permutation(np.flatnonzero(y == c))
+          k = int(round(test_frac * len(idx)))
+          test.extend(idx[:k])
+      test = np.array(sorted(test))
+      train = np.setdiff1d(np.arange(len(y)), test)
+      return train, test
+key_lines: [7, 8, 9]
+time: "O(n) plus shuffling each class"
+space: "O(n) for the index arrays"
+hyperparameters:
+  - "test_frac — fraction held out"
+  - "seed — fixes the shuffle for reproducibility"
+  - "stratify target — the label (or a combined label or binned target)"
+pitfalls:
+  - "Per-class rounding can make the total test size differ slightly from f·n; sklearn allocates counts to hit it exactly, so splits are close but not identical"
+  - "A class with a single sample cannot appear in both parts; sklearn raises an error here, this code silently keeps it in train"
+  - "Stratifying does not fix leakage: duplicates or related rows can still straddle the split"
+  - "Split before preprocessing or feature selection, otherwise test statistics leak into training"
+interview_qa:
+  - q: "Why stratify?"
+    a: "It keeps class proportions the same in train and test, so rare classes are represented in evaluation and metrics have lower variance."
+  - q: "Does stratifying introduce bias?"
+    a: "No for population-level estimates: each sample still has the same inclusion probability within its class, and the only change is removing class-count variance."
+  - q: "When is stratifying the wrong tool?"
+    a: "For temporal or grouped data, where you must split by time or by group to avoid leakage, and for continuous targets unless they are binned."
+  - q: "How do you stratify on several columns?"
+    a: "Combine them into one composite label (for example class and region) and stratify on that, making sure each combination has enough samples."
+related: [cross-validation, class-imbalance, data-leakage]
+patterns: ["Validation hygiene"]

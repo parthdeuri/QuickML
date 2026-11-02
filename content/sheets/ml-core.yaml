@@ -8,6 +8,7 @@ sections:
   - bayes-theorem
   - maximum-likelihood
   - entropy-kl-divergence
+  - metropolis-hastings
 - name: Regression
   problems:
   - linear-regression
@@ -19,10 +20,17 @@ sections:
   - knn
   - svm
   - decision-tree
+  - linear-discriminant-analysis
+  - kernel-trick-rbf
 - name: Ensembles
   problems:
   - random-forest
   - gradient-boosting
+  - adaboost
+- name: Sequences and recommenders
+  problems:
+  - hidden-markov-forward
+  - matrix-factorization-recommender
 - name: Unsupervised
   problems:
   - k-means
@@ -43,6 +51,9 @@ sections:
   - probability-calibration
   - hyperparameter-search
   - data-leakage
+  - multiclass-metrics
+  - stratified-split
+  - ab-test-significance
 - name: Production monitoring
   problems:
   - concept-drift

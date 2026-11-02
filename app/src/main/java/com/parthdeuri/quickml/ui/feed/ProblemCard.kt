@@ -320,7 +320,7 @@ fun ProblemCard(
                 IconButton(onClick = onToggleSolved) {
                     Icon(
                         imageVector = if (item.solved) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircle,
-                        contentDescription = if (item.solved) "Mark unsolved" else "Mark solved",
+                        contentDescription = if (item.solved) "Mark not learned" else "Mark learned",
                         tint = if (item.solved) colors.accent else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -496,7 +496,7 @@ private fun CardMenu(
                 }
             )
             DropdownMenuItem(
-                text = { Text(if (hasMySolution) "Edit my solution" else "Add my solution") },
+                text = { Text(if (hasMySolution) "Edit my implementation" else "Add my implementation") },
                 onClick = {
                     open = false
                     onMySolution()
@@ -576,7 +576,7 @@ private fun MarkSolvedPrompt(onToggleSolved: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "Mark solved to start revising it",
+            text = "Mark learned to start revising it",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f)
@@ -589,7 +589,7 @@ private fun MarkSolvedPrompt(onToggleSolved: () -> Unit) {
                 modifier = Modifier.size(18.dp)
             )
             Spacer(Modifier.width(8.dp))
-            Text("Mark solved")
+            Text("Mark learned")
         }
     }
 }
@@ -804,7 +804,7 @@ private fun ProblemSection(
                     )
                 }
             }
-            if (item.solved) Pill("Solved", colors.success)
+            if (item.solved) Pill("Learned", colors.success)
         }
         if (revealed && item.section.isNotEmpty()) {
             Text(
@@ -880,7 +880,7 @@ private fun ProblemSection(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("Solved (tap to undo)")
+                Text("Learned (tap to undo)")
             }
         } else {
             OutlinedButton(
@@ -893,7 +893,7 @@ private fun ProblemSection(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("Mark solved")
+                Text("Mark learned")
             }
         }
         if (problem.url.isNotBlank()) {
@@ -1287,7 +1287,7 @@ private fun CodeSection(
                 }
             } else {
                 Text(
-                    text = if (viewingMine) "My solution" else "Python",
+                    text = if (viewingMine) "My implementation" else "Python",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
@@ -1404,7 +1404,7 @@ private fun CodeSection(
                 modifier = Modifier.size(16.dp)
             )
             Spacer(Modifier.width(6.dp))
-            Text(if (hasMine) "Edit my solution" else "Add my solution")
+            Text(if (hasMine) "Edit my implementation" else "Add my implementation")
         }
     }
 }

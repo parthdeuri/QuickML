@@ -1,0 +1,74 @@
+slug: cosine-similarity-embeddings
+title: Cosine Similarity for Embeddings
+url: https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.cosine_similarity.html
+difficulty: Easy
+area: NLP
+topics: [Embeddings, Retrieval, Similarity]
+summary: |
+  Compare two embedding vectors by the cosine of the angle between
+  them, ignoring their lengths, and use it to rank nearest neighbours.
+intuition: |
+  Embedding length often reflects things like word frequency or text
+  length rather than meaning, while direction carries the semantics.
+  Dividing the dot product by both norms keeps only direction, and after
+  normalising rows, a whole similarity matrix is a single matrix product.
+approach:
+  - "Compute each row's L2 norm — the length to be removed"
+  - "Divide each row by its norm, with a small floor — unit vectors, safe for zero rows"
+  - "Multiply normalised queries by normalised keys transposed — every dot product is now a cosine"
+  - "Sort scores in descending order and take the top k — the nearest neighbours by angle"
+code: |
+  import numpy as np
+
+  def cosine_matrix(A, B, eps=1e-12):
+      na = np.linalg.norm(A, axis=1, keepdims=True)
+      nb = np.linalg.norm(B, axis=1, keepdims=True)
+      An = A / np.maximum(na, eps)
+      Bn = B / np.maximum(nb, eps)
+      return An @ Bn.T
+
+  def top_k_neighbors(q, E, k):
+      s = cosine_matrix(q[None, :], E)[0]
+      idx = np.argsort(-s)[:k]
+      return idx, s[idx]
+key_lines: [6, 7, 8]
+time: "O(m·n·d) for m queries, n items and width d"
+space: "O(m·n) for the similarity matrix"
+when_to_use: |
+  Semantic search, retrieval for RAG, deduplication and clustering of
+  text embeddings, and any model whose embeddings are trained with a
+  cosine or contrastive objective.
+when_not_to_use: |
+  When vector magnitude carries information you want to keep, for
+  example confidence or popularity, or with sparse count data where
+  other measures fit better. Zero vectors have no direction.
+why_it_works: |
+  The dot product equals the product of the norms times the cosine of
+  the angle, so dividing by the norms leaves a pure angle between −1 and
+  1. For unit vectors the squared Euclidean distance is 2 minus twice
+  the cosine, so ranking by cosine and by Euclidean distance agree once
+  the vectors are normalised. Scaling either vector leaves the value
+  unchanged.
+math:
+  - "cos(a, b) = a·b / (‖a‖ ‖b‖)"
+  - "Normalise: â = a / max(‖a‖, ε)"
+  - "S = Â B̂ᵀ   (all pairwise cosines)"
+  - "For unit vectors: ‖â − b̂‖² = 2 − 2 cos(a, b)"
+  - "Cosine distance = 1 − cos(a, b)"
+interview_qa:
+  - q: "Why use cosine similarity instead of the raw dot product?"
+    a: "The dot product grows with vector length, so long vectors look similar to everything. Cosine removes length and compares direction only."
+  - q: "Is cosine distance a true metric?"
+    a: "No. 1 − cos can violate the triangle inequality. The angle itself is a metric, and the Euclidean distance between normalised vectors is too."
+  - q: "How do you speed up cosine search over millions of vectors?"
+    a: "Normalise once, then maximum inner product search with an approximate index works directly, since cosine becomes a dot product."
+hyperparameters:
+  - "Epsilon floor for zero-norm vectors"
+  - "Number of neighbours k"
+  - "Whether embeddings are pre-normalised"
+pitfalls:
+  - "Zero vectors divide by zero without the epsilon floor, and then give similarity 0"
+  - "A cosine score is not calibrated; thresholds depend on the embedding model"
+  - "Full argsort is O(n log n); real systems use partial selection or an approximate index"
+related: [word2vec-skipgram, knn, pca]
+patterns: ["Text processing"]

@@ -31,5 +31,6 @@ problems:
 - decision-tree
 - random-forest
 - gradient-boosting
+- adaboost
 aliases:
 - Tree ensembles

@@ -29,5 +29,9 @@ problems:
 - convolution-2d
 - max-pooling
 - iou-and-nms
+- receptive-field
+- depthwise-separable-convolution
+- transposed-convolution
+- data-augmentation
 aliases:
 - Convolution and vision

@@ -1,0 +1,83 @@
+slug: top-k-top-p-sampling
+title: Top-k and Top-p (Nucleus) Sampling
+url: https://arxiv.org/abs/1904.09751
+difficulty: Medium
+area: NLP
+topics: [Decoding, Language Modeling, Sampling]
+summary: |
+  Truncate the next-token distribution to the k most likely tokens, or
+  to the smallest set whose probability reaches p, then renormalise and
+  sample from what is left.
+intuition: |
+  Sampling from the full distribution occasionally picks a token from the
+  long, unreliable tail and derails the text, while greedy decoding is
+  repetitive. Cutting the tail removes the junk and keeps real
+  randomness among plausible tokens; top-p adapts the cut to the model's
+  confidence, keeping few tokens when it is sure and many when it is not.
+approach:
+  - "Sort tokens by logit, highest first — fixes the order used for both cuts"
+  - "Top-k: set every logit beyond the k-th to −∞ — keeps a fixed number of candidates"
+  - "Softmax the survivors and take cumulative sums — the mass collected so far"
+  - "Top-p: drop a token once the mass before it is at least p — keeps the smallest nucleus reaching p"
+  - "Sample from the renormalised survivors — the softmax gives zero weight to −∞"
+code: |
+  import numpy as np
+
+  def softmax(z):
+      e = np.exp(z - z.max())
+      return e / e.sum()
+
+  def filter_logits(logits, top_k=0, top_p=1.0):
+      z = logits.astype(float).copy()
+      order = np.argsort(-z, kind="stable")
+      if top_k > 0:
+          z[order[top_k:]] = -np.inf
+      p = softmax(z)[order]
+      drop = np.cumsum(p) - p >= top_p
+      z[order[drop]] = -np.inf
+      return z
+
+  def sample(logits, rng, temperature=1.0, **kw):
+      z = filter_logits(logits / temperature, **kw)
+      return rng.choice(len(z), p=softmax(z))
+key_lines: [11, 13, 14]
+time: "O(V log V) for the sort over vocabulary size V"
+space: "O(V) for the filtered logits"
+when_to_use: |
+  Open-ended generation such as chat, stories and brainstorming, where
+  diversity is wanted but low-probability tokens cause incoherence.
+when_not_to_use: |
+  Tasks with one right answer, such as translation or code, where greedy
+  or beam search is better, and likelihood evaluation, where the full
+  distribution must be used.
+why_it_works: |
+  Truncation sets the probability of unreliable tail tokens to exactly
+  zero while keeping the relative odds among the survivors after
+  renormalising. Top-p measures the cut in probability mass rather than
+  token count, so the candidate set shrinks when the distribution is
+  peaked and grows when it is flat. The token that crosses the threshold
+  is kept, so the nucleus is never empty.
+math:
+  - "pᵢ = exp(zᵢ / τ) / Σⱼ exp(zⱼ / τ)"
+  - "Top-k: keep i if rank(i) ≤ k"
+  - "Sort p₍₁₎ ≥ p₍₂₎ ≥ …; cumulative Cⱼ = Σ_{m ≤ j} p₍ₘ₎"
+  - "Top-p: keep rank j if Cⱼ₋₁ < p   (C₀ = 0)"
+  - "p′ᵢ = pᵢ · 1[kept] / Σⱼ pⱼ · 1[kept]"
+interview_qa:
+  - q: "How does top-p differ from top-k?"
+    a: "Top-k keeps a fixed number of tokens whatever the distribution looks like. Top-p keeps the smallest set reaching probability mass p, so its size adapts to how confident the model is."
+  - q: "Why renormalise after truncating?"
+    a: "The kept probabilities no longer sum to one. The softmax over the remaining logits rescales them so the sample is drawn from a valid distribution."
+  - q: "What does temperature do and in what order is it applied?"
+    a: "It divides the logits before the softmax; low values sharpen and high values flatten the distribution. It is normally applied first, then the truncation."
+hyperparameters:
+  - "Top-k (0 disables)"
+  - "Top-p threshold in (0, 1]"
+  - "Temperature τ"
+  - "Order of temperature, top-k and top-p"
+pitfalls:
+  - "Libraries differ on whether top-p uses the distribution before or after top-k; here top-p sees the renormalised top-k survivors"
+  - "top_p = 0 would drop every token; use a value above zero"
+  - "Ties at the cut are broken by sort order, so which tied token is kept is arbitrary"
+related: [beam-search, softmax-cross-entropy, entropy-kl-divergence]
+patterns: ["Text processing"]

@@ -178,7 +178,7 @@ fun AskSection(item: FeedItem, onOpenSettings: () -> Unit) {
                 value = input,
                 onValueChange = { input = it },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Ask about this problem") },
+                placeholder = { Text("Ask about this concept") },
                 maxLines = 4,
                 shape = RoundedCornerShape(20.dp)
             )
@@ -221,7 +221,7 @@ private fun SetupCard(onOpenSettings: () -> Unit) {
             style = MaterialTheme.typography.titleMedium
         )
         Text(
-            text = "Then ask questions about any problem right here.",
+            text = "Then ask questions about any concept right here.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 6.dp, bottom = 16.dp)
@@ -235,7 +235,7 @@ private fun SetupCard(onOpenSettings: () -> Unit) {
 private fun Suggestions(onPick: (String) -> Unit) {
     Column {
         Text(
-            text = "Ask anything about this problem",
+            text = "Ask anything about this concept",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 8.dp)

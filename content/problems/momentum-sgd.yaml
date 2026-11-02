@@ -1,0 +1,69 @@
+slug: momentum-sgd
+title: SGD with Momentum
+url: https://docs.pytorch.org/docs/stable/generated/torch.optim.SGD.html
+difficulty: Easy
+area: Deep Learning
+topics: [Optimisation, Momentum, Nesterov]
+summary: |
+  Gradient descent that adds a velocity: a running sum of past
+  gradients, so the update keeps moving in directions where gradients
+  consistently agree.
+intuition: |
+  Think of a ball rolling down the loss surface rather than a walker
+  taking independent steps. Gradients that point the same way
+  accumulate into fast progress along narrow valleys, while components
+  that flip sign from step to step cancel out. Nesterov momentum looks
+  ahead by applying the gradient at the position momentum is about to
+  reach, which corrects overshoot a little earlier.
+why_it_works: |
+  The velocity is an exponentially weighted sum of past gradients, so
+  consistent directions are amplified and oscillating ones are damped.
+  On ill-conditioned quadratics this allows a larger effective step
+  along the shallow direction without diverging along the steep one.
+when_to_use: |
+  Training CNNs and other deep nets with SGD, especially with a tuned
+  learning-rate schedule, where it often generalises well.
+when_not_to_use: |
+  When you want little tuning on sparse or badly scaled gradients,
+  an adaptive method such as Adam is often easier. Too high a
+  momentum with a large learning rate can oscillate or diverge.
+math:
+  - "v ← μ·v + g"
+  - "Classical: w ← w − η·v"
+  - "Nesterov: w ← w − η·(g + μ·v)  (using the updated v)"
+  - "Unrolled: v_t = Σ_k μ^(t−k) g_k  (weighted sum of gradients)"
+  - "Common choice: μ = 0.9"
+approach:
+  - "Start the velocity buffer at zero — no history yet"
+  - "Update v ← μ·v + g — accumulates gradients with exponential decay"
+  - "Pick the step direction: v for classical, g + μ·v for Nesterov — Nesterov peeks ahead"
+  - "Move the weights by −η times that direction — the usual descent step"
+code: |
+  import numpy as np
+
+  def sgd_step(w, g, buf, lr=0.1, mu=0.9, nesterov=False):
+      buf = mu * buf + g
+      step = g + mu * buf if nesterov else buf
+      return w - lr * step, buf
+key_lines: [4, 5, 6]
+time: "O(d) per step for d parameters"
+space: "O(d) extra for the velocity buffer"
+hyperparameters:
+  - "Learning rate η"
+  - "Momentum μ"
+  - "Nesterov on or off"
+  - "Dampening (not modelled here)"
+pitfalls:
+  - "Libraries differ in where the learning rate multiplies the velocity; this follows PyTorch's convention"
+  - "The effective step grows with momentum, so lower the learning rate when raising μ"
+  - "Weight decay and dampening are omitted here"
+  - "Reset the buffer when you restart or change the optimiser"
+interview_qa:
+  - q: "What problem does momentum solve?"
+    a: "It speeds progress along consistent gradient directions and damps oscillation across steep, narrow valleys."
+  - q: "How does Nesterov differ from classical momentum?"
+    a: "It uses a lookahead gradient direction, g + μ·v after updating v, which reacts sooner when momentum overshoots."
+  - q: "How does momentum change the effective learning rate?"
+    a: "For a steady gradient the velocity approaches a geometric series in μ, so the effective step is larger by 1 / (1 − μ)."
+related: [gradient-descent, adam-optimizer, learning-rate-schedules]
+patterns: ["Gradient-based optimisation"]

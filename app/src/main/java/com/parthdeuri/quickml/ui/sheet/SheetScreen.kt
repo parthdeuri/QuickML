@@ -144,10 +144,10 @@ fun SheetScreen(
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text(
                         text = when {
-                            query.isNotBlank() -> "No problems match your search."
+                            query.isNotBlank() -> "No cards match your search."
                             state.sheetId == ProblemRepository.MINE_SHEET_ID ->
-                                "No problems of your own yet.\nTap + to add one."
-                            else -> "No problems in this sheet."
+                                "No cards of your own yet.\nTap + to add one."
+                            else -> "No cards in this sheet."
                         },
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.bodyLarge,
@@ -206,7 +206,7 @@ fun SheetScreen(
                     .align(Alignment.BottomEnd)
                     .padding(16.dp)
             ) {
-                Icon(Icons.Filled.Add, contentDescription = "Add your own problem")
+                Icon(Icons.Filled.Add, contentDescription = "Add your own card")
             }
         }
     }
@@ -219,7 +219,7 @@ fun SheetScreen(
                 editor = null
                 viewModel.saveProblem(edit.slug, draft) { added ->
                     if (added) {
-                        Toast.makeText(context, "Added to My problems", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Added to My cards", Toast.LENGTH_SHORT).show()
                     }
                 }
             },
@@ -231,7 +231,7 @@ fun SheetScreen(
     if (toDelete != null) {
         AlertDialog(
             onDismissRequest = { deleting = null },
-            title = { Text("Delete problem?") },
+            title = { Text("Delete card?") },
             text = { Text("\"" + toDelete.title + "\" and its progress will be deleted.") },
             confirmButton = {
                 TextButton(
@@ -249,13 +249,13 @@ fun SheetScreen(
 
     val action = pending
     if (action != null) {
-        val title = if (action.solved) "Mark all solved?" else "Mark all unsolved?"
+        val title = if (action.solved) "Mark all learned?" else "Mark all not learned?"
         val body = if (action.solved) {
-            "All " + action.count + " problems in " + action.section +
-                " will be marked solved and scheduled for revision."
+            "All " + action.count + " cards in " + action.section +
+                " will be marked learned and scheduled for revision."
         } else {
-            "All " + action.count + " problems in " + action.section +
-                " will be marked unsolved and lose their revision schedule."
+            "All " + action.count + " cards in " + action.section +
+                " will be marked not learned and lose their revision schedule."
         }
         AlertDialog(
             onDismissRequest = { pending = null },
@@ -341,14 +341,14 @@ private fun SectionHeader(
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     DropdownMenuItem(
-                        text = { Text("Mark all solved") },
+                        text = { Text("Mark all learned") },
                         onClick = {
                             menuOpen = false
                             onMarkAll(true)
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Mark all unsolved") },
+                        text = { Text("Mark all not learned") },
                         onClick = {
                             menuOpen = false
                             onMarkAll(false)
@@ -464,14 +464,14 @@ private fun ProblemRow(
         }
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
             DropdownMenuItem(
-                text = { Text("Edit problem") },
+                text = { Text("Edit card") },
                 onClick = {
                     menuOpen = false
                     onEdit(row.slug)
                 }
             )
             DropdownMenuItem(
-                text = { Text("Delete problem", color = colors.danger) },
+                text = { Text("Delete card", color = colors.danger) },
                 onClick = {
                     menuOpen = false
                     onDelete(row)

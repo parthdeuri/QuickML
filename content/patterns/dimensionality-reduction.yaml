@@ -24,5 +24,6 @@ problems:
 - pca
 - svd
 - autoencoder
+- matrix-factorization-recommender
 aliases:
 - Dimensionality reduction

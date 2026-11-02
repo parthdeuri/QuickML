@@ -1,0 +1,81 @@
+slug: focal-loss
+title: Focal Loss
+url: https://docs.pytorch.org/vision/stable/generated/torchvision.ops.sigmoid_focal_loss.html
+difficulty: Medium
+area: Deep Learning
+topics: [Loss Functions, Class Imbalance, Object Detection]
+summary: |
+  Cross-entropy multiplied by (1 − pₜ)^γ, which down-weights examples
+  the model already classifies confidently so training focuses on hard
+  ones.
+intuition: |
+  With extreme imbalance, such as thousands of easy background boxes
+  per object, the many easy examples each contribute a tiny loss but
+  their sum swamps the few hard ones. The modulating factor (1 − pₜ)^γ
+  is near zero when the model is right and confident, and near one
+  when it is wrong, so easy examples fade out of the gradient.
+  Setting γ to zero recovers ordinary weighted cross-entropy.
+why_it_works: |
+  The factor reshapes the per-example loss so confident-correct
+  examples contribute far less, while misclassified ones keep nearly
+  their full cross-entropy. The total gradient is then dominated by
+  informative hard examples instead of the large pool of easy
+  negatives. The α weight separately balances positive and negative
+  classes.
+when_to_use: |
+  Dense detectors (RetinaNet) and other classification problems with
+  heavy class imbalance and many easy negatives.
+when_not_to_use: |
+  Balanced problems where plain cross-entropy works, or when labels
+  are noisy: the loss up-weights hard examples, which may be the
+  mislabelled ones. Probabilities from a focal-trained model are
+  also usually less calibrated.
+math:
+  - "p = σ(z),  pₜ = p if y = 1 else 1 − p"
+  - "αₜ = α if y = 1 else 1 − α"
+  - "FL = − αₜ · (1 − pₜ)^γ · log pₜ"
+  - "With γ = 0 and α = 0.5: half of binary cross-entropy"
+  - "∂FL/∂z = s·αₜ·(1−pₜ)^γ·[γ·pₜ·log pₜ − (1−pₜ)],  s = 2y − 1"
+approach:
+  - "Compute log pₜ stably from the logit with logaddexp — avoids log of zero for confident predictions"
+  - "Get pₜ by exponentiating — the probability of the true class"
+  - "Compute the class weight αₜ — balances positives against negatives"
+  - "Multiply cross-entropy by αₜ·(1 − pₜ)^γ and average — easy examples contribute almost nothing"
+code: |
+  import numpy as np
+
+  def focal_loss(z, y, gamma=2.0, alpha=0.25):
+      s = 2 * y - 1
+      logpt = -np.logaddexp(0, -s * z)
+      pt = np.exp(logpt)
+      at = alpha * y + (1 - alpha) * (1 - y)
+      return -(at * (1 - pt) ** gamma * logpt).mean()
+
+  def focal_grad(z, y, gamma=2.0, alpha=0.25):
+      s = 2 * y - 1
+      logpt = -np.logaddexp(0, -s * z)
+      pt = np.exp(logpt)
+      at = alpha * y + (1 - alpha) * (1 - y)
+      g = s * at * (1 - pt) ** gamma
+      return g * (gamma * pt * logpt - (1 - pt)) / z.size
+key_lines: [5, 7, 15]
+time: "O(N) for N logits"
+space: "O(N) for intermediates"
+hyperparameters:
+  - "Focusing parameter γ"
+  - "Class weight α"
+  - "Reduction (mean here; sum or per-anchor normalisation in detectors)"
+pitfalls:
+  - "Binary (sigmoid) form only; the multi-class softmax form is not covered here"
+  - "α and γ interact, so tune them together"
+  - "Initialise the final bias for the rare class's prior or training can be unstable at the start"
+  - "Detectors normalise by the number of positive anchors; this sketch uses a plain mean"
+interview_qa:
+  - q: "What does the (1 − pₜ)^γ factor do?"
+    a: "It shrinks the loss of well-classified examples, so the few hard examples dominate training."
+  - q: "How does focal loss differ from class weighting?"
+    a: "Class weights rebalance by class, while the focal factor rebalances by difficulty, regardless of class."
+  - q: "What happens when γ = 0?"
+    a: "It reduces to α-weighted cross-entropy."
+related: [class-imbalance, softmax-cross-entropy, iou-and-nms]
+patterns: ["Information-theoretic losses"]

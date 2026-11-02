@@ -30,5 +30,10 @@ problems:
 - positional-encoding
 - rnn-cell
 - lstm-cell
+- causal-masking
+- transformer-block
+- rotary-position-embedding
+- kv-cache
+- hidden-markov-forward
 aliases:
 - Attention and sequences

@@ -81,7 +81,7 @@ fun FeedScreen(viewModel: FeedViewModel, onOpenSettings: () -> Unit = {}) {
             error != null -> {
                 Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                     Text(
-                        text = "Could not load problems.\n$error",
+                        text = "Could not load cards.\n$error",
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -283,7 +283,7 @@ private fun FeedContent(
     if (delete != null) {
         AlertDialog(
             onDismissRequest = { deleting = null },
-            title = { Text("Delete problem?") },
+            title = { Text("Delete card?") },
             text = {
                 Text("\"" + delete.problem.title + "\" and its progress will be deleted.")
             },
@@ -527,17 +527,17 @@ private fun EmptyState(
         verticalArrangement = Arrangement.Center
     ) {
         val message = when {
-            filtersActive -> "No problems match your filters."
+            filtersActive -> "No cards match your filters."
             state.mode == FeedMode.BOOKMARKS -> "No bookmarks yet. Double-tap a card to save it."
             state.mode == FeedMode.REVISE && state.solvedCount == 0 ->
-                "Mark problems solved to start revising"
+                "Mark cards learned to start revising"
             state.mode == FeedMode.REVISE -> "All caught up 🎉"
-            state.mode == FeedMode.QUIZ -> "No problems with full notes to quiz on yet."
+            state.mode == FeedMode.QUIZ -> "No cards with full notes to quiz on yet."
             state.mode == FeedMode.PATTERNS -> "No technique families in this version of the content yet."
             (state.mode == FeedMode.LEARN || state.mode == FeedMode.SHUFFLE) &&
                 state.sheetId == ProblemRepository.MINE_SHEET_ID ->
-                "No problems of your own yet. Add one from the Sheet tab with +."
-            else -> "No problems found."
+                "No cards of your own yet. Add one from the Sheet tab with +."
+            else -> "No cards found."
         }
         Text(
             text = message,

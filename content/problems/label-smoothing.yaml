@@ -1,0 +1,70 @@
+slug: label-smoothing
+title: Label Smoothing
+url: https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
+difficulty: Easy
+area: Deep Learning
+topics: [Regularisation, Classification, Calibration]
+summary: |
+  Replace the one-hot target in cross-entropy by a softened
+  distribution that puts a little probability on every class.
+intuition: |
+  A one-hot target can only be matched by pushing the correct logit
+  infinitely far above the others, which rewards overconfidence and
+  large weights. Spreading a small amount of mass over all classes
+  gives the loss a finite optimum, so the model stops being rewarded
+  for extreme certainty. The cost is that the model can no longer
+  reproduce the training labels with full certainty.
+why_it_works: |
+  The smoothed loss is a mix of ordinary cross-entropy and a penalty
+  that pulls the predicted distribution toward uniform. That keeps
+  logits bounded and the penultimate-layer clusters tight, which acts
+  as a regulariser and often improves calibration. It is the same as
+  cross-entropy to a target that is (1 − ε) one-hot plus ε uniform.
+when_to_use: |
+  Large classifiers (image classification, translation) where labels
+  may be noisy and overconfident predictions hurt generalisation.
+when_not_to_use: |
+  When calibrated probabilities from the raw model are needed for
+  downstream decisions, or when the model will serve as a teacher for
+  distillation, where smoothing can discard useful similarity
+  information between classes.
+math:
+  - "Target: q_k = (1 − ε)·1[k = y] + ε / K  for K classes"
+  - "log p_k = z_k − log Σ_j exp(z_j)"
+  - "Loss = − Σ_k q_k · log p_k"
+  - "Equivalent: (1 − ε)·(−log p_y) + ε·mean_k(−log p_k)"
+approach:
+  - "Compute log-probabilities with a stable log-softmax — avoids overflow and log of zero"
+  - "Build the target: ε/K everywhere, then add 1 − ε at the true class — a valid probability vector"
+  - "Take the cross-entropy between target and log-probabilities — the usual loss with a soft target"
+  - "Average over the batch — gives one scalar to differentiate"
+code: |
+  import numpy as np
+
+  def smoothed_ce(logits, y, eps=0.1):
+      z = logits - logits.max(1, keepdims=True)
+      logp = z - np.log(np.exp(z).sum(1, keepdims=True))
+      n, k = logits.shape
+      t = np.full((n, k), eps / k)
+      t[np.arange(n), y] += 1 - eps
+      return -(t * logp).sum(1).mean()
+key_lines: [5, 7, 8]
+time: "O(N·K) for N samples and K classes"
+space: "O(N·K) for the target and log-probabilities"
+hyperparameters:
+  - "Smoothing ε"
+  - "Number of classes K (sets how the mass is spread)"
+pitfalls:
+  - "Too large ε underfits and weakens the signal from the true label"
+  - "Some libraries spread ε over K classes, others over K − 1; check the convention"
+  - "Smoothed models can give poorer teachers for distillation"
+  - "Evaluate accuracy and calibration separately; smoothing can change both"
+interview_qa:
+  - q: "Why does label smoothing help?"
+    a: "It stops the loss rewarding unbounded logits, which regularises the model and often improves calibration."
+  - q: "What is the smoothed target?"
+    a: "(1 − ε) on the true class mixed with a uniform ε/K over all classes."
+  - q: "How is it related to KL divergence?"
+    a: "It adds a penalty that pulls predictions toward the uniform distribution, equal to a KL term up to a constant."
+related: [softmax-cross-entropy, entropy-kl-divergence, probability-calibration]
+patterns: ["Regularisation", "Information-theoretic losses"]

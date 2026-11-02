@@ -1,0 +1,33 @@
+id: compare-kmeans-vs-gmm
+name: 'Compare: k-means vs Gaussian mixture'
+order: 106
+summary: Both group points around centres; k-means makes hard round clusters, a
+  Gaussian mixture gives soft, shaped clusters.
+when_to_use:
+- Pick k-means for fast, simple clustering of roughly round, equal-sized groups.
+- Pick a Gaussian mixture when clusters differ in size or are elliptical.
+- Pick the mixture when you need membership probabilities.
+key_idea: K-means is the limit of a Gaussian mixture where every cluster is a sphere
+  of equal size and each point belongs fully to one. The mixture keeps covariances
+  and weights and shares points between clusters through responsibilities. Both
+  are fit by alternating two steps and can end in local optima.
+template: |
+  import numpy as np
+
+  def kmeans_assign(X, C):
+      d = ((X[:, None] - C[None]) ** 2).sum(-1)
+      return d.argmin(1)                      # hard labels
+
+  def gmm_responsibilities(logp):             # logp: (n, k)
+      z = logp - logp.max(1, keepdims=True)
+      r = np.exp(z)
+      return r / r.sum(1, keepdims=True)      # soft labels
+complexity: Both cost O(n·k·d) per iteration; the mixture adds covariance work.
+pitfalls:
+- Both depend on the starting centres, so restart several times.
+- You must choose the number of clusters in advance.
+problems:
+- k-means
+- gaussian-mixture-em
+aliases:
+- 'Compare: k-means vs Gaussian mixture'

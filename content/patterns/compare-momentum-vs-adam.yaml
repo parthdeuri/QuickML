@@ -1,0 +1,37 @@
+id: compare-momentum-vs-adam
+name: 'Compare: SGD with momentum vs Adam'
+order: 104
+summary: Both speed up gradient descent; momentum smooths the direction, Adam also
+  rescales each parameter by its gradient history.
+when_to_use:
+- Pick SGD with momentum for well-tuned vision training where the best final accuracy
+  matters.
+- Pick Adam for fast progress with little tuning, especially for transformers and
+  sparse gradients.
+- Pick Adam when parameters have very different gradient scales.
+key_idea: Momentum averages past gradients to keep moving through noise and narrow
+  valleys. Adam adds a second average of squared gradients and divides by it, giving
+  every parameter its own step size. That makes it robust to scale but a little
+  less predictable in how well the result generalises.
+template: |
+  import numpy as np
+
+  def momentum_step(w, g, v, lr=0.1, mu=0.9):
+      v = mu * v + g
+      return w - lr * v, v
+
+  def adam_step(w, g, m, s, t, lr=1e-3, b1=0.9, b2=0.999):
+      m = b1 * m + (1 - b1) * g
+      s = b2 * s + (1 - b2) * g * g
+      mh, sh = m / (1 - b1 ** t), s / (1 - b2 ** t)
+      return w - lr * mh / (np.sqrt(sh) + 1e-8), m, s
+complexity: Momentum stores one extra vector per parameter; Adam stores two.
+pitfalls:
+- Adam needs about twice the optimiser memory of plain SGD.
+- Weight decay behaves differently in Adam; use the decoupled form (AdamW).
+problems:
+- momentum-sgd
+- adam-optimizer
+- gradient-descent
+aliases:
+- 'Compare: SGD with momentum vs Adam'

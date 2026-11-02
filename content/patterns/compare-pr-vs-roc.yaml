@@ -1,0 +1,37 @@
+id: compare-pr-vs-roc
+name: 'Compare: Precision-recall vs ROC'
+order: 103
+summary: Both summarise a classifier across thresholds; precision-recall focuses
+  on the positive class, ROC compares true and false positive rates.
+when_to_use:
+- Pick precision-recall when positives are rare and false alarms matter.
+- Pick ROC-AUC when classes are fairly balanced or both error types matter equally.
+- Report both when stakeholders care about different parts of the trade-off.
+key_idea: ROC uses the false positive rate, whose denominator is the large pool
+  of negatives, so many false alarms barely move it. Precision divides by the predicted
+  positives, so the same false alarms hurt it a lot. That is why ROC can look optimistic
+  on imbalanced data.
+template: |
+  import numpy as np
+
+  def tpr_fpr(y, score, t):
+      pred = score >= t
+      tpr = (pred & (y == 1)).sum() / (y == 1).sum()
+      fpr = (pred & (y == 0)).sum() / (y == 0).sum()
+      return tpr, fpr
+
+  def precision_recall(y, score, t):
+      pred = score >= t
+      tp = (pred & (y == 1)).sum()
+      return tp / max(pred.sum(), 1), tp / (y == 1).sum()
+complexity: O(n) per threshold; the full curves need a sort, O(n log n).
+pitfalls:
+- A random classifier has AUC 0.5 in ROC, but its precision-recall baseline equals
+  the positive rate.
+- Both curves depend on the ordering of scores, not on whether probabilities are
+  calibrated.
+problems:
+- precision-recall-f1
+- roc-auc
+aliases:
+- 'Compare: Precision-recall vs ROC'

@@ -1,0 +1,32 @@
+id: compare-naive-bayes-vs-logistic
+name: 'Compare: Naive Bayes vs Logistic regression'
+order: 110
+summary: Both give a simple classifier; naive Bayes models how each class generates
+  the features, logistic regression models the class probability directly.
+when_to_use:
+- Pick naive Bayes when data is tiny or very high-dimensional, such as text.
+- Pick logistic regression when you have enough data and correlated features.
+- Pick naive Bayes for a very fast baseline that trains in one pass.
+key_idea: 'Naive Bayes is generative: it learns each feature''s distribution per
+  class and assumes the features are independent given the class. Logistic regression
+  is discriminative: it fits the decision boundary directly, so it copes with correlated
+  features. With lots of data the discriminative model usually wins; with little
+  data the generative one can win.'
+template: |
+  import numpy as np
+
+  def nb_scores(log_prior, loglik):            # (k,), (n, k)
+      return log_prior + loglik                # generative
+
+  def lr_probs(w, b, X):
+      return 1 / (1 + np.exp(-(X @ w + b)))    # discriminative
+complexity: Naive Bayes fits in one pass over the data; logistic regression needs
+  an iterative solver.
+pitfalls:
+- Naive Bayes probabilities are often overconfident.
+- Logistic regression needs scaling and regularisation for stable fits.
+problems:
+- naive-bayes
+- logistic-regression
+aliases:
+- 'Compare: Naive Bayes vs Logistic regression'

@@ -1,0 +1,31 @@
+id: compare-forest-vs-boosting
+name: 'Compare: Random forest vs Gradient boosting'
+order: 101
+summary: Both combine many trees; a forest averages independent deep trees, boosting
+  adds shallow trees one after another.
+when_to_use:
+- Pick a random forest for a strong, low-tuning baseline that is hard to overfit.
+- Pick gradient boosting when you can tune carefully and want the best accuracy
+  on tabular data.
+- Prefer the forest when training must parallelise easily, because boosting is sequential.
+key_idea: A forest reduces variance by averaging trees trained on different samples.
+  Boosting reduces bias by letting each new tree fix what the ensemble still gets
+  wrong. So forests use deep trees and boosting uses shallow ones.
+template: |
+  import numpy as np
+
+  def forest_predict(trees, X):
+      return np.mean([t(X) for t in trees], axis=0)    # average
+
+  def boosting_predict(trees, X, lr):
+      return lr * np.sum([t(X) for t in trees], axis=0)  # sum
+complexity: A forest trains its trees in parallel; boosting trains them in sequence.
+pitfalls:
+- Boosting overfits noisy labels without early stopping.
+- A forest with too few trees gives noisy predictions.
+problems:
+- random-forest
+- gradient-boosting
+- decision-tree
+aliases:
+- 'Compare: Random forest vs Gradient boosting'

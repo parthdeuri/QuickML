@@ -25,6 +25,8 @@ object AiPrompts {
             title = p.title,
             difficulty = p.difficulty,
             description = p.description,
+            whenNotToUse = p.bruteForce,
+            math = item.dryRun,
             examples = examples,
             constraints = item.constraints,
             approach = p.approach,
@@ -52,7 +54,9 @@ object AiPrompts {
         time: String? = null,
         space: String? = null,
         mySolution: String? = null,
-        note: String? = null
+        note: String? = null,
+        whenNotToUse: String? = null,
+        math: List<String> = emptyList()
     ): String {
         val sb = StringBuilder(ROLE)
         sb.append("\n\n# Concept: ").append(title).append(" (").append(difficulty).append(")")
@@ -65,7 +69,12 @@ object AiPrompts {
             sb.append("\n\n## Hyperparameters")
             constraints.forEach { sb.append("\n- ").append(it) }
         }
+        section(sb, "When not to use", whenNotToUse)
         section(sb, "Intuition", intuition)
+        if (math.isNotEmpty()) {
+            sb.append("\n\n## Math")
+            math.forEach { sb.append('\n').append(it) }
+        }
         if (approach.isNotEmpty()) {
             sb.append("\n\n## How it works")
             approach.forEachIndexed { i, step ->

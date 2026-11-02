@@ -1,0 +1,32 @@
+id: compare-kmeans-vs-dbscan
+name: 'Compare: k-means vs DBSCAN'
+order: 107
+summary: K-means needs the number of clusters and finds round groups; DBSCAN finds
+  dense regions of any shape and marks outliers as noise.
+when_to_use:
+- Pick k-means when you know roughly how many clusters there are and they are compact.
+- Pick DBSCAN when clusters have odd shapes or the data has outliers.
+- Avoid DBSCAN when the density varies a lot between clusters.
+key_idea: K-means assigns every point to the nearest centre, so it must place outliers
+  somewhere and cuts curved shapes into round pieces. DBSCAN grows clusters from
+  points that have enough neighbours within a radius, so shape is free and sparse
+  points become noise. The radius and neighbour count replace the cluster count
+  as the settings to tune.
+template: |
+  import numpy as np
+
+  def kmeans_labels(X, C):
+      return ((X[:, None] - C[None]) ** 2).sum(-1).argmin(1)
+
+  def is_core(X, eps, min_pts):
+      d = np.sqrt(((X[:, None] - X[None]) ** 2).sum(-1))
+      return (d <= eps).sum(1) >= min_pts     # dense enough?
+complexity: K-means is O(n·k·d) per pass; plain DBSCAN is O(n²) without an index.
+pitfalls:
+- DBSCAN's radius is hard to choose when features are not scaled.
+- K-means is distorted by outliers because centres are means.
+problems:
+- k-means
+- dbscan
+aliases:
+- 'Compare: k-means vs DBSCAN'

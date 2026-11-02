@@ -1,0 +1,33 @@
+id: compare-pca-vs-autoencoder
+name: 'Compare: PCA vs Autoencoder'
+order: 105
+summary: Both compress data into fewer dimensions; PCA is linear and has a closed
+  form, an autoencoder can be non-linear and is trained.
+when_to_use:
+- Pick PCA for a fast, deterministic, interpretable linear projection.
+- Pick an autoencoder when the structure is curved and you have enough data to train
+  one.
+- Start with PCA as a baseline; an autoencoder must beat it to be worth the effort.
+key_idea: A linear autoencoder trained with squared error learns the same subspace
+  as PCA. Adding non-linear layers lets the encoder bend to curved structure, at
+  the cost of training, tuning and a result that is not unique.
+template: |
+  import numpy as np
+
+  def pca_encode(X, k):
+      Xc = X - X.mean(0)
+      _, _, Vt = np.linalg.svd(Xc, full_matrices=False)
+      return Xc @ Vt[:k].T                 # closed form
+
+  def ae_encode(X, W1, b1, W2, b2):
+      return np.tanh(X @ W1 + b1) @ W2 + b2   # learned by training
+complexity: PCA is one SVD; an autoencoder needs many gradient steps.
+pitfalls:
+- PCA directions follow variance, which is not always what matters for the task.
+- An autoencoder with a large hidden layer can simply copy its input.
+problems:
+- pca
+- autoencoder
+- svd
+aliases:
+- 'Compare: PCA vs Autoencoder'

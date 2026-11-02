@@ -1,0 +1,35 @@
+id: compare-ridge-vs-lasso
+name: 'Compare: Ridge vs Lasso'
+order: 100
+summary: Both shrink weights to fight overfitting; ridge shrinks smoothly, lasso
+  can set weights exactly to zero.
+when_to_use:
+- Pick ridge when most features carry some signal or are correlated.
+- Pick lasso when you expect only a few features to matter and want a sparse model.
+- Use elastic net when features are correlated and you still want sparsity.
+key_idea: The L2 penalty has a gradient that shrinks as a weight shrinks, so weights
+  get small but rarely reach zero. The L1 penalty pulls with constant strength,
+  so small weights are driven all the way to zero. That is why lasso selects features
+  and ridge does not.
+template: |
+  import numpy as np
+
+  def ridge_grad(w, lam):
+      return 2 * lam * w          # shrinks in proportion to w
+
+  def lasso_grad(w, lam):
+      return lam * np.sign(w)     # constant pull toward zero
+
+  def ridge_fit(X, y, lam):
+      d = X.shape[1]
+      return np.linalg.solve(X.T @ X + lam * np.eye(d), X.T @ y)
+complexity: Ridge has a closed form, O(n·d² + d³); lasso needs an iterative solver
+  such as coordinate descent.
+pitfalls:
+- Both need scaled features, or the penalty treats columns unequally.
+- Lasso picks one of a group of correlated features more or less arbitrarily.
+problems:
+- ridge-lasso-regularization
+- linear-regression
+aliases:
+- 'Compare: Ridge vs Lasso'

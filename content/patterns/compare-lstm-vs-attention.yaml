@@ -1,0 +1,35 @@
+id: compare-lstm-vs-attention
+name: 'Compare: LSTM vs Attention'
+order: 108
+summary: Both model sequences; a recurrent cell passes one state step by step, attention
+  lets every position read every other directly.
+when_to_use:
+- Pick attention for long-range dependencies and parallel training on modern hardware.
+- Pick a recurrent cell for streaming input with small, constant memory per step.
+- Pick attention-based models when you have enough data and compute.
+key_idea: A recurrent cell must squeeze everything it has seen into a fixed-size
+  state and process steps in order. Attention compares each position with all the
+  others, so information travels in one hop, but the cost grows with the square
+  of the length. Attention also needs positional information because it ignores
+  order by itself.
+template: |
+  import numpy as np
+
+  def rnn_step(h, x, Wh, Wx, b):
+      return np.tanh(h @ Wh + x @ Wx + b)     # one state, in order
+
+  def attend(Q, K, V):
+      s = Q @ K.T / np.sqrt(K.shape[-1])      # all pairs at once
+      e = np.exp(s - s.max(-1, keepdims=True))
+      return (e / e.sum(-1, keepdims=True)) @ V
+complexity: A recurrent pass is O(n·d²) but sequential; attention is O(n²·d) but
+  parallel.
+pitfalls:
+- Plain RNNs lose gradients over long sequences, and LSTMs only soften this.
+- Attention memory grows with the square of the sequence length.
+problems:
+- lstm-cell
+- rnn-cell
+- self-attention
+aliases:
+- 'Compare: LSTM vs Attention'

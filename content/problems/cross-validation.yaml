@@ -72,12 +72,5 @@ interview_qa:
   - q: "How do you tune hyperparameters without fooling yourself?"
     a: "Use nested cross-validation: an inner loop picks hyperparameters and an outer loop scores the whole selection procedure."
 related: [bias-variance-tradeoff, data-leakage]
-diagram:
-- fold 1   VAL  tr   tr   tr   tr
-- fold 2   tr   VAL  tr   tr   tr
-- fold 3   tr   tr   VAL  tr   tr
-- fold 4   tr   tr   tr   VAL  tr
-- fold 5   tr   tr   tr   tr   VAL
-- ''
-- score = mean of the 5 validation scores
+diagram: cross-validation
 patterns: ["Validation hygiene"]

@@ -71,13 +71,5 @@ pitfalls:
   - "This card has one bias; PyTorch keeps two (b_ih and b_hh) that add, so sum them when comparing"
   - "No peephole connections or projections are included"
 related: [rnn-cell, activation-functions, backpropagation]
-diagram:
-- h(t-1), x(t) ─► [W, b] ─► f, i, g, o
-- ''
-- c(t-1) ══(× f)══(+)══════════► c(t)
-- '                 ▲'
-- '              (i ⊙ g)'
-- h(t) = o ⊙ tanh(c(t))
-- ''
-- f forget · i input · g candidate · o output
+diagram: lstm-cell
 patterns: ["Attention and sequences"]

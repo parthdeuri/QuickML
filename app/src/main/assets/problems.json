@@ -1,5 +1,5 @@
 {
- "contentVersion": 6,
+ "contentVersion": 7,
  "problems": [
   {
    "slug": "ab-test-significance",
@@ -559,11 +559,7 @@
     "vae-reparameterization"
    ],
    "diagram": [
-    "x ─► [encoder] ─► z (small) ─► [decoder] ─► x̂",
-    "",
-    "loss = ‖x − x̂‖²",
-    "z is the bottleneck: it must keep what the",
-    "decoder needs to rebuild x"
+    "autoencoder"
    ]
   },
   {
@@ -643,13 +639,7 @@
     "activation-functions"
    ],
    "diagram": [
-    "x ─► [W1,b1] ─► tanh ─► [W2,b2] ─► ŷ",
-    "                                   │",
-    "                              loss L(ŷ, y)",
-    "                                   │",
-    "x ◄─ dW1,db1 ◄─ ∂tanh ◄─ dW2,db2 ◄─┘",
-    "   forward: left to right",
-    "   gradients: right to left (chain rule)"
+    "backpropagation"
    ]
   },
   {
@@ -810,13 +800,7 @@
     "dropout"
    ],
    "diagram": [
-    "            features →",
-    "         ┌─────────────┐",
-    " batch   │ x x x x x x │ ◄ layer norm:",
-    "   ↓     │ x x x x x x │   each row",
-    "         │ x x x x x x │",
-    "         └─────────────┘",
-    "           ▲ batch norm: each column"
+    "batch-normalization"
    ]
   },
   {
@@ -1755,14 +1739,7 @@
     "activation-functions"
    ],
    "diagram": [
-    "input (5×5)         kernel (3×3)",
-    " ■ ■ ■ · ·            a b c",
-    " ■ ■ ■ · ·      ∗     d e f",
-    " ■ ■ ■ · ·            g h i",
-    " · · · · ·",
-    " · · · · ·",
-    "slide the kernel: each stop gives one output",
-    "out size = (n − k + 2p) / s + 1"
+    "convolution-2d"
    ]
   },
   {
@@ -1990,13 +1967,7 @@
     "data-leakage"
    ],
    "diagram": [
-    "fold 1   VAL  tr   tr   tr   tr",
-    "fold 2   tr   VAL  tr   tr   tr",
-    "fold 3   tr   tr   VAL  tr   tr",
-    "fold 4   tr   tr   tr   VAL  tr",
-    "fold 5   tr   tr   tr   tr   VAL",
-    "",
-    "score = mean of the 5 validation scores"
+    "cross-validation"
    ]
   },
   {
@@ -2455,12 +2426,7 @@
     "entropy-kl-divergence"
    ],
    "diagram": [
-    "x₀ ─► x₁ ─► x₂ ─► … ─► x_T    add noise",
-    "clean                   pure noise",
-    "",
-    "q(x_t | x₀) = N(√ᾱ_t x₀, (1 − ᾱ_t) I)",
-    "",
-    "the model learns the reverse: x_T ─► … ─► x₀"
+    "diffusion-forward-process"
    ]
   },
   {
@@ -3239,13 +3205,7 @@
     "logistic-regression"
    ],
    "diagram": [
-    "noise z ─► Generator ─► fake ─┐",
-    "real data ────────────────────┤",
-    "                              ▼",
-    "                       Discriminator",
-    "                              │",
-    "                       real or fake?",
-    "D tells them apart; G tries to fool D"
+    "gan-minimax-loss"
    ]
   },
   {
@@ -4363,14 +4323,7 @@
     "gradient-descent"
    ],
    "diagram": [
-    "init centres",
-    "   │",
-    "   ▼",
-    "assign each point to nearest centre ◄─┐",
-    "   │                                  │",
-    "   ▼                                  │",
-    "move each centre to its cluster mean ─┘",
-    "repeat until assignments stop changing"
+    "k-means"
    ]
   },
   {
@@ -4681,11 +4634,7 @@
     "beam-search"
    ],
    "diagram": [
-    "step t: compute q_t, k_t, v_t for ONE token",
-    "cache:  K = [k1 … kt]    V = [v1 … vt]",
-    "",
-    "out_t = softmax(q_t Kᵀ / √d) · V",
-    "(older keys and values are never recomputed)"
+    "kv-cache"
    ]
   },
   {
@@ -5298,11 +5247,7 @@
     "backpropagation"
    ],
    "diagram": [
-    "x ────► W (frozen) ───────────┐",
-    " └─► A (d×r) ─► B (r×d) ─────►(+) ─► y",
-    "",
-    "y = x W + (α / r) · x A B",
-    "r ≪ d, so only A and B are trained"
+    "lora-low-rank-adaptation"
    ]
   },
   {
@@ -5380,14 +5325,7 @@
     "backpropagation"
    ],
    "diagram": [
-    "h(t-1), x(t) ─► [W, b] ─► f, i, g, o",
-    "",
-    "c(t-1) ══(× f)══(+)══════════► c(t)",
-    "                 ▲",
-    "              (i ⊙ g)",
-    "h(t) = o ⊙ tanh(c(t))",
-    "",
-    "f forget · i input · g candidate · o output"
+    "lstm-cell"
    ]
   },
   {
@@ -5870,11 +5808,7 @@
     "softmax-cross-entropy"
    ],
    "diagram": [
-    "x (d) ─► [W1, b1] ─► act ─► h (m)",
-    "                              │",
-    "                         [W2, b2]",
-    "                              │",
-    "                       logits ─► softmax ─► p"
+    "mlp-forward-pass"
    ]
   },
   {
@@ -6028,12 +5962,7 @@
     "layer-normalization"
    ],
    "diagram": [
-    "x ─► split into h heads",
-    "     head 1: attention(Q1,K1,V1) ─┐",
-    "     head 2: attention(Q2,K2,V2) ─┼► concat",
-    "     head h: attention(Qh,Kh,Vh) ─┘",
-    "                                  ▼",
-    "                               [Wo] ─► out"
+    "multi-head-attention"
    ]
   },
   {
@@ -7201,16 +7130,7 @@
     "batch-normalization"
    ],
    "diagram": [
-    "x ───────────┐",
-    "│            │",
-    "▼            │",
-    "[ F(x) ]     │ identity",
-    "│            │ shortcut",
-    "▼            │",
-    "(+) ◄────────┘",
-    "│",
-    "▼",
-    "y = x + F(x)"
+    "residual-connections"
    ]
   },
   {
@@ -7995,11 +7915,7 @@
     "backpropagation"
    ],
    "diagram": [
-    "x ─► Wq ─► Q ─┐",
-    "x ─► Wk ─► K ─┴─► A = softmax(QKᵀ/√d)",
-    "x ─► Wv ─► V ─────────► out = A · V",
-    "",
-    "A[i, j] = how much position i reads from j"
+    "self-attention"
    ]
   },
   {
@@ -8707,18 +8623,7 @@
     "residual-connections"
    ],
    "diagram": [
-    "x ────────────┐",
-    "│             │",
-    "LayerNorm     │",
-    "Self-attention│",
-    "│             │",
-    "(+) ◄─────────┘  = x1",
-    "x1 ───────────┐",
-    "│             │",
-    "LayerNorm     │",
-    "MLP (GELU)    │",
-    "│             │",
-    "(+) ◄─────────┘  = out"
+    "transformer-block"
    ]
   },
   {
@@ -8876,13 +8781,7 @@
     "backpropagation"
    ],
    "diagram": [
-    "x ─► encoder ─► μ, log σ²",
-    "                  │",
-    "         z = μ + σ ⊙ ε,  ε ~ N(0, I)",
-    "                  │",
-    "z ─► decoder ─► x̂",
-    "",
-    "loss = ‖x − x̂‖² + KL(N(μ,σ²) ‖ N(0,I))"
+    "vae-reparameterization"
    ]
   },
   {

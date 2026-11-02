@@ -54,7 +54,7 @@ def convert_problem(p):
         "edgeCases": [_prose(c) for c in p.get("pitfalls") or []],
         "related": list(p.get("related") or []),
         # box-art lines keep their spacing
-        "diagram": [x.rstrip() for x in p.get("diagram") or []],
+        "diagram": [p["diagram"]] if p.get("diagram") else [],
     }
 
 

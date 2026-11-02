@@ -10,7 +10,7 @@ Actions and the user reports pass or fail.
 | Stack | Kotlin 2.1 + Jetpack Compose, Room, WorkManager, manual DI, no nav library |
 | Package | `com.parthdeuri.quickml`, signed with a stable key from GitHub secrets |
 | Math | Plain Unicode in monospace blocks (no LaTeX) |
-| Diagrams | Optional monospace box art per card (`diagram`, max 46 columns) |
+| Diagrams | Pre-drawn PNGs (light and dark) from `content/scripts/make_diagrams.py`, shown in the Approach tab; card field `diagram: <name>` |
 | Content | One YAML per concept card, validated by `content/scripts/validate.py` |
 | Verification | Every card's code is run in `content/tests/` against sklearn / PyTorch / SciPy |
 | AI | Optional "Ask" tab (Gemini, own key, off by default) |
@@ -20,7 +20,7 @@ Actions and the user reports pass or fail.
 - `content/sheets/*.yaml` three sheets: ML Core, Deep Learning Core, NLP / Vision / RL.
 - `content/patterns/*.yaml` technique families (quiz) and "Compare: A vs B" cards.
 - Scripts: `assemble.py` (sheets and family tags), `make_families.py`, `make_compare.py`,
-  `add_diagrams.py`; `tools/check_links.py` checks every reference URL.
+  `make_diagrams.py` (needs matplotlib, output committed); `tools/check_links.py` checks every reference URL.
 
 ## Field mapping (YAML to the older app columns)
 `area -> platform`, `code -> solution`, `when_to_use -> description`, `when_not_to_use -> bruteForce`,

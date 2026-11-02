@@ -79,10 +79,5 @@ pitfalls:
   - "This code has one matrix without bias or dropout; real use wraps each target layer"
   - "Low rank too small underfits; too large wastes the savings"
 related: [multi-head-attention, svd, backpropagation]
-diagram:
-- x ────► W (frozen) ───────────┐
-- ' └─► A (d×r) ─► B (r×d) ─────►(+) ─► y'
-- ''
-- y = x W + (α / r) · x A B
-- r ≪ d, so only A and B are trained
+diagram: lora-low-rank-adaptation
 patterns: ["Transfer and adaptation"]

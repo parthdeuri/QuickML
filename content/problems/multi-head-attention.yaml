@@ -75,11 +75,5 @@ pitfalls:
   - "This code has no biases, masking or dropout; PyTorch adds biases by default"
   - "Reshape and transpose order matters; a wrong order still runs but mixes heads"
 related: [self-attention, positional-encoding, layer-normalization]
-diagram:
-- x ─► split into h heads
-- '     head 1: attention(Q1,K1,V1) ─┐'
-- '     head 2: attention(Q2,K2,V2) ─┼► concat'
-- '     head h: attention(Qh,Kh,Vh) ─┘'
-- '                                  ▼'
-- '                               [Wo] ─► out'
+diagram: multi-head-attention
 patterns: ["Attention and sequences"]

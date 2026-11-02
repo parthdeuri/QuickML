@@ -74,10 +74,5 @@ pitfalls:
   - "Position information such as RoPE must use the true absolute position of the new token"
   - "This is one head and one layer; a real model keeps a separate cache for each layer"
 related: [self-attention, multi-head-attention, beam-search]
-diagram:
-- 'step t: compute q_t, k_t, v_t for ONE token'
-- 'cache:  K = [k1 … kt]    V = [v1 … vt]'
-- ''
-- out_t = softmax(q_t Kᵀ / √d) · V
-- (older keys and values are never recomputed)
+diagram: kv-cache
 patterns: ["Attention and sequences"]

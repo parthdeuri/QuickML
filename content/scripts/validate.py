@@ -31,8 +31,7 @@ REQUIRED_KEYS = ["slug", "title", "url", "difficulty", "topics", "area"]
 CONTENT_KEYS = ["summary", "intuition", "approach", "time", "space", "code"]
 OPTIONAL_KEYS = ["patterns", "pitfalls", "related", "diagram"]
 # Optional monospace box-art picture (architecture / data flow).
-DIAGRAM_LINES = (3, 16)
-MAX_DIAGRAM_WIDTH = 46  # fits a phone without sideways scrolling
+DIAGRAM_DIR = Path(__file__).resolve().parent.parent.parent / "app/src/main/assets/diagrams"
 # 1-based line numbers of `code` holding the core idea. Required for full
 # cards, forbidden for metadata-only ones.
 KEY_LINES_KEY = "key_lines"
@@ -228,16 +227,13 @@ def check_problem(path, p, errors, warnings):
 
     dg = p.get("diagram")
     if dg is not None:
-        lo, hi = DIAGRAM_LINES
-        if not (isinstance(dg, list) and lo <= len(dg) <= hi
-                and all(isinstance(x, str) for x in dg)
-                and any(x.strip() for x in dg)):
-            err(f"'diagram' must be a list of {lo}-{hi} strings")
+        if not (isinstance(dg, str) and re.fullmatch(r"[a-z0-9-]+", dg)):
+            err("'diagram' must be an image name such as 'k-means'")
         else:
-            for i, line in enumerate(dg, 1):
-                if len(line) > MAX_DIAGRAM_WIDTH:
-                    err(f"diagram line {i} is {len(line)} chars "
-                        f"(> {MAX_DIAGRAM_WIDTH})")
+            for theme in ("light", "dark"):
+                if not (DIAGRAM_DIR / f"{dg}_{theme}.png").exists():
+                    err(f"diagram image missing: {dg}_{theme}.png "
+                        "(run make_diagrams.py)")
 
     # Full vs metadata-only: all or nothing.
     full_keys = CONTENT_KEYS + DETAIL_KEYS + EXPLAIN_KEYS

@@ -74,11 +74,5 @@ pitfalls:
   - "The final ᾱ_T must be near zero or the terminal distribution is not standard normal"
   - "The equivalence with iterating holds in distribution, not sample by sample for the same ε"
 related: [vae-reparameterization, autoencoder, entropy-kl-divergence]
-diagram:
-- x₀ ─► x₁ ─► x₂ ─► … ─► x_T    add noise
-- clean                   pure noise
-- ''
-- q(x_t | x₀) = N(√ᾱ_t x₀, (1 − ᾱ_t) I)
-- ''
-- 'the model learns the reverse: x_T ─► … ─► x₀'
+diagram: diffusion-forward-process
 patterns: ["Generative models"]

@@ -3,6 +3,7 @@ package com.parthdeuri.quickml.ui.feed
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.core.Animatable
@@ -11,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -64,6 +66,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -73,7 +76,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -84,6 +90,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.parthdeuri.quickml.data.content.ExampleJson
 import com.parthdeuri.quickml.data.repo.FeedItem
 import com.parthdeuri.quickml.domain.srs.Rating
@@ -97,8 +105,10 @@ import com.parthdeuri.quickml.ui.common.SolutionEditorDialog
 import com.parthdeuri.quickml.ui.theme.QuickMLTheme
 import java.time.LocalDate
 import kotlin.random.Random
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private enum class CardSection(val label: String) {
     PROBLEM("Concept"),
@@ -1108,31 +1118,57 @@ private fun ExplanationBlock(title: String, body: String, titleColor: Color, bac
     }
 }
 
-/** Formula lines, one per row. */
-/** Monospace box-art picture (architecture, data flow); scrolls sideways when wide. */
+/** Pre-drawn diagram (PNG from assets/diagrams, light or dark variant); tap to enlarge. */
 @Composable
 private fun DiagramBox(lines: List<String>) {
-    val code = QuickMLTheme.colors.code
+    val colors = QuickMLTheme.colors
+    val context = LocalContext.current
+    val name = lines.firstOrNull() ?: return
+    val theme = if (colors.isDark) "dark" else "light"
+    val bitmap by produceState<ImageBitmap?>(null, name, theme) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                context.assets.open("diagrams/${name}_$theme.png").use {
+                    BitmapFactory.decodeStream(it)?.asImageBitmap()
+                }
+            }.getOrNull()
+        }
+    }
+    var enlarged by remember { mutableStateOf(false) }
+    val img = bitmap ?: return
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionHeading("Diagram")
-        Box(
+        Image(
+            bitmap = img,
+            contentDescription = "Diagram",
+            contentScale = ContentScale.FillWidth,
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
-                .background(code.background)
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .background(colors.code.background)
+                .clickable { enlarged = true }
+                .padding(8.dp)
+        )
+    }
+    if (enlarged) {
+        Dialog(
+            onDismissRequest = { enlarged = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
-            Text(
-                text = lines.joinToString("\n"),
-                style = TextStyle(
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp
-                ),
-                softWrap = false,
-                color = code.text
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(colors.code.background)
+                    .clickable { enlarged = false },
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    bitmap = img,
+                    contentDescription = "Diagram",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize().padding(12.dp)
+                )
+            }
         }
     }
 }

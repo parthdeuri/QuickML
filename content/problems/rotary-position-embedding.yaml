@@ -73,3 +73,9 @@ pitfalls:
   - "In float16 the angles for large positions lose precision; compute cos and sin in float32"
 related: [positional-encoding, self-attention, multi-head-attention]
 patterns: ["Attention and sequences"]
+math_tex:
+- $\theta_i = \mathrm{base}^{-2i/d},\;\;\; i = 0 \ldots d/2 - 1$
+- 'Pair $i$ at position $m$: $z_i = x_{2i} + \mathrm{i}\,x_{2i+1}$'
+- $\mathrm{RoPE}(x, m)_i = z_i\,e^{\mathrm{i}\,m\theta_i}$
+- $(x'_{2i}, x'_{2i+1}) = R(m\theta_i)\,(x_{2i}, x_{2i+1})$
+- $\langle\mathrm{RoPE}(q, m), \mathrm{RoPE}(k, n)\rangle = \mathrm{Re}\sum_i q_i\,\mathrm{conj}(k_i)\,e^{\mathrm{i}(m-n)\theta_i}$

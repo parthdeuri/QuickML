@@ -76,3 +76,9 @@ interview_qa:
     a: "The irreducible noise term σ² is part of every noisy target and no model can predict it."
 related: [linear-regression, cross-validation]
 patterns: ["Regularisation"]
+math_tex:
+- $E[(y - \hat{y})^2] = \mathrm{bias}^2 + \mathrm{variance} + \sigma^2$
+- $\mathrm{bias}^2 = (E[\hat{y}] - f(x))^2$
+- $\mathrm{variance} = E[(\hat{y} - E[\hat{y}])^2]$
+- $\sigma^2$ = noise variance, a floor no model can beat
+- Expectation over training sets $D$ and noise in $y$

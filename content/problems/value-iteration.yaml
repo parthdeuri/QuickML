@@ -77,3 +77,10 @@ interview_qa:
     a: "Pick in each state the action maximising reward plus discounted value of the next state, which is the greedy policy and is optimal."
 related: [q-learning, bayes-theorem, gradient-descent]
 patterns: ["Reinforcement learning"]
+math_tex:
+- 'Bellman optimality: $V^*(s) = \max_a\,[\,r(s,a) + \gamma\,V^*(s'')\,]$'
+- '$s''$ = next state; stochastic: $\sum_{s''} P(s''|s,a)[\ldots]$'
+- $Q_k(s,a) = r(s,a) + \gamma V_k(s'),\; V_{k+1}(s) = \max_a Q_k(s,a)$
+- 'Terminal states: $V(s) = 0$'
+- 'Contraction: $\|V_{k+1} - V^*\|_\infty \leq \gamma\,\|V_k - V^*\|_\infty$'
+- 'Policy: $\pi(s) = \arg\max_a\,[\,r(s,a) + \gamma\,V^*(s'')\,]$'

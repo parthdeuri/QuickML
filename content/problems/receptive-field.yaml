@@ -79,3 +79,10 @@ interview_qa:
     a: "Use strides, pooling or dilated convolutions, which spread the same kernel weights over a wider window."
 related: [convolution-2d, max-pooling, depthwise-separable-convolution]
 patterns: ["Convolution and vision"]
+math_tex:
+- '$k_l$: kernel size, $s_l$: stride of layer $l$ (dilation 1)'
+- 'Jump: $j_0 = 1,\;\; j_l = j_{l-1}\cdot s_l$'
+- 'Field: $r_0 = 1,\;\; r_l = r_{l-1} + (k_l - 1)\cdot j_{l-1}$'
+- Output $i$ maps to input $[lo, hi]$, $lo = i \cdot \mathrm{jump}$
+- 'Backwards: $lo \leftarrow lo\,s,\;\; hi \leftarrow hi\,s + k - 1$'
+- Padding shifts the interval, not its width

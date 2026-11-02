@@ -88,3 +88,10 @@ interview_qa:
     a: "Only the selected fraction of tokens gives a training signal per sequence, and the model is not a natural generator, since it predicts tokens independently given the corrupted context."
 related: [softmax-cross-entropy, self-attention, transformer-block]
 patterns: ["Text processing"]
+math_tex:
+- Select each token with probability $p = 0.15$
+- 80% $\rightarrow$ [MASK], 10% $\rightarrow$ random, 10% $\rightarrow$ same
+- 'Labels: original id if selected, $-100$ elsewhere'
+- $M$ = set of selected positions
+- $L = -\frac{1}{|M|}\sum_{i \in M} \log \mathrm{softmax}(z_i)[y_i]$
+- '$z_i$: logits at position $i$;  $y_i$: original token id'

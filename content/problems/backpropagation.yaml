@@ -81,3 +81,10 @@ interview_qa:
 related: [gradient-descent, mlp-forward-pass, activation-functions]
 diagram: backpropagation
 patterns: ["Gradient-based optimisation"]
+math_tex:
+- 'Forward: $a = \tanh(XW_1 + b_1),\;\; \hat{y} = aW_2 + b_2$'
+- 'Loss: $L = \mathrm{mean}$ over all entries of $(\hat{y} - y)^2$'
+- $\delta_2 = \frac{\partial L}{\partial \hat{y}} = \frac{2(\hat{y} - y)}{n\,k}$
+- $\frac{\partial L}{\partial W_2} = a^{\top}\delta_2,\;\; \frac{\partial L}{\partial b_2} = \sum \mathrm{rows}\ \mathrm{of}\ \delta_2$
+- $\delta_1 = (\delta_2 W_2^{\top}) \odot (1 - a^2)$   ($\tanh' = 1 - \tanh^2$)
+- $\frac{\partial L}{\partial W_1} = X^{\top}\delta_1,\;\; \frac{\partial L}{\partial b_1} = \sum \mathrm{rows}\ \mathrm{of}\ \delta_1$

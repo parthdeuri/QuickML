@@ -78,3 +78,10 @@ interview_qa:
     a: "Both use kernels; kernel ridge uses squared loss and has a closed form with all points contributing, while the SVM's hinge loss yields sparse support vectors via a quadratic program."
 related: [svm, ridge-lasso-regularization, linear-regression]
 patterns: ["Linear models"]
+math_tex:
+- 'RBF: $k(x,z) = \exp(-\gamma\,\|x - z\|^2)$'
+- 'Expand: $\|x - z\|^2 = \|x\|^2 + \|z\|^2 - 2\,x^{\top}z$'
+- 'Gram matrix: $K_{ij} = k(x_i, x_j)$, symmetric and PSD'
+- 'Kernel ridge: $\alpha = (K + \lambda I)^{-1}\,y$'
+- 'Prediction: $f(x) = \sum_i \alpha_i\,k(x, x_i)$'
+- 'Trick: $k(x,z) = \varphi(x)^{\top}\varphi(z)$ without computing $\varphi$'

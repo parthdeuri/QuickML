@@ -93,3 +93,11 @@ interview_qa:
     a: "A smaller rate needs more trees but usually gives better generalisation; tune them together with early stopping."
 related: [decision-tree, random-forest, gradient-descent]
 patterns: ["Tree ensembles"]
+math_tex:
+- $F_0(x) = \bar{y}$   (best constant for squared loss)
+- $r_i = y_i - F_{m-1}(x_i) = -\frac{\partial L}{\partial F}$ for $L = \frac{1}{2}(y - F)^2$
+- $h_m$ = tree fitted to the residuals $r$
+- $F_m(x) = F_{m-1}(x) + \eta\,h_m(x)$
+- 'Stump: $h(x) = a$ if $x_j \leq t$ else $b$'
+- $a, b$ = mean residual on each side of the split
+- Best split maximises $\frac{(\sum_L r)^2}{|L|} + \frac{(\sum_R r)^2}{|R|}$

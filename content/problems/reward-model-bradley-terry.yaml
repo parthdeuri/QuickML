@@ -75,3 +75,10 @@ interview_qa:
     a: "DPO uses the same Bradley-Terry likelihood but defines the reward as a scaled log-ratio of policy to reference, so the policy itself plays the role of the reward model."
 related: [logistic-regression, dpo-loss, softmax-cross-entropy]
 patterns: ["Preference alignment and policy gradients"]
+math_tex:
+- $P(\mathrm{chosen} \succ \mathrm{rejected}) = \sigma(r_c - r_r) = \frac{e^{r_c}}{e^{r_c} + e^{r_r}}$
+- 'Linear reward: $r(x) = w \cdot x$'
+- $d = r_c - r_r = w \cdot (x_c - x_r)$
+- $L = -\mathrm{mean}\ \log\sigma(d) = \mathrm{mean}\ \log(1 + e^{-d})$
+- $\frac{\partial L}{\partial w} = -\mathrm{mean}\left[\sigma(-d)\,(x_c - x_r)\right]$
+- Adding a constant to both $r$ leaves $L$ fixed

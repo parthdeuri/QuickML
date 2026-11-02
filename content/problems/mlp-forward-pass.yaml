@@ -77,3 +77,10 @@ interview_qa:
 related: [backpropagation, activation-functions, softmax-cross-entropy]
 diagram: mlp-forward-pass
 patterns: ["Network building blocks"]
+math_tex:
+- $z_l = a_{l-1} W_l + b_l$ (rows are samples)
+- $a_l = \mathrm{ReLU}(z_l)$ for hidden layers, $a_0 = X$
+- 'Output layer: $\mathrm{logits} = z_L$, no activation'
+- 'Probabilities: $\mathrm{softmax}(\mathrm{logits})$ row-wise'
+- 'He init: $W_l \sim \mathcal{N}(0, \frac{2}{\mathrm{fan\_in}}),\;\; b_l = 0$'
+- 'Parameters: $\sum_l (m_l n_l + n_l)$'

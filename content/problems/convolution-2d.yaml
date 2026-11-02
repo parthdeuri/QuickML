@@ -77,3 +77,9 @@ interview_qa:
 related: [mlp-forward-pass, backpropagation, activation-functions]
 diagram: convolution-2d
 patterns: ["Convolution and vision"]
+math_tex:
+- '$x$: $(N,C,H,W)$; $w$: $(F,C,kH,kW)$; $b$: $(F)$'
+- $\mathrm{out}[n,f,i,j] = b[f] + \sum_{c,u,v} w[f,c,u,v]\,x[n,c,si{+}u,sj{+}v]$
+- 'Output size: $\lfloor\frac{H + 2p - kH}{s}\rfloor + 1$ (same for width)'
+- 'Cross-correlation: the filter is not flipped'
+- 'Parameters: $F \cdot C \cdot kH \cdot kW + F$'

@@ -97,3 +97,10 @@ interview_qa:
     a: "It is gradient boosting with the exponential loss; gradient boosting generalises the idea to arbitrary differentiable losses."
 related: [gradient-boosting, decision-tree, random-forest]
 patterns: ["Tree ensembles"]
+math_tex:
+- 'Weights: $w_i = 1/n$ initially, $\sum_i w_i = 1$'
+- 'Weighted error: $\epsilon = \sum_i w_i\,[h(x_i) \neq y_i]$'
+- 'Vote weight: $\alpha = \frac{1}{2}\log\frac{1-\epsilon}{\epsilon}$'
+- 'Update: $w_i \leftarrow w_i \exp(-\alpha\,y_i\,h(x_i))$, then renormalise'
+- 'Model: $F(x) = \sum_t \alpha_t h_t(x)$, prediction $\hat{y} = \mathrm{sign}\,F(x)$'
+- 'Stump: $h(x) = s$ if $x_j \leq t$ else $-s$, $y_i \in \{-1,+1\}$'

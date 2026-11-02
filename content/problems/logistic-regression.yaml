@@ -78,3 +78,10 @@ interview_qa:
     a: "Yes. The boundary σ(z) = 0.5 is wᵀx + b = 0, a hyperplane."
 related: [linear-regression, gradient-descent, softmax-cross-entropy]
 patterns: ["Linear models"]
+math_tex:
+- $p = \sigma(z),\ z = w^{\top}x + b,\ \sigma(z) = \frac{1}{1 + e^{-z}}$
+- $\log\frac{p}{1-p} = w^{\top}x + b$
+- $L(w) = -\frac{1}{n}\sum\,[\,y\log p + (1-y)\log(1-p)\,]$
+- $\nabla L = \frac{1}{n}\,X^{\top}(p - y)$
+- Hessian $H = \frac{1}{n}\,X^{\top}\,\mathrm{diag}(p(1-p))\,X$
+- 'Newton step: $w \leftarrow w - H^{-1}\nabla L$'

@@ -85,3 +85,10 @@ interview_qa:
     a: "The agent must try uncertain actions to find better ones but also use what it knows. ε-greedy mixes the two with a random-action probability."
 related: [gradient-descent, bayes-theorem]
 patterns: ["Reinforcement learning"]
+math_tex:
+- 'Bellman optimality: $Q^*(s,a) = r + \gamma\,\max_{a''} Q^*(s'',a'')$'
+- 'TD target: $y = r + \gamma\,\max_{a''} Q(s'',a'')$'
+- 'TD error: $\delta = y - Q(s,a)$'
+- 'Update: $Q(s,a) \leftarrow Q(s,a) + \alpha\,\delta$'
+- 'Behaviour: $\epsilon$-greedy, random action w.p. $\epsilon$'
+- 'Policy: $\pi(s) = \arg\max_a Q(s,a)$'

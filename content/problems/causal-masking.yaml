@@ -71,3 +71,9 @@ pitfalls:
   - "This code builds the full T × T matrix; efficient kernels skip the masked blocks entirely"
 related: [self-attention, multi-head-attention, positional-encoding]
 patterns: ["Attention and sequences"]
+math_tex:
+- $S = \frac{QK^{\top}}{\sqrt{d}}\;\; (T \times T)$
+- $M_{ij} = 0$ if $j \leq i$,  $-\infty$ if $j > i$
+- $A = \mathrm{softmax}(S + M)$ row-wise
+- $A_{ij} = 0$ for $j > i$,  $\sum_j A_{ij} = 1$
+- $\mathrm{Output} = A\,V$

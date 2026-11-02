@@ -77,3 +77,9 @@ pitfalls:
 related: [self-attention, positional-encoding, layer-normalization]
 diagram: multi-head-attention
 patterns: ["Attention and sequences"]
+math_tex:
+- $Q = XW_q,\;\; K = XW_k,\;\; V = XW_v \qquad (T \times d)$
+- $d = h\,d_h$; head $k$ uses columns $k\,d_h \ldots (k+1)\,d_h - 1$
+- $A_k = \mathrm{softmax}\left(\frac{Q_k K_k^{\top}}{\sqrt{d_h}}\right)$
+- $\mathrm{head}_k = A_k V_k$
+- $\mathrm{Output} = \mathrm{concat}(\mathrm{head}_1 \ldots \mathrm{head}_h)\,W_o$

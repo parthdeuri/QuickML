@@ -68,3 +68,9 @@ pitfalls:
   - "Mask padding tokens in real code; this version assumes every target is a real token"
 related: [softmax-cross-entropy, entropy-kl-divergence, maximum-likelihood]
 patterns: ["Text processing"]
+math_tex:
+- $\log p_i = z_i - \log \sum_j \exp(z_j)$
+- $\mathrm{CE} = -\frac{1}{N}\sum_n \log p(y_n\,|\,\mathrm{context}_n)$
+- $\mathrm{PPL} = \exp(\mathrm{CE})$
+- $\mathrm{PPL} = \left(\prod_n \frac{1}{p(y_n\,|\,\mathrm{context}_n)}\right)^{1/N}$
+- 'Uniform over $V$ tokens: $\mathrm{PPL} = V$'

@@ -75,3 +75,9 @@ pitfalls:
   - "The derivation assumes independent, zero-mean inputs, so it is a heuristic, not a guarantee"
 related: [activation-functions, backpropagation, batch-normalization]
 patterns: ["Gradient-based optimisation"]
+math_tex:
+- $y = \sum_i w_i x_i \;\Rightarrow\; \mathrm{Var}(y) = \mathrm{fan}_{in}\cdot\mathrm{Var}(w)\cdot\mathrm{Var}(x)$
+- 'Xavier: $\mathrm{Var}(w) = \mathrm{gain}^2\cdot\frac{2}{\mathrm{fan}_{in} + \mathrm{fan}_{out}}$'
+- 'Xavier uniform: $w \sim U(-a, a),\ a = \mathrm{gain}\cdot\sqrt{\frac{6}{\mathrm{fan}_{in} + \mathrm{fan}_{out}}}$'
+- 'He (ReLU): $\mathrm{Var}(w) = \frac{2}{\mathrm{fan}_{in}},\;\; w \sim \mathcal{N}(0, \frac{2}{\mathrm{fan}_{in}})$'
+- Uniform $U(-a, a)$ has variance $\frac{a^2}{3}$

@@ -81,3 +81,9 @@ interview_qa:
     a: "If a unit's input stays negative its output and gradient are zero, so its weights never update; leaky variants keep a small slope."
 related: [backpropagation, mlp-forward-pass, softmax-cross-entropy]
 patterns: ["Network building blocks"]
+math_tex:
+- $\mathrm{ReLU}(x) = \max(0, x),\;\; \mathrm{ReLU}'(x) = \mathbf{1}[x > 0]$
+- $\sigma(x) = \frac{1}{1 + e^{-x}},\;\; \sigma'(x) = \sigma(x)(1 - \sigma(x))$
+- $\tanh'(x) = 1 - \tanh^2(x)$
+- $\mathrm{GELU}(x) = x\cdot\Phi(x)$, $\Phi$ = normal CDF
+- 'Tanh approx: $0.5x(1 + \tanh(\sqrt{2/\pi}(x + 0.044715x^3)))$'

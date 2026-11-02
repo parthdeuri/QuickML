@@ -80,3 +80,10 @@ interview_qa:
     a: "No. The decoder may look at the whole source; causality applies only to the decoder's self-attention over its own previous outputs. A padding mask on the source is what it needs."
 related: [self-attention, multi-head-attention, kv-cache]
 patterns: ["Attention and sequences"]
+math_tex:
+- $Q = X_{dec}\,W_q \qquad (T_{dec} \times d_k)$
+- $K = X_{enc}\,W_k,\;\; V = X_{enc}\,W_v \qquad (T_{enc} \times d_k,\ T_{enc} \times d_v)$
+- $S = \frac{Q\,K^{\top}}{\sqrt{d_k}} \qquad (T_{dec} \times T_{enc})$
+- 'Padding: $S[i, j] = -\infty$ if source $j$ is padding'
+- $A = \mathrm{softmax}(S)$ row-wise, so each row sums to 1
+- $\mathrm{Output} = A\,V \qquad (T_{dec} \times d_v)$

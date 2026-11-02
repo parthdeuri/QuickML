@@ -79,3 +79,10 @@ interview_qa:
     a: "Its forecast is a weighted average of past values, so it always lags behind a rising or falling series; Holt's slope term removes that lag."
 related: [linear-regression, bias-variance-tradeoff]
 patterns: ["Time series"]
+math_tex:
+- 'Simple: $\ell_t = \alpha y_t + (1-\alpha)\ell_{t-1},\;\; \hat{y}_{t+1|t} = \ell_t$'
+- 'Unrolled: $\ell_t = \sum_k \alpha(1-\alpha)^k y_{t-k} + (1-\alpha)^t \ell_0$'
+- 'Holt level: $\ell_t = \alpha y_t + (1-\alpha)(\ell_{t-1} + b_{t-1})$'
+- 'Holt trend: $b_t = \beta(\ell_t - \ell_{t-1}) + (1-\beta)b_{t-1}$'
+- 'Forecast: $\hat{y}_{t+h|t} = \ell_t + h\,b_t$'
+- 'Fit: minimise $\sum_t (y_t - \hat{y}_{t|t-1})^2$ over $\alpha, \beta$ (and $\ell_0, b_0$)'

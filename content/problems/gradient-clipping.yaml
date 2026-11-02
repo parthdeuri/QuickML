@@ -69,3 +69,8 @@ interview_qa:
     a: "After backward and before optimizer.step (and after unscaling with AMP)."
 related: [gradient-descent, backpropagation, rnn-cell]
 patterns: ["Gradient-based optimisation"]
+math_tex:
+- 'Global norm: $\|g\| = \sqrt{\sum_p \|g_p\|^2}$ over all $p$'
+- 'Scale: $c = \min\left(1,\ \frac{\tau}{\|g\| + \epsilon}\right)$ with threshold $\tau$'
+- 'Clip by norm: $g_p \leftarrow c\cdot g_p$ (direction preserved)'
+- 'By value: $g_p \leftarrow \mathrm{clamp}(g_p, -\kappa, \kappa)$ (may rotate)'

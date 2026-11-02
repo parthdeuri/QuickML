@@ -82,3 +82,10 @@ interview_qa:
     a: "Naive Bayes is generative, fits fast and does well on little data; logistic regression is discriminative, handles correlated features better and wins with more data."
 related: [logistic-regression, softmax-cross-entropy]
 patterns: ["Probabilistic models"]
+math_tex:
+- $P(c\,|\,x) \propto P(c)\cdot\prod_j P(x_j\,|\,c)$
+- $P(x_j\,|\,c) = \mathcal{N}(x_j;\ \mu_{cj}, \sigma^2_{cj})$
+- $\log P(x_j\,|\,c) = -\frac{1}{2}\log(2\pi\sigma^2) - \frac{(x_j - \mu)^2}{2\sigma^2}$
+- $\mathrm{Score}(c) = \log P(c) + \sum_j \log P(x_j\,|\,c)$
+- $\hat{y} = \arg\max_c\ \mathrm{Score}(c)$
+- $P(c\,|\,x) = \mathrm{softmax}$ over $c$ of $\mathrm{Score}(c)$

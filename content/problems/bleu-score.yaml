@@ -82,3 +82,8 @@ interview_qa:
     a: "Summing n-gram counts over the corpus avoids zero precisions on short sentences and gives a more stable statistic. Averaging sentence scores treats a three-word sentence like a long one."
 related: [perplexity, precision-recall-f1, rouge-score]
 patterns: ["Text evaluation and retrieval"]
+math_tex:
+- 'Clipped: $\min(\mathrm{count}_{hyp}(g), \mathrm{count}_{ref}(g))$ per n-gram $g$'
+- $p_n = \frac{\sum \mathrm{clipped\ counts}}{\sum \mathrm{hypothesis\ n\!-\!grams}}$ (summed over corpus)
+- '$\mathrm{BP} = 1$ if $c > r$, else $\exp(1 - r/c)$ ($c, r$: lengths)'
+- $\mathrm{BLEU} = \mathrm{BP}\cdot\exp\left(\frac{1}{N}\sum_n \log p_n\right),\;\; N = 4$

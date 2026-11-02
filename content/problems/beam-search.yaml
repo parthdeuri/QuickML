@@ -75,3 +75,9 @@ interview_qa:
     a: "Products of many probabilities underflow, and sums of logs are numerically stable and additive over steps."
 related: [softmax-cross-entropy, self-attention]
 patterns: ["Text processing"]
+math_tex:
+- $\mathrm{Score}(y_1..y_T) = \sum_t \log p(y_t \,|\, y_1..y_{t-1})$
+- 'Beams at step $t$: top $B$ of $(y, y{+}w)$ pairs'
+- 'Candidates per step: $B \cdot |V|$'
+- $B = 1$ gives greedy decoding
+- '$B \geq |V|^T$ keeps every prefix: exact search'

@@ -71,3 +71,9 @@ interview_qa:
     a: "When positives are rare: FPR stays small even with many false positives, while precision exposes them."
 related: [precision-recall-f1, logistic-regression]
 patterns: ["Classification metrics"]
+math_tex:
+- $\mathrm{TPR} = \frac{TP}{TP + FN},\;\; \mathrm{FPR} = \frac{FP}{FP + TN}$
+- $\mathrm{AUC} = \int \mathrm{TPR}\ d(\mathrm{FPR})$
+- $\mathrm{AUC} = P(s^+ > s^-) + \frac{1}{2}P(s^+ = s^-)$
+- $\mathrm{AUC} = \frac{U}{n_+ \cdot n_-}$
+- 'Trapezoid rule: $\sum \Delta\mathrm{fpr}\cdot\frac{\mathrm{tpr}_i + \mathrm{tpr}_{i-1}}{2}$'

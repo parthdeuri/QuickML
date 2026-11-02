@@ -81,3 +81,12 @@ interview_qa:
     a: "The dual problem uses only dot products xᵢ·xⱼ, so replacing them with a kernel k(xᵢ, xⱼ) gives a linear margin in an implicit high-dimensional space without computing it."
 related: [logistic-regression, gradient-descent, softmax-cross-entropy]
 patterns: ["Linear models"]
+math_tex:
+- $f(x) = w^{\top}x + b,\;\; \hat{y} = \mathrm{sign}\,f(x),\;\; y \in \{-1, +1\}$
+- Margin width $= \frac{2}{\|w\|}$
+- $\min\ \frac{1}{2}\lambda\|w\|^2 + \frac{1}{n}\sum \max(0, 1 - y_i f(x_i))$
+- 'Violators $V = \{i : y_i f(x_i) < 1\}$'
+- $\partial w = \lambda w - \frac{1}{n}\sum_{i \in V} y_i x_i$
+- $\partial b = -\frac{1}{n}\sum_{i \in V} y_i$
+- Step size $\eta_t = \frac{1}{\lambda(t + 10)}$
+- Equivalent to sklearn $C = \frac{1}{\lambda n}$

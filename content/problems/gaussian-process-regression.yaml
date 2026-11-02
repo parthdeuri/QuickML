@@ -84,3 +84,11 @@ interview_qa:
     a: "It is faster and numerically stable for symmetric positive definite matrices and gives the log-determinant needed for the marginal likelihood for free."
 related: [kernel-trick-rbf, linear-regression, ridge-lasso-regularization]
 patterns: ["Probabilistic models"]
+math_tex:
+- 'Prior: $f \sim \mathcal{GP}(0, k),\;\; k(x, x'') = s^2 \exp\left(-\frac{\|x - x''\|^2}{2\ell^2}\right)$'
+- 'Noisy targets: $y = f(x) + \epsilon,\;\; \epsilon \sim \mathcal{N}(0, \sigma_n^2)$'
+- $K = k(X, X) + \sigma_n^2 I,\;\; K = L L^{\top}$ (Cholesky)
+- $\alpha = K^{-1} y = L^{\top} \backslash (L \backslash y)$
+- 'Mean: $\mu_* = k(X_*, X)\,\alpha$'
+- 'Variance of $f$: $\sigma_*^2 = k(x_*, x_*) - \|L^{-1} k(X, x_*)\|^2$'
+- $\log p(y) = -\frac{1}{2} y^{\top}\alpha - \sum_i \log L_{ii} - \frac{n}{2}\log 2\pi$

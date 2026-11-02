@@ -88,3 +88,11 @@ interview_qa:
     a: "Cross-validate over a log-spaced grid and pick the value with the best validation error, or the largest one within one standard error of it."
 related: [linear-regression, logistic-regression, gradient-descent]
 patterns: ["Linear models", "Regularisation"]
+math_tex:
+- 'Ridge: $\min\; \|y - Xw\|^2 + \lambda\|w\|_2^2$'
+- $w = (X^{\top}X + \lambda I)^{-1}X^{\top}y$ (centred, no bias penalty)
+- 'Lasso: $\min\; \frac{1}{2n}\|y - Xw\|^2 + \lambda\|w\|_1$'
+- $\mathrm{Soft}(z, \lambda) = \mathrm{sign}(z)\cdot\max(|z| - \lambda,\, 0)$
+- $w_j \leftarrow \frac{\mathrm{Soft}(x_j^{\top}r/n,\; \lambda)}{x_j^{\top}x_j/n}$
+- $r = y - \sum_{k \neq j} x_k w_k$ (partial residual)
+- Intercept $b = \bar{y} - \bar{x}^{\top}w$

@@ -73,3 +73,9 @@ interview_qa:
     a: "Validation data decides the stopping epoch; a separate untouched test set gives the final unbiased estimate."
 related: [bias-variance-tradeoff, dropout, ridge-lasso-regularization]
 patterns: ["Regularisation"]
+math_tex:
+- $\mathrm{best} = \min$ over epochs so far of $\mathrm{val\_loss}$
+- 'Improvement: $\mathrm{val\_loss}[t] < \mathrm{best} - \mathrm{min\_delta}$'
+- $\mathrm{wait} = 0$ on improvement, else $\mathrm{wait} \leftarrow \mathrm{wait} + 1$
+- Stop at the first epoch where $\mathrm{wait} \geq \mathrm{patience}$
+- Return the weights saved at the best epoch

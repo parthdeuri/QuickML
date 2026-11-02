@@ -81,3 +81,11 @@ interview_qa:
     a: "It removes the bootstrap term at a terminal state and stops the running sum from carrying future advantages across an episode boundary."
 related: [reinforce-policy-gradient, q-learning, ppo-clipped-objective]
 patterns: ["Reinforcement learning", "Preference alignment and policy gradients"]
+math_tex:
+- 'TD error: $\delta_t = r_t + \gamma\,(1 - d_t)\,V(s_{t+1}) - V(s_t)$'
+- 'GAE: $A_t = \sum_{l \geq 0} (\gamma\lambda)^l\,\delta_{t+l}$   (stops at episode end)'
+- 'Recursion: $A_t = \delta_t + \gamma\lambda\,(1 - d_t)\,A_{t+1}$'
+- '$\lambda = 0$:  $A_t = \delta_t$   (one-step TD)'
+- '$\lambda = 1$:  $A_t = G_t - V(s_t)$   (Monte-Carlo advantage)'
+- 'Value target: $A_t + V(s_t)$'
+- $d_t = 1$ if the episode ends after step $t$, else 0

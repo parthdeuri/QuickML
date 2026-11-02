@@ -84,3 +84,9 @@ interview_qa:
     a: "No, it distorts them; recalibrate or correct for the prior shift if you need real probabilities."
 related: [precision-recall-f1, data-leakage, probability-calibration]
 patterns: ["Classification metrics"]
+math_tex:
+- 'Balanced weight: $w^c = \frac{n}{K\,n^c}$'
+- 'Weighted loss: $L = \frac{\sum_i w_{y_i}\,\ell_i}{\sum_i w_{y_i}}$'
+- 'Weighted log loss: $\ell_i = -[\,y \log p + (1-y)\log(1-p)\,]$'
+- 'Oversample: draw $(n_{max} - n^c)$ extra rows of $c$'
+- Do it on the training split only, never before splitting

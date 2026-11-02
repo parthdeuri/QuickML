@@ -68,3 +68,9 @@ interview_qa:
     a: "It makes the loss surface rounder, so one learning rate suits all directions and convergence is faster."
 related: [linear-regression, logistic-regression]
 patterns: ["Gradient-based optimisation"]
+math_tex:
+- 'Update: $w \leftarrow w - \eta\cdot\nabla L(w)$'
+- 'Least squares: $\nabla L = \frac{2}{n}\,X^{\top}(Xw - y)$'
+- 'Convex, $L$-Lipschitz gradient: converges if $\eta < \frac{2}{L}$'
+- 'Momentum: $v \leftarrow \beta v + \nabla L,\;\; w \leftarrow w - \eta\cdot v$'
+- 'Quadratic, curvature $\lambda$: error $\times (1 - \eta\lambda)$ per step'

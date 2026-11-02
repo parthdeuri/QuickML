@@ -63,3 +63,8 @@ interview_qa:
 
 related: [gradient-descent, logistic-regression]
 patterns: ["Linear models"]
+math_tex:
+- $\hat{y} = Xw + b$
+- $L(w) = \frac{1}{n}\|y - Xw\|^2$
+- $\nabla L = -\frac{2}{n}\,X^{\top}(y - Xw)$
+- 'Normal equation: $w = (X^{\top}X)^{-1}X^{\top}y$'

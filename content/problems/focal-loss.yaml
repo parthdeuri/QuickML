@@ -79,3 +79,9 @@ interview_qa:
     a: "It reduces to α-weighted cross-entropy."
 related: [class-imbalance, softmax-cross-entropy, iou-and-nms]
 patterns: ["Information-theoretic losses"]
+math_tex:
+- $p = \sigma(z),\;\; p_t = p$ if $y = 1$ else $1 - p$
+- $\alpha_t = \alpha$ if $y = 1$ else $1 - \alpha$
+- $\mathrm{FL} = -\alpha_t\,(1-p_t)^{\gamma}\,\log p_t$
+- '$\gamma = 0$, $\alpha = 0.5$: half of binary cross-entropy'
+- $\frac{\partial \mathrm{FL}}{\partial z} = s\,\alpha_t (1-p_t)^{\gamma}\,[\gamma p_t \log p_t - (1-p_t)],\;\; s = 2y - 1$

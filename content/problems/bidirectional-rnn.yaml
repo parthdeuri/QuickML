@@ -78,3 +78,9 @@ pitfalls:
   - "This sketch is a plain tanh RNN for one sequence; real models use GRU or LSTM cells"
 related: [rnn-cell, lstm-cell, self-attention]
 patterns: ["Attention and sequences"]
+math_tex:
+- $\overrightarrow{h_t} = \tanh(\overrightarrow{W_x}\,x_t + \overrightarrow{W_h}\,\overrightarrow{h_{t-1}} + \overrightarrow{b})$
+- $\overleftarrow{h_t} = \tanh(\overleftarrow{W_x}\,x_t + \overleftarrow{W_h}\,\overleftarrow{h_{t+1}} + \overleftarrow{b})$
+- $h_t = [\overrightarrow{h_t}\,;\,\overleftarrow{h_t}] \in \mathbb{R}^{2H}$
+- 'Start: $\overrightarrow{h_0} = 0$; $\overleftarrow{h_{T+1}} = 0$'
+- Summary vector often $= [\overrightarrow{h_T}\,;\,\overleftarrow{h_1}]$

@@ -81,3 +81,9 @@ pitfalls:
   - "Ties at the cut are broken by sort order, so which tied token is kept is arbitrary"
 related: [beam-search, softmax-cross-entropy, entropy-kl-divergence]
 patterns: ["Text processing"]
+math_tex:
+- $p_i = \frac{\exp(z_i/\tau)}{\sum_j \exp(z_j/\tau)}$
+- 'Top-k: keep $i$ if $\mathrm{rank}(i) \leq k$'
+- Sort $p_{(1)} \geq p_{(2)} \geq \ldots$; cumulative $C_j = \sum_{m \leq j} p_{(m)}$
+- 'Top-p: keep rank $j$ if $C_{j-1} < p$   ($C_0 = 0$)'
+- $p'_i = \frac{p_i\,\mathbf{1}[\mathrm{kept}]}{\sum_j p_j\,\mathbf{1}[\mathrm{kept}]}$

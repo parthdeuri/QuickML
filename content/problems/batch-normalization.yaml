@@ -77,3 +77,10 @@ interview_qa:
 related: [mlp-forward-pass, backpropagation, dropout]
 diagram: batch-normalization
 patterns: ["Normalisation"]
+math_tex:
+- $\mu$ = batch mean,  $\sigma^2$ = batch variance (biased)
+- $\hat{x} = \frac{x - \mu}{\sqrt{\sigma^2 + \epsilon}}$
+- $y = \gamma \cdot \hat{x} + \beta$   ($\gamma, \beta$ learned per feature)
+- Running mean $\leftarrow (1-m)\cdot\mathrm{running} + m\cdot\mu$
+- Running var uses the unbiased variance $\sigma^2 \cdot \frac{n}{n-1}$
+- 'Inference: $\hat{x} = \frac{x - \mathrm{running\ mean}}{\sqrt{\mathrm{running\ var} + \epsilon}}$'

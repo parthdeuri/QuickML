@@ -88,3 +88,11 @@ interview_qa:
     a: "Its precision is undefined; set it to zero (zero_division) so its F1 is zero, and flag it explicitly in the report."
 related: [precision-recall-f1, class-imbalance, roc-auc]
 patterns: ["Classification metrics"]
+math_tex:
+- 'Confusion: $C[i,j]$ = \# true class $i$ predicted as $j$'
+- $TP_k = C[k,k],\ \mathrm{pred}_k = \sum_i C[i,k],\ \mathrm{supp}_k = \sum_j C[k,j]$
+- $\mathrm{Precision}_k = \frac{TP_k}{\mathrm{predicted}_k},\;\; \mathrm{Recall}_k = \frac{TP_k}{\mathrm{support}_k}$
+- $F1_k = \frac{2\,P_k R_k}{P_k + R_k}$
+- 'Macro: $F1_{macro} = \frac{1}{K}\sum_k F1_k$'
+- 'Weighted: $\frac{\sum_k \mathrm{support}_k\,F1_k}{\sum_k \mathrm{support}_k}$'
+- 'Micro: $F1_{micro} = \frac{\sum_k TP_k}{n} = \mathrm{accuracy}$'

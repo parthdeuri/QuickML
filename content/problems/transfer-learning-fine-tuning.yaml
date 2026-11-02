@@ -83,3 +83,9 @@ interview_qa:
     a: "When the target dataset is small and similar to the pretraining data, so fixed features are good and few parameters need fitting."
 related: [backpropagation, mlp-forward-pass, early-stopping]
 patterns: ["Transfer and adaptation"]
+math_tex:
+- Features $h = \mathrm{relu}(x W_1)$,  logits $z = h W_2$
+- Loss $L = CE(\mathrm{softmax}(z), y)$
+- 'Head gradient: $\frac{\partial L}{\partial W_2} = h^{\top}(p - y)/N$'
+- $\frac{\partial L}{\partial W_1} = x^{\top}(((p - y)\,W_2^{\top}) \odot \mathbf{1}[h > 0])/N$
+- 'Frozen set $F$: update $w \leftarrow w - \eta\,\frac{\partial L}{\partial w}$ only for $w \notin F$'

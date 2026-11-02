@@ -85,3 +85,9 @@ interview_qa:
     a: "It needs no cluster count, finds arbitrary shapes, and marks outliers, whereas k-means assumes compact, similar-sized convex clusters and assigns every point."
 related: [k-means, knn, feature-scaling]
 patterns: ["Distance and clustering"]
+math_tex:
+- '$N_{\epsilon}(i) = \{\, j : \|x_i - x_j\| \leq \epsilon \,\}$ (includes $i$ itself)'
+- 'Core: $|N_{\epsilon}(i)| \geq \mathrm{minPts}$'
+- $j$ reachable from $i$ if $i$ core and $j \in N_{\epsilon}(i)$
+- Cluster = linked core points plus their borders
+- Noise = not reachable from any core, label $-1$

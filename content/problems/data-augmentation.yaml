@@ -71,3 +71,8 @@ interview_qa:
     a: "Pick transforms the label is truly invariant to in your domain and validate that they help."
 related: [convolution-2d, dropout, feature-scaling]
 patterns: ["Regularisation", "Convolution and vision"]
+math_tex:
+- 'Flip: $x''[c,i,j] = x[c,i,W-1-j]$ with probability 0.5'
+- 'Crop: $x''[c,i,j] = x[c,t+i,l+j]$, random $t, l$'
+- 'Normalise: $x''''[c] = \frac{x''[c] - \mu_c}{\sigma_c}$ per channel'
+- 'Label unchanged: $y'' = y$'

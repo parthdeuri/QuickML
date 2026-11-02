@@ -104,3 +104,10 @@ interview_qa:
     a: "Each tree misses about a third of the rows, so scoring each row only with trees that did not see it gives a free validation estimate."
 related: [decision-tree, gradient-boosting]
 patterns: ["Tree ensembles"]
+math_tex:
+- Tree $b$ on bootstrap sample $D_b$ ($n$ draws)
+- 'Each split: $m$ random features, $m \approx \sqrt{d}$'
+- 'Classification: $\hat{y}$ = majority vote of the $B$ trees'
+- 'Regression: $\hat{y} = \frac{1}{B}\sum_b f_b(x)$'
+- $\mathrm{Var}(\hat{y}) = \rho\sigma^2 + \frac{(1-\rho)\sigma^2}{B}$
+- 'Left out of bootstrap: $(1 - \frac{1}{n})^n \to \frac{1}{e}$ (OOB)'

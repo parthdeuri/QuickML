@@ -77,3 +77,10 @@ interview_qa:
     a: "TF-IDF vectors are sparse, one dimension per word, and carry no notion of meaning. Embeddings are dense and learned so similar words lie close together."
 related: [naive-bayes, word2vec-skipgram]
 patterns: ["Text processing"]
+math_tex:
+- $\mathrm{tf}(t,d)$ = count of term $t$ in document $d$
+- $\mathrm{df}(t)$ = number of documents containing $t$
+- $\mathrm{idf}(t) = \ln\frac{1+N}{1+\mathrm{df}(t)} + 1$ (smooth form)
+- $x(t,d) = \mathrm{tf}(t,d)\cdot\mathrm{idf}(t)$
+- 'Row norm: $x(d) \leftarrow \frac{x(d)}{\|x(d)\|_2}$'
+- Cosine of two rows = dot product after L2 norm

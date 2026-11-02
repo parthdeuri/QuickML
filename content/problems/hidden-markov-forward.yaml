@@ -84,3 +84,11 @@ interview_qa:
     a: "Together with the backward pass it gives the posterior probability of each state and transition at each time, which are the expected counts of the E-step."
 related: [gaussian-mixture-em, bayes-theorem, maximum-likelihood]
 patterns: ["Probabilistic models", "Attention and sequences"]
+math_tex:
+- $\lambda = (\pi, A, B),\; A_{ij} = P(z_{t+1}{=}j|z_t{=}i),\; B_j(o) = P(o|z{=}j)$
+- 'Likelihood: $P(o_{1:T}) = \sum_{z_{1:T}} \pi(z_1)\,B(z_1,o_1) \prod A\,B$'
+- 'Init: $\alpha_1(j) = \pi_j\,B_j(o_1)$'
+- 'Recursion: $\alpha_{t+1}(j) = \left[\sum_i \alpha_t(i)\,A_{ij}\right] B_j(o_{t+1})$'
+- 'Result: $P(o_{1:T}) = \sum_j \alpha_T(j)$'
+- 'Scaling: $c_t = \sum_j \tilde{\alpha}_t(j)$; $\log P = \sum_t \log c_t$'
+- 'Cost: $O(T N^2)$ instead of $O(N^T)$ for the path sum'

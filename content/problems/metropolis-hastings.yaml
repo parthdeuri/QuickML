@@ -83,3 +83,10 @@ interview_qa:
     a: "Gibbs draws each variable from its exact conditional and always accepts; Metropolis-Hastings proposes from any distribution and corrects with an accept-reject step, so it needs no conditionals."
 related: [bayes-theorem, maximum-likelihood, entropy-kl-divergence]
 patterns: ["Probabilistic models"]
+math_tex:
+- 'Target: $\pi(x) \propto p(x)$, normaliser unknown'
+- 'Proposal: $y \sim q(y|x)$, here $y = x + \sigma\varepsilon,\ \varepsilon \sim \mathcal{N}(0,1)$'
+- 'Accept: $a(x \to y) = \min\left(1, \frac{p(y)\,q(x|y)}{p(x)\,q(y|x)}\right)$'
+- 'Symmetric $q$: $a = \min\left(1, \frac{p(y)}{p(x)}\right)$'
+- 'Log: accept if $\log u < \log p(y) - \log p(x),\ u \sim U(0,1)$'
+- $\pi(x)\,q(y|x)\,a(x \to y) = \pi(y)\,q(x|y)\,a(y \to x)$

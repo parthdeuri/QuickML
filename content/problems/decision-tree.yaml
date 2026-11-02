@@ -92,3 +92,10 @@ interview_qa:
     a: "No. Splits compare a feature to a threshold, so any monotonic rescaling gives the same tree."
 related: [random-forest, gradient-boosting, logistic-regression]
 patterns: ["Tree ensembles"]
+math_tex:
+- $\mathrm{Gini}(S) = 1 - \sum_k p_k^2,\;\; p_k$ = share of class $k$ in $S$
+- $\mathrm{Entropy}(S) = -\sum_k p_k \log_2 p_k$
+- Split cost $= \frac{|L|}{|S|}\mathrm{Gini}(L) + \frac{|R|}{|S|}\mathrm{Gini}(R)$
+- '$L = \{x : x_j \leq t\},\;\; R = \{x : x_j > t\}$'
+- $\mathrm{Gain} = \mathrm{Gini}(S) - \mathrm{Split\ cost}$
+- Leaf prediction $= \arg\max_k\, p_k$

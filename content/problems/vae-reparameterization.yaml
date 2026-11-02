@@ -86,3 +86,12 @@ interview_qa:
 related: [autoencoder, entropy-kl-divergence, backpropagation]
 diagram: vae-reparameterization
 patterns: ["Information-theoretic losses", "Generative models"]
+math_tex:
+- 'Encoder: $\mu = XW_m + b_m,\;\; \log\sigma^2 = XW_s + b_s$'
+- 'Reparameterise: $z = \mu + \sigma \odot \epsilon,\;\; \epsilon \sim N(0, I)$'
+- 'Decoder: $\hat{X} = zW_d + b_d$'
+- Recon $= \frac{1}{2}\|\hat{X} - X\|^2$ (Gaussian, unit variance)
+- $\mathrm{KL} = -\frac{1}{2}\sum_j (1 + \log\sigma_j^2 - \mu_j^2 - \sigma_j^2)$
+- Loss = mean over the batch of (Recon + KL)
+- $\frac{\partial z}{\partial \mu} = 1,\;\; \frac{\partial z}{\partial \log\sigma^2} = \frac{1}{2}\sigma\epsilon$
+- $\frac{\partial \mathrm{KL}}{\partial \mu} = \mu,\;\; \frac{\partial \mathrm{KL}}{\partial \log\sigma^2} = \frac{1}{2}(\sigma^2 - 1)$

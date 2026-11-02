@@ -81,3 +81,9 @@ pitfalls:
   - "No momentum, weight decay or centring here; PyTorch offers them as options"
 related: [adam-optimizer, momentum-sgd, gradient-descent]
 patterns: ["Gradient-based optimisation"]
+math_tex:
+- 'Adagrad:  $G_t = G_{t-1} + g_t^2$'
+- $w_{t+1} = w_t - \eta\,\frac{g_t}{\sqrt{G_t} + \epsilon}$
+- 'RMSProp:  $v_t = \alpha\,v_{t-1} + (1 - \alpha)\,g_t^2$'
+- $w_{t+1} = w_t - \eta\,\frac{g_t}{\sqrt{v_t} + \epsilon}$
+- Element-wise; $\epsilon$ is added outside the root

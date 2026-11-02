@@ -85,3 +85,10 @@ interview_qa:
     a: "MRR only looks at the first relevant item and treats relevance as binary. nDCG uses the whole ranked list and supports graded relevance with a smooth position discount."
 related: [precision-recall-f1, roc-auc, rag-dense-retrieval]
 patterns: ["Text evaluation and retrieval"]
+math_tex:
+- $\mathrm{Recall@}k = \frac{|\mathrm{relevant} \cap \mathrm{top}\text{-}k|}{|\mathrm{relevant}|}$
+- $\mathrm{RR} = \frac{1}{\mathrm{rank\ of\ first\ relevant}}$;  $\mathrm{MRR}$ = mean RR
+- $\mathrm{DCG@}k = \sum_{i=1}^{k} \frac{\mathrm{rel}_i}{\log_2(i+1)}$ (linear gain)
+- $\mathrm{nDCG@}k = \frac{\mathrm{DCG@}k}{\mathrm{IDCG@}k}$
+- '$\mathrm{IDCG@}k$: $\mathrm{DCG@}k$ of the ideal ordering'
+- Each metric is averaged over queries

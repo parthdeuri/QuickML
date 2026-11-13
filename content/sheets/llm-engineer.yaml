@@ -118,6 +118,15 @@ sections:
   - prompt-templates
   - prompt-optimization
   - prompt-injection-defense
+- name: 11. LLM APIs and development tools
+  problems:
+  - chat-completions-request-schema
+  - llm-api-retries-rate-limits
+  - streaming-sse-parsing
+  - provider-fallback-router
+  - huggingface-generate-pipeline
+  - runnable-chain-composition
+  - model-context-protocol-jsonrpc
 - name: 12. Fine-tuning and adaptation
   problems:
   - transfer-learning-fine-tuning
@@ -145,6 +154,17 @@ sections:
   - query-transformation-hyde
   - retrieval-metrics-recall-at-k
   - rag-evaluation-faithfulness
+- name: 14. AI agents and tool calling
+  problems:
+  - function-calling-dispatch
+  - agent-loop-react
+  - planning-decomposition
+  - agent-memory
+  - reflection-self-correction
+  - agentic-workflow-patterns
+  - multi-agent-orchestration
+  - state-graph-workflows
+  - agent-evaluation-safety
 - name: 16. Evaluation and observability
   problems:
   - bleu-score

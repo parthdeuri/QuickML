@@ -1,0 +1,124 @@
+slug: planning-decomposition
+title: Agent Planning and Task Decomposition (DAG)
+url: https://arxiv.org/abs/2312.04511
+difficulty: Medium
+area: LLM
+topics: [LLM, Agents, Planning, Graphs]
+summary: |
+  Break a goal into sub-tasks with dependencies, run them in a valid
+  topological order, execute independent ones in parallel layers, and
+  replan when a step fails.
+intuition: |
+  A plan is a graph, not a list: a task only waits for the tasks it
+  truly needs, so everything else can run side by side. The longest
+  dependency chain (the critical path) sets the floor on total time no
+  matter how many workers you add, and a failed step only invalidates
+  the tasks downstream of it, so replanning touches a subgraph.
+  Flow: goal → sub-tasks → dependency order → run layers → replan on failure.
+approach:
+  - "List sub-tasks with their prerequisites — an explicit graph replaces a vague sequence"
+  - "Run Kahn's algorithm, repeatedly taking tasks with zero unmet deps — gives a valid order and detects cycles"
+  - "Group tasks into levels of $1 + \\max$ level of their deps — tasks in one level are independent, so run them in parallel"
+  - "Compute finish times along the order and trace the longest chain — the critical path bounds total time"
+  - "On failure drop the failed task and its transitive dependents — only that subgraph needs a new plan"
+code: |
+  from collections import deque
+
+  def topo_order(deps):
+      indeg = {t: len(d) for t, d in deps.items()}
+      out = {t: [] for t in deps}
+      for t, ds in deps.items():
+          for d in ds:
+              out[d].append(t)
+      ready = deque(sorted(t for t in deps if indeg[t] == 0))
+      order = []
+      while ready:
+          t = ready.popleft()
+          order.append(t)
+          for u in out[t]:
+              indeg[u] -= 1
+              if indeg[u] == 0:
+                  ready.append(u)
+      if len(order) != len(deps):
+          raise ValueError("cycle in plan")
+      return order
+
+  def levels(deps):
+      lv = {}
+      for t in topo_order(deps):
+          lv[t] = 1 + max((lv[d] for d in deps[t]), default=-1)
+      top = max(lv.values(), default=-1)
+      return [sorted(t for t in lv if lv[t] == i)
+              for i in range(top + 1)]
+
+  def critical_path(dur, deps):
+      fin, prev = {}, {}
+      for t in topo_order(deps):
+          p = max(deps[t], key=lambda d: fin[d], default=None)
+          prev[t] = p
+          fin[t] = dur[t] + (fin[p] if p is not None else 0)
+      end = max(fin, key=fin.get)
+      path = []
+      while end is not None:
+          path.append(end)
+          end = prev[end]
+      return fin[path[0]], path[::-1]
+
+  def replan(deps, failed):
+      dead, stack = {failed}, [failed]
+      while stack:
+          x = stack.pop()
+          for t, ds in deps.items():
+              if x in ds and t not in dead:
+                  dead.add(t)
+                  stack.append(t)
+      return {t: ds for t, ds in deps.items() if t not in dead}
+key_lines: [15, 25, 48]
+time: "O(V + E) for ordering and levels; replan is O(V·E) as written"
+space: "O(V + E) for the graph and bookkeeping"
+when_to_use: |
+  Multi-step agent goals where some steps are independent (parallel
+  tool calls, research sub-queries, build pipelines) and you want both
+  a safe order and an estimate of the minimum completion time.
+when_not_to_use: |
+  Short tasks where one or two steps suffice, or highly exploratory
+  work where the next step depends on what the last one revealed, so
+  the graph cannot be known up front and step-by-step reasoning fits better.
+why_it_works: |
+  A valid order exists exactly when the dependency graph has no cycle,
+  and Kahn's algorithm finds one or proves none exists. With $p$
+  workers the running time is at least $\max(T_1 / p, T_\infty)$, where
+  $T_1$ is total work and $T_\infty$ is the critical path, so the path
+  is the part parallelism cannot remove. Anything not downstream of the
+  failed task is unaffected, so it can stay.
+math:
+  - "Kahn: pick t with indegree 0, remove it, decrement its successors"
+  - "level(t) = 1 + max over deps d of level(d); 0 if none"
+  - "finish(t) = dur(t) + max over deps d of finish(d)"
+  - "Critical path length = max over t of finish(t)"
+  - "Time on p workers ≥ max(total work / p, critical path)"
+  - "Dropped = {failed} ∪ all tasks reachable downstream"
+interview_qa:
+  - q: "How do you detect a cycle in a plan?"
+    a: "Run Kahn's algorithm; if fewer tasks are emitted than exist, the rest sit on a cycle. A cycle means the plan is contradictory and must be regenerated."
+  - q: "Why does adding workers stop helping?"
+    a: "Total time is bounded below by the critical path, the longest chain of dependent tasks. Extra workers only shorten the parallel parts."
+  - q: "What should an agent do when one step fails?"
+    a: "Drop or regenerate that step and its transitive dependents, keep finished independent work, and ask the planner for a replacement subplan."
+hyperparameters:
+  - "Granularity of sub-tasks (too fine adds overhead, too coarse hides parallelism)"
+  - "Maximum parallel workers or tool calls"
+  - "Retry budget per step before replanning"
+  - "Replan policy: drop dependents or regenerate them"
+pitfalls:
+  - "An LLM-written plan can contain a cycle or a missing prerequisite; always validate before executing"
+  - "Durations are estimates; the real critical path can shift at run time"
+  - "Dropping dependents silently can leave the goal unmet; check the goal still reaches a final task"
+related: [context-engineering, rag-dense-retrieval]
+math_tex:
+- 'Kahn: take $t$ with indegree $0$, remove it'
+- 'Level: $\mathrm{lvl}(t) = 1 + \max_{d \in \mathrm{deps}(t)} \mathrm{lvl}(d)$'
+- 'Finish: $f(t) = \mathrm{dur}(t) + \max_{d} f(d)$'
+- 'Critical path length: $\max_{t} f(t)$'
+- 'Time on $p$ workers: $T_p \geq \max(T_1 / p,\; T_\infty)$'
+- 'Dropped tasks: the failed task and all its descendants'

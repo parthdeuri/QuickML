@@ -1,0 +1,96 @@
+slug: multi-agent-orchestration
+title: Multi-Agent Orchestration
+url: https://arxiv.org/abs/2308.08155
+difficulty: Hard
+area: LLM
+topics: [LLM, Agents, Multi-Agent, Cost]
+summary: |
+  Several role-specialised LLM agents cooperate over a shared
+  transcript. Design choices are who speaks next, when to stop, and
+  how to pay for it: every agent re-reads a growing context.
+intuition: |
+  A multi-agent system is a conversation loop with three levers: shared
+  state (a blackboard everyone reads and writes, or direct messages),
+  a turn policy (round-robin, a selector function, or a manager that
+  chooses) and a stop rule (consensus, a judge, or a turn cap). The
+  catch is cost: each message is appended to a transcript that every
+  later turn must read in full, so total input tokens grow roughly
+  quadratically in the number of messages. More agents means more
+  messages, so split roles only when the roles need different context.
+  Flow: board → policy picks speaker → agent reads board → message → stop check.
+approach:
+  - "Give every agent the shared board and a role prompt — they cooperate through one state"
+  - "Pick the next speaker with a policy: round-robin, selector or manager — decides who adds the next message"
+  - "Append the speaker's message to the board — later agents see everything written so far"
+  - "Check the stop rule after each turn — consensus or a judge ends early, saving tokens"
+  - "Enforce a hard turn limit — guarantees termination when agents loop or never agree"
+code: |
+  def round_robin(n):
+      return lambda turn, board: turn % n
+
+  def selector(choose):
+      return lambda turn, board: choose(board)
+
+  def run_conversation(agents, policy, max_turns, stop_fn):
+      board = []
+      for turn in range(max_turns):
+          who = policy(turn, board)
+          board.append((who, agents[who](list(board))))
+          if stop_fn(board):
+              return board, "stop_fn"
+      return board, "max_turns"
+
+  def token_cost(n_agents, rounds, base_ctx, tokens_per_turn):
+      m = n_agents * rounds
+      read = m * base_ctx + tokens_per_turn * m * (m - 1) // 2
+      return read, m * tokens_per_turn
+key_lines: [10, 11, 18]
+time: "One model call per turn; input tokens grow quadratically in the number of messages"
+space: "O(m) transcript for $m$ messages, copied to every reader"
+when_to_use: |
+  Tasks that split into roles needing different instructions, tools or
+  context (planner, coder, reviewer), where independent critique adds
+  something, or where work must be parallelised across specialists.
+when_not_to_use: |
+  Problems one agent with the right tools can solve; extra agents add
+  tokens, latency and failure modes without adding information.
+  Avoid free-form debate when a deterministic workflow would do.
+why_it_works: |
+  Roles narrow each agent's prompt and tools, so each does one job
+  better, and a reviewer sees the output with fresh instructions rather
+  than the author's assumptions. The turn policy and stop rule keep the
+  exchange bounded and on task. The price is that each turn reads all
+  earlier messages, so cost is driven by transcript length, not just
+  by the number of calls.
+math:
+  - "Messages: m = N · R  (N agents, R rounds)"
+  - "Context read at message j: c₀ + j·τ,  j = 0 … m−1"
+  - "Total read = Σⱼ (c₀ + jτ) = m c₀ + τ m(m−1)/2"
+  - "Total written = m τ"
+  - "Large m: read ≈ τ N² R² / 2, quadratic in rounds"
+interview_qa:
+  - q: "Blackboard versus message passing?"
+    a: "A blackboard gives every agent the same full state, which is simple and transparent but grows the context for everyone. Direct messages keep each agent's context smaller but risk lost information and harder debugging."
+  - q: "How do you choose who speaks next?"
+    a: "Round-robin is simple and predictable, a selector function encodes rules such as route to the reviewer after code, and a manager agent chooses with an LLM, which is flexible but adds a call per turn and can pick badly."
+  - q: "Why does cost grow so quickly with more agents?"
+    a: "Each message is appended to the transcript and every later turn re-reads all of it, so total input tokens grow roughly with the square of the message count, and adding agents adds messages."
+  - q: "What are typical failure modes?"
+    a: "Loops with no progress, one early mistake cascading through later agents, and agents agreeing without evidence. Use turn limits, a judge that checks against ground truth, and tools that verify claims."
+hyperparameters:
+  - "Number of agents $N$ and their roles"
+  - "Turn policy: round-robin, selector rule, or manager"
+  - "Maximum turns $m_{\\max}$ and the stop condition"
+  - "Transcript policy: full history, summary or windowed"
+pitfalls:
+  - "No turn limit means two polite agents can loop indefinitely and spend the whole budget"
+  - "Agreement is not evidence: agents that share a model and a board tend to converge on the first plausible answer"
+  - "Passing the full transcript to every agent makes input cost grow like $m^2$; summarise or window old turns"
+  - "An early wrong message is read by every later agent, so errors cascade instead of averaging out"
+related: [context-engineering, llm-as-judge, context-window-limits]
+math_tex:
+- 'Messages: $m = N R$ ($N$ agents, $R$ rounds)'
+- 'Context at message $j$: $c_0 + j\tau$'
+- 'Read: $\sum_{j=0}^{m-1} (c_0 + j\tau) = m c_0 + \tau \frac{m(m-1)}{2}$'
+- 'Written: $m\tau$'
+- 'Large $m$: read $\approx \frac{\tau N^2 R^2}{2}$'

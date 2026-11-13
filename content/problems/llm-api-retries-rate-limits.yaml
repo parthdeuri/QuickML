@@ -1,0 +1,123 @@
+slug: llm-api-retries-rate-limits
+title: LLM API Rate Limits, Token Buckets and Safe Retries
+url: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/429
+difficulty: Medium
+area: LLM
+topics: [LLM APIs, Rate Limiting, Reliability]
+summary: |
+  Provider limits are counted in requests and in tokens per minute. Estimate
+  the token cost before sending, throttle yourself with a token bucket,
+  honour 429 with Retry-After, and retry with an idempotency key.
+intuition: |
+  A generic retry loop reacts after the server says no, and every
+  rejected call still burns time and may count against your quota. LLM
+  APIs charge and limit by tokens, and you know most of the cost up
+  front: the prompt length plus the $max\_tokens$ you ask for. So spend
+  a budget you track locally. A token bucket holds up to $C$ units and
+  refills at $r$ per second, which allows a burst of at most $C$ and a
+  long-run rate of at most $r$; a request that does not fit waits exactly
+  $(c - \mathrm{tokens})/r$ seconds instead of guessing.
+  Flow: estimate cost → bucket check → wait or send → 429 → Retry-After → resend same key.
+approach:
+  - 'Estimate the cost $c$ as prompt tokens plus requested $max\_tokens$ — the worst case the provider will count'
+  - 'Refill lazily as $\min(C, \mathrm{tokens} + r\,\Delta t)$ — no timer thread, only the injected clock'
+  - 'Allow the request when $\mathrm{tokens} \geq c$ and subtract $c$ — a burst never exceeds $C$'
+  - 'Otherwise sleep $(c - \mathrm{tokens})/r$ — the exact time until the budget covers the cost'
+  - 'Reject $c > C$ at once with a clear error — no wait could ever satisfy it'
+  - 'On 429 sleep the Retry-After seconds and resend with the same idempotency key — the server can deduplicate'
+code: |
+  import hashlib
+
+  class TokenBucket:
+      def __init__(self, capacity, rate, clock):
+          self.cap, self.rate = capacity, rate
+          self.clock = clock
+          self.tokens = capacity
+          self.last = clock()
+
+      def _refill(self):
+          now = self.clock()
+          gain = (now - self.last) * self.rate
+          self.tokens = min(self.cap, self.tokens + gain)
+          self.last = now
+
+      def try_acquire(self, cost):
+          if cost > self.cap:
+              raise ValueError(f"cost {cost} > capacity {self.cap}")
+          self._refill()
+          if self.tokens >= cost - 1e-9:
+              self.tokens = max(0.0, self.tokens - cost)
+              return True
+          return False
+
+      def wait_time(self, cost):
+          self._refill()
+          return max(0.0, (cost - self.tokens) / self.rate)
+
+  def estimate_tokens(text, max_out):
+      return -(-len(text) // 4) + max_out
+
+  def send_with_limits(send, text, max_out, bucket, sleep, tries=3):
+      cost = estimate_tokens(text, max_out)
+      key = hashlib.sha256(text.encode()).hexdigest()[:16]
+      for _ in range(tries):
+          while not bucket.try_acquire(cost):
+              sleep(bucket.wait_time(cost))
+          status, retry_after, body = send(text, key)
+          if status != 429:
+              return body
+          sleep(float(retry_after))
+      raise RuntimeError("still rate limited after retries")
+key_lines: [13, 20, 27]
+time: "O(1) per acquire; a blocked request sleeps about $(c - \\mathrm{tokens})/r$ seconds"
+space: "O(1) per bucket: two numbers, the tokens and the last timestamp"
+when_to_use: |
+  Any client that calls a hosted LLM at volume: batch jobs, agents with
+  parallel tool calls, evaluation runs. Combine the bucket with a
+  concurrency cap (a semaphore) and with the general backoff in
+  json-api-requests-retries.
+when_not_to_use: |
+  A single interactive caller far below the limits, where a plain retry
+  on 429 is enough. The local estimate is also only an approximation, so
+  it complements the server's own limit and never replaces it.
+why_it_works: |
+  The bucket holds at most $C$, so any burst is bounded by $C$. Over a
+  window of length $T$ it can release at most $C + rT$, so the long-run
+  throughput cannot exceed $r$. Sleeping exactly the shortfall divided
+  by $r$ means the next attempt succeeds without polling, and the
+  server-provided Retry-After covers the case where your estimate was
+  wrong.
+math:
+  - "tokens(t) = min(C, tokens(t₀) + r·(t − t₀))"
+  - "allow ⇔ tokens ≥ c, then tokens ← tokens − c"
+  - "wait = max(0, (c − tokens) / r)"
+  - "Released in a window T ≤ C + r·T"
+  - "N requests of cost c need time ≥ (N·c − C) / r"
+  - "Cost estimate c ≈ ⌈chars / 4⌉ + max_tokens"
+interview_qa:
+  - q: "Why a token bucket instead of a fixed counter per minute?"
+    a: "A fixed window lets a client send a full quota at the end of one window and another at the start of the next, doubling the burst. The bucket refills continuously and bounds both burst and average rate."
+  - q: "Why count tokens and not only requests?"
+    a: "Providers limit tokens per minute and bill per token, so one long prompt can use more quota than many short ones. A request-only limiter would still trigger 429s."
+  - q: "Why an idempotency key on retries?"
+    a: "If a timeout hides whether the first call was processed, resending could run and bill the work twice. A stable key lets the server return the original result instead."
+  - q: "How should concurrency interact with the limiter?"
+    a: "Cap in-flight requests with a semaphore so a slow endpoint does not pile up work, and let the bucket gate the rate; the two limits protect different things."
+hyperparameters:
+  - "Bucket capacity $C$, which sets the largest allowed burst"
+  - "Refill rate $r$, set a little below the provider's tokens per minute"
+  - "Maximum concurrent requests"
+  - "Maximum retries and the safety margin on the token estimate"
+pitfalls:
+  - "Estimating only the prompt and ignoring $max\\_tokens$ undercounts what the provider reserves and bills"
+  - "Sleeping with the real clock inside the limiter makes tests slow and flaky; inject the clock and the sleeper"
+  - "Retrying without a stable idempotency key can duplicate a non-idempotent side effect or its cost"
+  - "A $c > C$ request waits forever if not rejected up front"
+related: [json-api-requests-retries, context-window-limits, bpe-tokenization]
+math_tex:
+- 'Refill: $\mathrm{tokens} = \min(C,\, \mathrm{tokens} + r\,\Delta t)$'
+- 'Allow if $\mathrm{tokens} \geq c$, then subtract $c$'
+- 'Wait: $\max\left(0, \frac{c - \mathrm{tokens}}{r}\right)$'
+- 'Released in a window: $\leq C + rT$'
+- 'N requests need: $T \geq \frac{N c - C}{r}$'
+- 'Cost: $c \approx \lceil \mathrm{chars}/4 \rceil + \mathrm{max\_tokens}$'

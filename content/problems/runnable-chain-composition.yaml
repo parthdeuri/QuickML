@@ -1,0 +1,145 @@
+slug: runnable-chain-composition
+title: Runnable Chains and Pipe Composition
+url: https://reference.langchain.com/python/langchain_core/runnables/base/Runnable
+difficulty: Medium
+area: LLM
+topics: [LLM, Orchestration, RAG, Software Design]
+summary: |
+  A runnable has invoke, batch and stream; the pipe operator composes
+  runnables left to right, so prompt | model | parser is one runnable
+  and a RAG chain is just a longer pipe.
+intuition: |
+  Every stage of an LLM app, whether retriever, prompt template, model
+  or parser, is a function from one value to the next. Give them all
+  one interface and a pipe, and a pipeline becomes plain function
+  composition: associative, testable stage by stage, and able to
+  batch, stream or fan out with no per-stage code. This is the common
+  pattern behind orchestration frameworks, not any one library's API.
+  Flow: input → retriever → prompt → model → parser → output.
+approach:
+  - "Define one interface with invoke, batch and stream — every stage becomes interchangeable"
+  - "Make the pipe operator return a sequence, flattening nested pipes — $(a|b)|c$ and $a|(b|c)$ then behave identically"
+  - "Run the steps in order, each output feeding the next — data flows left to right"
+  - "Wrap a failure with the step name — you know which stage broke"
+  - "Add a parallel runnable that feeds one input to a dict of branches — builds the prompt inputs such as context and question"
+  - "Stream by letting the last step yield chunks — the user sees tokens before the chain ends"
+code: |
+  class StepError(Exception): pass
+
+  class Runnable:
+      name = "runnable"
+
+      def invoke(self, x):
+          raise NotImplementedError
+
+      def batch(self, xs):
+          return [self.invoke(x) for x in xs]
+
+      def stream(self, x):
+          yield self.invoke(x)
+
+      def __or__(self, other):
+          return Seq(self._steps() + other._steps())
+
+      def _steps(self):
+          return [self]
+
+  def join(chunks):
+      chunks = list(chunks)
+      if all(isinstance(c, str) for c in chunks):
+          return "".join(chunks)
+      return chunks[-1]
+
+  class RunnableLambda(Runnable):
+      def __init__(self, fn):
+          self.fn, self.name = fn, fn.__name__
+
+      def invoke(self, x):
+          return join(self.stream(x))
+
+      def stream(self, x):
+          out = self.fn(x)
+          if hasattr(out, "__next__"):
+              yield from out
+          else:
+              yield out
+
+  class Parallel(Runnable):
+      name = "parallel"
+
+      def __init__(self, branches):
+          self.branches = branches
+
+      def invoke(self, x):
+          return {k: r.invoke(x) for k, r in self.branches.items()}
+
+  class Seq(Runnable):
+      def __init__(self, steps):
+          self.steps = steps
+          self.name = " | ".join(s.name for s in steps)
+
+      def _steps(self):
+          return self.steps
+
+      def invoke(self, x):
+          for s in self.steps:
+              try:
+                  x = s.invoke(x)
+              except Exception as e:
+                  raise StepError(f"{s.name}: {e}") from e
+          return x
+
+      def stream(self, x):
+          for s in self.steps[:-1]:
+              x = s.invoke(x)
+          yield from self.steps[-1].stream(x)
+key_lines: [35, 61, 69]
+time: "O(n) calls for an n-step chain; parallel branches cost the slowest branch if run concurrently"
+space: "O(n) step objects; streaming keeps one chunk in flight"
+when_to_use: |
+  Pipelines of retriever, prompt, model and parser where each stage
+  should be swappable, testable alone, and runnable over a batch or as
+  a stream without rewriting glue code.
+when_not_to_use: |
+  Pipelines with loops, branching on model output or shared state,
+  where an explicit graph or plain code is clearer than a straight
+  pipe, and tiny scripts where a few function calls suffice.
+why_it_works: |
+  A pipe is function composition, and composition is associative, so
+  grouping never changes the result. A common interface means any
+  runnable can sit in any position, and batch and stream are defined
+  once on the interface instead of per stage.
+math:
+  - "(f | g)(x) = g(f(x))"
+  - "(a | b) | c = a | (b | c)  (associativity)"
+  - "Parallel{k: fₖ}(x) = {k: fₖ(x)}"
+  - "batch(xs) = [invoke(x) for x in xs]"
+  - "join(stream(x)) = invoke(x)"
+  - "Latency: sequential Σ tᵢ, parallel max tₖ"
+interview_qa:
+  - q: "What is a runnable?"
+    a: "Any component with a common interface of invoke for one input, batch for many and stream for incremental output, so retrievers, prompts, models and parsers can be composed freely."
+  - q: "What does the pipe operator do?"
+    a: "It composes two runnables into a sequence where the output of the left becomes the input of the right, which is ordinary function composition."
+  - q: "How is a RAG chain built this way?"
+    a: "A parallel step builds the context from a retriever and passes the question through, then a prompt template, a model and a parser follow in the pipe."
+  - q: "How does streaming work through a chain?"
+    a: "Earlier steps run to completion, and the last step yields chunks as it produces them. Fully streaming every stage needs steps that can transform an incoming stream."
+hyperparameters:
+  - "Which stages form the chain and their order"
+  - "Batch size and concurrency limit"
+  - "Retry and timeout policy per stage"
+  - "Retriever top-$k$"
+pitfalls:
+  - "A pipe needs compatible shapes: a prompt expects a dict, a parser expects text, and mismatches fail only at run time"
+  - "Wrapped errors without the step name make long chains hard to debug"
+  - "Streaming through a non-streaming middle step still waits for that step to finish"
+  - "Branches of a parallel step must not share mutable state"
+related: [prompt-templates, rag-dense-retrieval, python-generators-functional]
+math_tex:
+- 'Pipe: $(f \mid g)(x) = g(f(x))$'
+- 'Assoc: $(a \mid b) \mid c = a \mid (b \mid c)$'
+- 'Parallel: $\{k: f_k(x)\}$ for each branch $k$'
+- 'Batch: $[\,f(x) \ \mathrm{for}\ x \in X\,]$'
+- 'Stream: $\mathrm{join}(\mathrm{stream}(x)) = f(x)$'
+- 'Time: $\sum_i t_i$ in series, $\max_k t_k$ in parallel'

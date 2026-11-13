@@ -1,0 +1,132 @@
+slug: agent-evaluation-safety
+title: Agent Evaluation and Safety Controls
+url: https://arxiv.org/abs/2107.03374
+difficulty: Hard
+area: LLM
+topics: [LLM, Agents, Evaluation, Safety]
+summary: |
+  Score an agent on success, cost, tool-call F1 and trajectory match,
+  separate pass@k (any of $k$ tries) from pass^k (all $k$ tries), and
+  constrain it with permission tiers, confirmation and budgets.
+intuition: |
+  An agent run is a trajectory of tool calls, not just a final answer, so
+  you can grade the path as well as the outcome: did it call the right
+  tools with the right arguments, in an acceptable order, within budget.
+  Sampling metrics hide a trap: pass@k rewards a model that succeeds
+  once in $k$ tries, which suits code generation with a verifier, but a
+  deployed agent has to succeed every time, which is pass^k and decays as
+  $p^k$. Safety is separate from scoring: a gate in ordinary code decides
+  what an action may do, and anything unknown is denied.
+  Flow: trajectory → score (success, F1, match) → pass@k vs pass^k → gate actions.
+approach:
+  - "Compare tool calls to a reference as multisets and compute precision, recall and $F_1$ — extra calls cost precision, missing calls cost recall"
+  - "Choose a trajectory match mode: exact, in-order subsequence or any-order — stricter modes suit fixed procedures, looser ones allow extra steps"
+  - 'Estimate pass@k from $n$ samples with $c$ correct as $1 - \binom{n-c}{k}/\binom{n}{k}$ — unbiased, unlike $1-(1-c/n)^k$'
+  - "Report reliability as $p^k$ next to pass@k — it shows how often $k$ repeated runs all succeed"
+  - "Map every action to a tier and gate it — reads pass, destructive ones need confirmation, unknown actions are denied"
+  - "Cap steps and cost per run — a looping or runaway agent stops at a known price"
+code: |
+  from collections import Counter
+  from math import comb
+
+  def _key(call, args):
+      name, a = call
+      return (name, tuple(sorted(a.items()))) if args else name
+
+  def tool_call_f1(pred, ref, args=True):
+      p = Counter(_key(c, args) for c in pred)
+      r = Counter(_key(c, args) for c in ref)
+      hit = sum((p & r).values())
+      prec = hit / len(pred) if pred else 0.0
+      rec = hit / len(ref) if ref else 0.0
+      f1 = 2 * prec * rec / (prec + rec) if hit else 0.0
+      return prec, rec, f1
+
+  def trajectory_match(pred, ref, mode):
+      if mode == "exact":
+          return pred == ref
+      if mode == "in_order":
+          it = iter(pred)
+          return all(step in it for step in ref)
+      if mode == "any_order":
+          return not (Counter(ref) - Counter(pred))
+      raise ValueError(mode)
+
+  def pass_at_k(n, c, k):
+      if n - c < k:
+          return 1.0
+      return 1.0 - comb(n - c, k) / comb(n, k)
+
+  def pass_pow_k(p, k):
+      return p ** k
+
+  def permission_gate(action, policy, confirmed=False):
+      tier = policy["tiers"].get(action)
+      if tier is None:
+          return "deny"
+      if tier in policy["auto"]:
+          return "allow"
+      if tier == "destructive":
+          return "allow" if confirmed else "confirm"
+      return "deny"
+
+  def within_budget(steps, cost, max_steps, max_cost):
+      return steps <= max_steps and cost <= max_cost
+key_lines: [24, 30, 41]
+time: "O(L) per trajectory of length L for F1 and matching; pass_at_k is O(1) with exact binomials"
+space: "O(L) for the call counters"
+when_to_use: |
+  Comparing agent versions, regression-testing tool use against reference
+  trajectories, and setting the permission and budget rules before an
+  agent touches real systems.
+when_not_to_use: |
+  Do not grade tasks with many valid paths by exact trajectory match, and
+  do not use pass@k as a reliability number for a user-facing agent.
+  Reference trajectories also go stale when the tool set changes.
+why_it_works: |
+  If a run succeeds independently with probability $p$, at least one of
+  $k$ runs succeeds with probability $1-(1-p)^k$ and all $k$ succeed with
+  probability $p^k$, so the two metrics move in opposite directions as $k$
+  grows. Estimating pass@k as $1 - (1-c/n)^k$ from a finite sample is
+  biased; the combinatorial form counts the chance that a random subset of
+  $k$ of the $n$ samples contains no correct one, which is unbiased. The
+  gate is a lookup in code with a default of deny, so an action the policy
+  never named cannot run, whatever the model asks for.
+math:
+  - "Success rate = c / n"
+  - "Precision P = hits / |pred|"
+  - "Recall R = hits / |ref|"
+  - "F₁ = 2PR / (P + R)"
+  - "pass@k = 1 − C(n−c, k) / C(n, k)"
+  - "With success rate p: pass@k = 1 − (1 − p)ᵏ"
+  - "All k runs pass: pass^k = pᵏ"
+  - "p = 0.9, k = 5: 0.9⁵ ≈ 0.59"
+math_tex:
+- 'Success rate $= c / n$'
+- 'Precision: $P = \mathrm{hits} / |\mathrm{pred}|$'
+- 'Recall: $R = \mathrm{hits} / |\mathrm{ref}|$'
+- 'F1: $F_1 = \frac{2PR}{P + R}$'
+- 'pass@k: $1 - \frac{\binom{n-c}{k}}{\binom{n}{k}}$'
+- 'With success rate $p$: $1 - (1 - p)^k$'
+- 'All $k$ runs pass: $p^k$'
+- 'Example $p = 0.9$, $k = 5$: $0.9^5 \approx 0.59$'
+interview_qa:
+  - q: "What is the difference between pass@k and pass^k?"
+    a: "pass@k is the chance that at least one of k attempts succeeds, which suits tasks with an automatic verifier. pass^k is the chance that all k succeed, which is p to the k and measures the consistency a deployed agent needs."
+  - q: "Why use the combinatorial pass@k estimator?"
+    a: "Sampling n and counting c correct gives an unbiased estimate with 1 minus C(n-c, k) over C(n, k). Plugging c/n into 1 minus (1-p)^k is biased, especially for small n."
+  - q: "How do you evaluate tool use without an exact answer?"
+    a: "Compare the called tools and arguments to a reference as multisets for precision and recall, and use a lenient trajectory mode such as in-order subsequence, plus an outcome check on the final state."
+  - q: "Why should an unknown action be denied?"
+    a: "Fail closed means a tool added later or a hallucinated action name cannot run until someone assigns it a tier. Failing open would let anything unlisted through."
+hyperparameters:
+  - "Number of samples $n$ and the $k$ values reported"
+  - "Trajectory match mode and whether arguments must match"
+  - "Which tier each action belongs to and which tiers run automatically"
+  - "Step and cost budgets per run"
+pitfalls:
+  - "pass@k with large $k$ looks great even for an unreliable agent; report pass^k next to it"
+  - "Both formulas assume independent attempts; correlated failures on hard tasks make the real numbers worse"
+  - "Exact argument matching penalises harmless differences such as key order or whitespace; normalise before comparing"
+  - "A confirmation prompt that always gets approved is not a control; show the action and its target, and log it"
+related: [output-validation-guardrails, prompt-injection-defense, llm-as-judge]

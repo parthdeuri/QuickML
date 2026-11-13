@@ -1,0 +1,111 @@
+slug: agentic-workflow-patterns
+title: Agentic Workflow Patterns
+url: https://www.anthropic.com/engineering/building-effective-agents
+difficulty: Medium
+area: LLM
+topics: [LLM, Agents, Orchestration, Prompting]
+summary: |
+  Five composable patterns between one prompt and a free-running agent:
+  prompt chaining, routing, parallelisation, orchestrator-workers and
+  evaluator-optimizer. Workflows follow code paths you wrote; agents
+  choose their own steps.
+intuition: |
+  The real design choice is who holds the control flow. In a workflow
+  your code decides the next step and the model only fills in the
+  content, so behaviour is predictable and testable; in an agent the
+  model decides, which buys flexibility at the price of latency, cost
+  and compounding errors. Each pattern is a small fixed shape that adds
+  one capability: a gate to stop bad intermediate output, a router to
+  specialise, redundancy to cut variance, a planner for unknown
+  subtasks, a critic for refinement. Start from a single call and add a
+  pattern only when it measurably helps.
+  Flow: input → classify → specialised handler → gate → result.
+approach:
+  - "Chain steps with a programmatic gate after each — a failed check stops early instead of passing garbage on"
+  - "Route by a classifier with a default handler — each input type gets a focused prompt, unknown types still get an answer"
+  - "Run workers in parallel and vote — independent errors cancel, the majority is more reliable than one call"
+  - "Let a planner split the task, run each part once, then synthesise in order — for subtasks you cannot list in advance"
+  - 'Generate, critique, repeat until accepted or $R_{\max}$ rounds — refinement with a hard cap on cost'
+code: |
+  from collections import Counter
+
+  def chain(steps, gate, x):
+      for i, step in enumerate(steps):
+          x = step(x)
+          ok, why = gate(i, x)
+          if not ok:
+              return x, f"stop at step {i}: {why}"
+      return x, "done"
+
+  def route(classify, handlers, default, x):
+      return handlers.get(classify(x), default)(x)
+
+  def parallel_vote(workers, x):
+      c = Counter(w(x) for w in workers)
+      top = max(c.values())
+      return min(v for v in c if c[v] == top)
+
+  def orchestrator_workers(plan, worker, synth, x):
+      parts = plan(x)
+      return synth([worker(p) for p in parts])
+
+  def evaluator_optimizer(generate, evaluate, max_rounds):
+      fb = None
+      for r in range(1, max_rounds + 1):
+          draft = generate(fb)
+          ok, fb = evaluate(draft)
+          if ok:
+              break
+      return draft, r
+key_lines: [6, 17, 27]
+time: "Sum of the calls made: $k$ for a chain, $n$ for a vote, up to $R_{\\max}$ generate and evaluate pairs for a loop"
+space: "O(1) extra state for a chain or loop; O(n) held results for a vote or orchestrator"
+when_to_use: |
+  When one prompt is not reliable enough and the task decomposes into
+  known shapes: fixed stages (chain), distinct input types (routing),
+  independent checks or a need for lower variance (parallel), unknown
+  subtasks (orchestrator-workers), or a clear quality criterion
+  (evaluator-optimizer).
+when_not_to_use: |
+  When a single well-prompted call with retrieval and examples already
+  meets the bar; every added call costs latency and money. Prefer a
+  workflow over an agent when the steps are known in advance.
+why_it_works: |
+  Gating bounds error propagation, since a chain of $k$ steps with
+  success rate $s$ succeeds end to end with $s^k$ and a gate stops
+  early instead of spending the remaining calls. Voting works because
+  independent errors rarely agree, so the majority is right more often
+  than one worker. Routing, planning and critique each replace one
+  overloaded prompt with several focused ones.
+math:
+  - "Chain of k steps, success s each: P(success) = s^k"
+  - "Majority of n (odd) voters, each right with prob p:"
+  - "P(correct) = Σₖ₌₍ₙ₊₁₎/₂ⁿ C(n,k) pᵏ (1−p)ⁿ⁻ᵏ"
+  - "p > 1/2 ⇒ accuracy rises with n; p < 1/2 ⇒ it falls"
+  - "Loop with accept prob q per round: P(accept ≤ R) = 1 − (1−q)ᴿ"
+interview_qa:
+  - q: "What is the difference between a workflow and an agent?"
+    a: "In a workflow, predefined code paths decide the next step and the model fills in content. In an agent, the model dynamically decides its own steps and tool use, which is more flexible but less predictable and more costly."
+  - q: "When does voting help, and when does it not?"
+    a: "It helps when worker errors are independent and each is right more often than not. If the workers share the same bias, or each is right less than half the time, more votes do not help or make things worse."
+  - q: "How does orchestrator-workers differ from parallelisation?"
+    a: "In parallelisation the subtasks are fixed in advance; in orchestrator-workers a planner decides the subtasks at run time from the input, then a synthesiser merges the results."
+  - q: "How do you stop an evaluator-optimizer loop from running forever?"
+    a: "Cap the rounds and stop as soon as the evaluator accepts, and return the best draft so far when the cap is hit."
+hyperparameters:
+  - "Gate checks and what counts as a pass for each chain step"
+  - "Number of voters $n$ (odd avoids ties) and the tie-break rule"
+  - "Maximum rounds $R_{\\max}$ for the evaluator-optimizer loop"
+  - "Default handler used when the router meets an unknown class"
+pitfalls:
+  - "Voters that share the same prompt and model are correlated, so the $n$ votes carry far less than $n$ independent votes"
+  - "A router with no default handler fails on any input the classifier did not anticipate"
+  - "Long chains multiply failure: with $s = 0.95$ and $k = 10$ the end-to-end success is only about $0.60$"
+  - "An evaluator that is too lenient accepts bad drafts; one that is too strict burns every round"
+related: [chain-of-thought-self-consistency, context-engineering, llm-as-judge]
+math_tex:
+- 'Chain of $k$ steps, success $s$ each: $s^k$'
+- 'Majority of $n$ (odd) voters, right w.p. $p$:'
+- '$\sum_{k=(n+1)/2}^{n} \binom{n}{k}\, p^{k} (1-p)^{n-k}$'
+- '$p > \frac{1}{2}$: more voters help; $p < \frac{1}{2}$: they hurt'
+- 'Loop, accept prob $q$: $1 - (1-q)^{R}$'

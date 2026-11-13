@@ -1,0 +1,88 @@
+slug: reflection-self-correction
+title: Reflection and Self-Correction (Generate, Critique, Revise)
+url: https://arxiv.org/abs/2303.17651
+difficulty: Medium
+area: LLM
+topics: [LLM, Agents, Self-Refine, Feedback]
+summary: |
+  Generate an answer, critique it, revise it and repeat until a check
+  passes, the budget runs out, or revisions stop changing anything.
+intuition: |
+  Revision only helps when the feedback carries information the
+  generator did not have. An external signal such as a failing test or a
+  tool result supplies that, so each round can fix real errors; pure
+  self-critique reuses the same beliefs and can talk itself into the
+  same mistake. The loop therefore needs a stopping rule as much as a
+  critic.
+  Flow: draft → feedback → revise → verify → stop or repeat.
+approach:
+  - "Generate a first answer — the baseline, which may already pass"
+  - "Verify it with an external check when one exists — stop at once on a pass so no revise call is wasted"
+  - "Critique the answer into feedback — a specific error beats a vague complaint"
+  - "Revise using the feedback and compare with the previous answer — an unchanged answer means no progress"
+  - "Stop on verified pass, $n = n_{\\max}$, or no improvement — bounds cost and avoids loops"
+code: |
+  def refine_loop(generate, critique, revise, verify,
+                  max_iters):
+      ans = generate()
+      if verify(ans):
+          return ans, 0, "verified"
+      for n in range(1, max_iters + 1):
+          new = revise(ans, critique(ans))
+          if new == ans:
+              return ans, n, "no_improvement"
+          ans = new
+          if verify(ans):
+              return ans, n, "verified"
+      return ans, max_iters, "max_iters"
+
+  def expected_success(p, q, n):
+      return 1 - (1 - p) * (1 - q) ** n
+key_lines: [7, 8, 11]
+time: "(1 + n) model calls per question plus n critique calls and n verifier calls for n rounds"
+space: "O(1) extra: only the current answer and its feedback are kept"
+when_to_use: |
+  Tasks with a cheap, trustworthy check (unit tests for code, a parser,
+  a calculator, a schema validator) where feedback can point at a
+  concrete failure.
+when_not_to_use: |
+  Tasks with no reliable verifier where the model critiques its own
+  reasoning, since it can confirm a wrong answer or break a right one;
+  also latency-sensitive paths where extra rounds are too costly.
+why_it_works: |
+  If the first answer is right with probability $p$ and each round
+  turns a remaining failure into a success with probability $q$, the
+  chance still failing after $n$ rounds is $(1-p)(1-q)^n$. Success is
+  therefore non-decreasing in $n$ with geometrically shrinking gains,
+  and equals $p$ when $q = 0$. A reliable external signal is what makes
+  $q$ positive; with self-critique alone $q$ may be near zero or
+  even negative.
+math:
+  - "P₀ = p"
+  - "Pₙ = 1 − (1 − p)(1 − q)ⁿ"
+  - "Pₙ − Pₙ₋₁ = (1 − p) q (1 − q)ⁿ⁻¹"
+  - "Pₙ → 1 as n → ∞ if q > 0"
+  - "Rounds for target P: n ≥ ln((1 − P)/(1 − p)) / ln(1 − q)"
+interview_qa:
+  - q: "When does self-correction actually help?"
+    a: "When feedback comes from outside the model, such as test results or tool output. Pure self-critique without new information often fails to fix reasoning errors."
+  - q: "What stopping rules does a refine loop need?"
+    a: "Stop on a verified pass, on a maximum number of rounds, and when a revision leaves the answer unchanged so no further progress is likely."
+  - q: "How many rounds are worth running?"
+    a: "Gains shrink geometrically as $(1-q)^n$, so a few rounds capture most of the benefit; more rounds mostly add cost."
+hyperparameters:
+  - "Maximum rounds $n_{\\max}$"
+  - "Verifier choice and strictness"
+  - "Critique prompt or feedback format"
+  - "Whether to keep earlier attempts in the revise prompt"
+pitfalls:
+  - "Treating the model's own approval as a verifier can lock in a wrong answer"
+  - "Comparing answers by exact equality misses paraphrased non-progress and flags harmless rewording"
+  - "Assuming a constant $q$ is optimistic; later rounds usually face harder failures"
+related: [hallucination-detection, context-engineering]
+math_tex:
+- 'Start: $P_0 = p$'
+- 'After $n$ rounds: $P_n = 1 - (1-p)(1-q)^n$'
+- 'Gain: $P_n - P_{n-1} = (1-p)\,q\,(1-q)^{n-1}$'
+- 'Limit: $P_n \rightarrow 1$ as $n \rightarrow \infty$ if $q > 0$'
+- 'Rounds: $n \geq \frac{\ln\frac{1-P}{1-p}}{\ln(1-q)}$'

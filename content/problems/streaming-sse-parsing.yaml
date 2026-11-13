@@ -1,0 +1,126 @@
+slug: streaming-sse-parsing
+title: Streaming Tokens with Server-Sent Events
+url: https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events
+difficulty: Medium
+area: LLM
+topics: [LLM APIs, Streaming, HTTP]
+summary: |
+  A streamed completion is a text/event-stream: lines of data, event and
+  comment fields, each event closed by a blank line. Buffer bytes, decode
+  incrementally, and join the JSON deltas into the final text.
+intuition: |
+  The network cuts the stream wherever it likes, so a read can end in
+  the middle of a line, in the middle of a JSON object, or in the middle
+  of a multi-byte character such as an emoji. The parser must therefore
+  never treat one chunk as one event: it appends bytes to an incremental
+  decoder, splits only on complete lines, and emits an event only at a
+  blank line. A correct parser gives the same events for every possible
+  way of cutting the same bytes.
+  Flow: bytes → incremental decode → line buffer → complete events → delta text.
+approach:
+  - 'Decode bytes with an incremental UTF-8 decoder — a split multi-byte character is held back until complete'
+  - 'Append to a text buffer and split on newline — a partial last line stays buffered'
+  - 'Ignore lines that start with a colon — they are comments, often keep-alives'
+  - 'Collect data lines and an optional event name — several data lines belong to one event'
+  - 'Emit the event at a blank line and join its data lines with newlines — the event boundary'
+  - 'Stop at the [DONE] sentinel — nothing after it is read'
+  - 'Concatenate text deltas, and concatenate tool-argument fragments but parse them only when they form complete JSON — a fragment alone is not valid JSON'
+code: |
+  import codecs, json
+
+  class SSEParser:
+      def __init__(self):
+          self.dec = codecs.getincrementaldecoder("utf-8")()
+          self.buf, self.done = "", False
+          self.data, self.event = [], None
+
+      def feed(self, chunk):
+          out = []
+          self.buf += self.dec.decode(chunk)
+          while "\n" in self.buf and not self.done:
+              line, self.buf = self.buf.split("\n", 1)
+              ev = self._line(line.rstrip("\r"))
+              if ev:
+                  out.append(ev)
+          return out
+
+      def _line(self, line):
+          if line == "":
+              if not self.data:
+                  return None
+              ev = {"event": self.event, "data": "\n".join(self.data)}
+              self.data, self.event = [], None
+              self.done = ev["data"] == "[DONE]"
+              return ev
+          if line.startswith(":"):
+              return None
+          name, _, value = line.partition(":")
+          value = value[1:] if value.startswith(" ") else value
+          if name == "data":
+              self.data.append(value)
+          elif name == "event":
+              self.event = value
+
+  def deltas(events):
+      for ev in events:
+          if ev["data"] != "[DONE]":
+              yield json.loads(ev["data"])["delta"]
+
+  def assemble_text(events):
+      return "".join(d.get("text", "") for d in deltas(events))
+
+  def assemble_tool_args(events):
+      raw = "".join(d.get("tool_args", "") for d in deltas(events))
+      try:
+          return json.loads(raw)
+      except json.JSONDecodeError:
+          return None
+key_lines: [11, 13, 23]
+time: "O(n) in the stream length; each byte is decoded and scanned once"
+space: "O(m) for the buffer of the current partial line and event"
+when_to_use: |
+  Reading any token stream from a chat endpoint, so the user sees text
+  as it is generated and a long answer does not wait for the last
+  token. The same parser works for any text/event-stream source.
+when_not_to_use: |
+  Short answers or batch jobs where one complete response is simpler,
+  and bidirectional or binary protocols, where a WebSocket or a
+  different framing fits better.
+why_it_works: |
+  SSE framing depends only on newlines, and a newline byte never occurs
+  inside a multi-byte UTF-8 sequence, so splitting the decoded text on
+  newlines is safe. The incremental decoder keeps incomplete trailing
+  bytes as state, so the decoded text depends on the byte sequence and
+  not on how it was chunked. Joining deltas is concatenation, which is
+  associative, so the final text is also independent of chunking.
+math:
+  - "Event = lines up to a blank line"
+  - "Text = Σᵢ δᵢ  (concatenation of the delta strings)"
+  - "Chunkings of n bytes = 2ⁿ⁻¹  (cut or no cut at each gap)"
+  - "UTF-8 length: 1 to 4 bytes per character, so bytes ≥ chars"
+  - "Cuts inside a k-byte character = k − 1"
+interview_qa:
+  - q: "Why must the parser decode incrementally instead of decoding each chunk?"
+    a: "A chunk can end halfway through a multi-byte character, and decoding that fragment alone raises an error or produces garbage. An incremental decoder holds the partial bytes until the rest arrives."
+  - q: "How do you know an event is finished?"
+    a: "A blank line ends it. Until then the data lines seen so far are buffered, and several data lines are joined with a newline."
+  - q: "Why not parse tool-call arguments as each fragment arrives?"
+    a: "Fragments of a JSON string are generally not valid JSON on their own. Concatenate them and parse once the call is complete, for example at the end of the stream."
+  - q: "What is a good test for the parser?"
+    a: "Feed the same bytes cut at every boundary and check that the events are identical, including cuts inside a multi-byte character."
+hyperparameters:
+  - "Read chunk size from the HTTP client, which the parser must not depend on"
+  - "Idle timeout between events, since comments may act as keep-alives"
+  - "Maximum buffered line length to bound memory"
+pitfalls:
+  - "Calling bytes.decode on each chunk breaks on emoji and other multi-byte characters that straddle a boundary"
+  - "Treating each network chunk as one event fails as soon as an event spans two chunks or one chunk holds two events"
+  - "Calling json.loads on a partial tool-argument string raises an error; parse only the full concatenation"
+  - "Treating [DONE] as JSON raises an error; check for the sentinel before parsing"
+related: [structured-outputs-json-schema, json-api-requests-retries, bpe-tokenization]
+math_tex:
+- 'Event: lines up to a blank line'
+- 'Text: $\sum_{i} \delta_i$ (concatenated deltas)'
+- 'Chunkings of $n$ bytes: $2^{n-1}$'
+- 'UTF-8: 1 to 4 bytes per character'
+- 'Cuts inside a $k$-byte character: $k - 1$'

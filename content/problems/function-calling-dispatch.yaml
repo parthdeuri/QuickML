@@ -1,0 +1,132 @@
+slug: function-calling-dispatch
+title: Function Calling and Tool Dispatch
+url: https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview
+difficulty: Medium
+area: LLM
+topics: [LLM, Tool Use, JSON Schema, Agents]
+summary: |
+  Tools are declared with a name, a description and a JSON Schema; the
+  model emits a call as a name plus JSON arguments, and the application
+  validates, runs the function and feeds the result back as a tool
+  message.
+intuition: |
+  The model never runs anything. It only writes text that names a tool
+  and its arguments, and that text is untrusted input. All the
+  safety lives in the dispatcher: parse, validate against the schema,
+  and only then execute. Returning a structured error instead of raising
+  turns a bad call into feedback the model can read and correct on its
+  next turn.
+  Flow: declare tools → model emits call → parse JSON → validate → run → tool message → model answers or calls again.
+approach:
+  - "Register each tool with a name, a JSON Schema and a function — the schema is shown to the model and also used to check its calls"
+  - "Look the name up first — an unknown tool becomes an error message listing the real names"
+  - "Parse the argument string as JSON — models sometimes emit invalid JSON, which is reported rather than crashing"
+  - "Validate against the schema before executing — wrong types or missing fields never reach the function"
+  - "Run the function inside a try block and wrap the outcome as a tool message tied to the call id — dispatch never raises"
+  - "Append the assistant turn and then each tool message in call order — parallel calls stay aligned with their ids"
+  - "Stop when the model answers without a call, or when the step limit is hit — the limit bounds cost and runaway loops"
+code: |
+  import json
+  from jsonschema import Draft202012Validator
+
+  class ToolRegistry:
+      def __init__(self):
+          self.tools = {}
+
+      def register(self, name, schema, fn, description=""):
+          check = Draft202012Validator(schema)
+          self.tools[name] = (description, schema, check, fn)
+
+      def declarations(self):
+          return [{"name": n, "description": d, "parameters": s}
+                  for n, (d, s, _, _) in self.tools.items()]
+
+      def dispatch(self, call):
+          cid, name = call.get("id"), call.get("name")
+
+          def msg(ok, body):
+              return {"role": "tool", "tool_call_id": cid,
+                      "name": name, "ok": ok,
+                      "content": json.dumps(body)}
+
+          if name not in self.tools:
+              return msg(False, {"error": "unknown_tool",
+                                 "available": sorted(self.tools)})
+          _, _, check, fn = self.tools[name]
+          try:
+              args = json.loads(call.get("arguments", ""))
+          except ValueError as e:
+              return msg(False, {"error": "invalid_json",
+                                 "detail": str(e)})
+          errs = sorted(e.message for e in check.iter_errors(args))
+          if errs:
+              return msg(False, {"error": "invalid_arguments",
+                                 "details": errs})
+          try:
+              return msg(True, {"result": fn(**args)})
+          except Exception as e:
+              return msg(False, {"error": "tool_failed",
+                                 "detail": repr(e)})
+
+  def run_tool_loop(model_fn, messages, registry, max_steps=5):
+      for step in range(1, max_steps + 1):
+          reply = model_fn(messages, registry.declarations())
+          calls = reply.get("tool_calls") or []
+          messages.append({"role": "assistant",
+                           "content": reply.get("content"),
+                           "tool_calls": calls})
+          if not calls:
+              return {"stop": "answer", "steps": step,
+                      "answer": reply.get("content")}
+          for call in calls:
+              messages.append(registry.dispatch(call))
+      return {"stop": "max_steps", "steps": max_steps, "answer": None}
+key_lines: [33, 38, 46]
+time: "O(S · (model call + calls per step · validation)) for S steps"
+space: "O(S · c) message history, resent to the model at every step"
+when_to_use: |
+  Letting a model act on the world or fetch fresh data: look up a record,
+  call an API, run a calculation. Any time the model's output must feed
+  code, a schema check at the boundary keeps bad calls harmless.
+when_not_to_use: |
+  Fixed pipelines where the steps are known in advance, which are
+  cheaper and more predictable as plain code. Also avoid exposing tools
+  with side effects, such as deletes or payments, without confirmation
+  or a permission layer.
+why_it_works: |
+  A JSON Schema is a precise, machine-checkable contract. The same
+  schema both tells the model what arguments exist and lets the
+  dispatcher reject anything off-contract before any side effect. Errors
+  are returned as ordinary tool messages, so the loop continues and the
+  model sees exactly what was wrong; the step limit guarantees
+  termination even if it never recovers.
+math:
+  - "Input tokens over S steps = Σₛ (P + s · c) = S·P + c · S(S+1)/2"
+  - "Sequential latency = Σᵢ ℓᵢ"
+  - "Parallel latency = maxᵢ ℓᵢ"
+  - "Success of S dependent calls P = Πₛ pₛ"
+interview_qa:
+  - q: "Why validate arguments if the model was given the schema?"
+    a: "The model is a text generator and can still emit wrong types, missing fields or invalid JSON. Validation at the boundary keeps those out of your functions."
+  - q: "Why return errors as tool messages instead of raising?"
+    a: "A raised exception ends the loop. A structured error lets the model read what went wrong and retry with corrected arguments."
+  - q: "How do parallel calls work?"
+    a: "The model returns several calls in one turn, each with an id. You run them and return one tool message per id, then the model continues with all results."
+  - q: "How is the loop kept from running forever?"
+    a: "A step limit, plus returning a clear stop reason so the caller knows the answer was not reached."
+hyperparameters:
+  - "Maximum steps in the loop"
+  - "Number of tools exposed, since every schema costs prompt tokens"
+  - "Whether the model may emit parallel calls"
+  - "Per-tool timeout and result size limit"
+pitfalls:
+  - "Executing the function before validating lets malformed model output cause side effects"
+  - "Letting an exception escape dispatch ends the loop instead of giving the model feedback"
+  - "Dropping the call id breaks the pairing of results with parallel calls"
+  - "Vague tool descriptions make the model pick the wrong tool, since the description is its only guide"
+related: [structured-outputs-json-schema, output-validation-guardrails, prompt-injection-defense]
+math_tex:
+- 'Input tokens: $\sum_{s=1}^{S} (P + s\,c) = SP + c\,\frac{S(S+1)}{2}$'
+- 'Sequential latency: $\sum_{i} \ell_i$'
+- 'Parallel latency: $\max_{i} \ell_i$'
+- 'Success: $P = \prod_{s=1}^{S} p_s$'

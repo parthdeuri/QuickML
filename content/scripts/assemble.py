@@ -170,6 +170,21 @@ SHEETS["llm-engineer"][2][0:0] = [
                                     "pytorch-training-loop-anatomy", "gpu-computing-roofline"]),
 ]
 
+def _insert_before(sheet_id, before_name, section):
+    secs = SHEETS[sheet_id][2]
+    idx = next(i for i, (n, _) in enumerate(secs) if n.startswith(before_name))
+    secs.insert(idx, section)
+
+
+_insert_before("llm-engineer", "12.", ("11. LLM APIs and development tools", [
+    "chat-completions-request-schema", "llm-api-retries-rate-limits", "streaming-sse-parsing",
+    "provider-fallback-router", "huggingface-generate-pipeline", "runnable-chain-composition",
+    "model-context-protocol-jsonrpc"]))
+_insert_before("llm-engineer", "16.", ("14. AI agents and tool calling", [
+    "function-calling-dispatch", "agent-loop-react", "planning-decomposition", "agent-memory",
+    "reflection-self-correction", "agentic-workflow-patterns", "multi-agent-orchestration",
+    "state-graph-workflows", "agent-evaluation-safety"]))
+
 def main():
     have = {p.stem for p in PROBLEMS.glob("*.yaml")}
     used = set()

@@ -1,0 +1,104 @@
+slug: agent-memory
+title: Agent Memory (Short-Term Window and Long-Term Store)
+url: https://arxiv.org/abs/2304.03442
+difficulty: Medium
+area: LLM
+topics: [LLM, Agents, Memory, Retrieval]
+summary: |
+  Short-term memory keeps the conversation under a token budget by
+  replacing old turns with a summary; long-term memory retrieves stored
+  facts by mixing relevance, recency and importance.
+intuition: |
+  The context window is scarce, so an agent needs two policies: what to
+  forget from the live conversation (summarise the oldest turns) and
+  what to bring back from a big store. Relevance alone returns stale
+  trivia; recency alone ignores what matters, so the retrieval score
+  blends similarity with a decaying freshness and a fixed importance.
+  Flow: new turn → trim window + summary → query store → top-k memories → prompt.
+approach:
+  - "Count tokens per message and keep the newest turns that fit — the latest turn is what the model must answer"
+  - "Replace dropped turns with one summary message — keeps the gist at a small token cost"
+  - "Store each memory with its vector, timestamp and importance — three signals to rank on"
+  - "Score $a \\cdot \\mathrm{sim} + b \\cdot 0.5^{\\mathrm{age}/h} + c \\cdot \\mathrm{imp}$ — relevance, freshness and importance in one number"
+  - "Return the top-$k$ by score — only a few memories enter the prompt"
+code: |
+  import numpy as np
+
+  def recency_decay(age, half_life):
+      return 0.5 ** (age / half_life)
+
+  def cosine(a, b):
+      return a @ b / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12)
+
+  def retrieve(memories, query_vec, k, weights, now,
+               half_life=10.0):
+      a, b, c = weights
+      scored = []
+      for m in memories:
+          s = (a * cosine(query_vec, m["vec"])
+               + b * recency_decay(now - m["t"], half_life)
+               + c * m["imp"])
+          scored.append((s, m["text"]))
+      scored.sort(key=lambda x: -x[0])
+      return scored[:k]
+
+  def window_with_summary(messages, budget, summarise_fn,
+                          count_tokens):
+      keep, dropped = list(messages), []
+      while True:
+          head = []
+          if dropped:
+              head = [{"role": "system",
+                       "content": summarise_fn(dropped)}]
+          out = head + keep
+          used = sum(count_tokens(m) for m in out)
+          if len(keep) <= 1 or used <= budget:
+              return out
+          dropped.append(keep.pop(0))
+key_lines: [14, 16, 33]
+time: "O(n·d) to score n memories of dimension d; the window loop is O(n²) in turns as written"
+space: "O(n·d) for the store; the window holds only the budgeted tokens"
+when_to_use: |
+  Long-running assistants and agents whose history exceeds the context
+  window, or that must recall earlier facts, preferences or events
+  across sessions.
+when_not_to_use: |
+  Short single-shot tasks that fit in context, where memory machinery
+  only adds latency and a chance of retrieving a wrong fact.
+why_it_works: |
+  Cosine similarity ranks by topical match, the exponential term
+  $0.5^{\mathrm{age}/h}$ halves a memory's freshness every $h$ time units
+  so recent items get a bounded boost, and importance lifts rare but
+  vital facts. A linear mix lets you tune the trade-off, and
+  normalising each term to a similar range keeps one from swamping the
+  others. A summary of dropped turns trades exact wording for a much
+  smaller token cost.
+math:
+  - "score(m) = a·sim(q, m) + b·decay(age) + c·importance(m)"
+  - "decay(age) = 0.5^(age / half_life) = e^(−λ·age), λ = ln 2 / half_life"
+  - "decay(0) = 1,  decay(half_life) = 1/2"
+  - "sim(q, m) = q·m / (‖q‖ ‖m‖)"
+  - "Window: Σ tokens(messages kept) + tokens(summary) ≤ budget"
+interview_qa:
+  - q: "What are the two kinds of agent memory?"
+    a: "Short-term memory is the live conversation inside the context window; long-term memory is an external store of facts retrieved on demand."
+  - q: "Why mix recency and importance with similarity?"
+    a: "Similarity alone can return old or trivial items. Recency favours fresh facts and importance protects key facts that are old but still matter."
+  - q: "What is lost when old turns are summarised?"
+    a: "Exact wording and rare details. Summaries compress, so critical facts should be written to the long-term store before the turns are dropped."
+hyperparameters:
+  - "Score weights $a$, $b$, $c$"
+  - "Recency half-life $h$"
+  - "Retrieval size $k$"
+  - "Token budget for the window"
+pitfalls:
+  - "Unnormalised terms: if one term has a larger range its weight is effectively larger than intended"
+  - "Repeatedly summarising a summary drifts and loses facts; keep key facts in the store"
+  - "If the newest turn alone exceeds the budget this code still keeps it, so the budget can be exceeded"
+related: [context-engineering, rag-dense-retrieval, cosine-similarity-embeddings]
+math_tex:
+- 'Score: $a\,\mathrm{sim}(q,m) + b\,\mathrm{decay} + c\,\mathrm{imp}$'
+- 'Decay: $0.5^{\mathrm{age}/h} = e^{-\lambda\,\mathrm{age}}$'
+- 'with $\lambda = \ln 2 / h$, so $\mathrm{decay}(h) = \frac{1}{2}$'
+- 'Similarity: $\frac{q \cdot m}{\|q\|\,\|m\|}$'
+- 'Window: $\sum_i \mathrm{tok}(m_i) \leq B$ incl. summary'

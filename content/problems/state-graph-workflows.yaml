@@ -1,0 +1,132 @@
+slug: state-graph-workflows
+title: Agent Workflows as State Graphs
+url: https://docs.langchain.com/oss/python/langgraph/graph-api
+difficulty: Hard
+area: LLM
+topics: [LLM, Agents, Orchestration, State Machines]
+summary: |
+  Model an agent workflow as nodes that read a shared state and return
+  updates, edges that pick the next node, per-key reducers that merge
+  updates, a step limit against cycles, and a checkpoint after each node.
+intuition: |
+  A free-running agent loop hides its control flow inside prompts, so it
+  is hard to test, pause or resume. Making the flow an explicit graph
+  moves the decisions into ordinary code: nodes only return updates, a
+  router reads the state to choose the next node, and reducers decide
+  whether an update overwrites a key or accumulates into it. Because the
+  whole run is a pure function of the state and the next node, a snapshot
+  after every node is enough to resume, replay or stop for a human.
+  Flow: state → node → update → next edge → checkpoint.
+approach:
+  - "Make each node a function from state to a partial update — nodes never mutate the shared state"
+  - "Merge each update key with its reducer, default overwrite — lists append and counters add, so parallel or repeated writes combine"
+  - "Choose the next node by a fixed edge or a router on the new state — loops end when the condition holds"
+  - "Count executed nodes and raise at $T$ — a cycle with no exit fails loudly instead of running forever"
+  - "Snapshot (next node, state) after every node — resuming from snapshot $k$ replays the run exactly"
+  - "Stop before a named node and return the state — a human can edit it, then resume from that node"
+code: |
+  import copy
+
+  END = "__end__"
+
+  class Graph:
+      def __init__(self, reducers=None):
+          self.reducers = reducers or {}
+          self.nodes, self.edges, self.cond = {}, {}, {}
+          self.entry = None
+
+      def add_node(self, name, fn):
+          self.nodes[name] = fn
+
+      def add_edge(self, a, b):
+          self.edges[a] = b
+
+      def add_conditional_edges(self, a, router):
+          self.cond[a] = router
+
+      def set_entry(self, name):
+          self.entry = name
+
+      def merge(self, state, update):
+          out = dict(state)
+          for k, v in update.items():
+              r = self.reducers.get(k)
+              out[k] = r(state[k], v) if r and k in state else v
+          return out
+
+      def run(self, state, max_steps=25, checkpoints=None,
+              start=None, interrupt_before=()):
+          state = copy.deepcopy(state)
+          node, steps = start or self.entry, 0
+          while node != END:
+              if node in interrupt_before:
+                  return state, node
+              if steps == max_steps:
+                  raise RuntimeError(
+                      f"step limit {max_steps} hit before {node!r}")
+              state = self.merge(state, self.nodes[node](state))
+              steps += 1
+              if node in self.cond:
+                  node = self.cond[node](state)
+              else:
+                  node = self.edges.get(node, END)
+              if checkpoints is not None:
+                  checkpoints.append((node, copy.deepcopy(state)))
+          return state, None
+key_lines: [27, 37, 40]
+time: "O(T) node calls per run, each node's own cost plus O(keys) to merge"
+space: "O(T·|state|) for the checkpoints, one deep copy per step"
+when_to_use: |
+  Multi-step agent flows with branches, retry loops or a human approval
+  point, where you need to test the control flow, resume after a crash,
+  or inspect and edit the state between steps.
+when_not_to_use: |
+  A single model call or a short fixed chain, where a plain function is
+  simpler. Also a poor fit when the flow is too open-ended to name its
+  nodes in advance and the model must plan freely.
+why_it_works: |
+  A node is a function of the state and the router is a function of the
+  new state, so the pair (next node, state) fully determines the rest of
+  the run. A checkpoint stores exactly that pair, which makes resuming
+  from it identical to never having stopped, provided the nodes are
+  deterministic or their random choices are stored in the state.
+  Reducers make merging explicit: a key written by many nodes
+  accumulates by $r_k$ instead of losing earlier writes. If each pass
+  through a loop exits with chance $p$, the expected number of passes is
+  $\frac{1}{p}$ and the limit $T$ is hit with chance $(1-p)^T$.
+math:
+  - "Per key: s′ₖ = rₖ(sₖ, uₖ)"
+  - "Step: u = fₙ(s), then s′ = r(s, u)"
+  - "Next node: n′ = route(s′)"
+  - "Checkpoint: cᵢ = (nᵢ, sᵢ)"
+  - "Resume: run(cₖ) = run(c₀)"
+  - "Exit chance p per pass: E[passes] = 1/p"
+  - "Hit the limit T: (1 − p)ᵀ"
+math_tex:
+- 'Per key: $s_k^{\prime} = r_k(s_k, u_k)$'
+- 'Step: $u = f_n(s)$, then $s^{\prime} = r(s, u)$'
+- 'Next node: $n^{\prime} = \mathrm{route}(s^{\prime})$'
+- 'Checkpoint: $c_i = (n_i, s_i)$'
+- 'Resume: $\mathrm{run}(c_k) = \mathrm{run}(c_0)$'
+- 'Exit chance $p$ per pass: $\mathbb{E}[\mathrm{passes}] = \frac{1}{p}$'
+- 'Hit the limit $T$: $(1 - p)^T$'
+interview_qa:
+  - q: "Why do nodes return updates instead of editing the state?"
+    a: "Returned updates can be merged by per-key reducers, recorded in a checkpoint and replayed. In-place edits hide what changed and make resuming and parallel branches unsafe."
+  - q: "What does a reducer do and why does it matter?"
+    a: "It defines how an update combines with the old value of a key. Overwrite is the default, but a list key needs append and a counter needs add, otherwise a later node silently erases earlier results."
+  - q: "How do checkpoints enable human-in-the-loop?"
+    a: "The run stops before a chosen node and returns the state. A person can approve or edit it, and the run continues from that node with the edited state, with no hidden state left in the process."
+  - q: "Why is a step limit needed when conditional edges can loop?"
+    a: "A router that never reaches its exit condition would loop forever and burn tokens. The limit turns that into a clear error, and the checkpoints show where it was stuck."
+hyperparameters:
+  - "Step limit $T$ (maximum node executions per run)"
+  - "Reducer per state key (overwrite, append, add, custom)"
+  - "Where to interrupt for human review"
+  - "Checkpoint storage and how often to snapshot"
+pitfalls:
+  - "Resuming is exact only if nodes are deterministic; store model samples and clock reads in the state"
+  - "A node that mutates the state it receives corrupts earlier checkpoints unless every snapshot is a deep copy"
+  - "A reducer on a key missing from the initial state is skipped here; initialise accumulating keys such as lists up front"
+  - "Re-running a node with side effects after resume repeats the effect; make tool calls idempotent"
+related: [structured-outputs-json-schema, prompt-injection-defense, output-validation-guardrails]

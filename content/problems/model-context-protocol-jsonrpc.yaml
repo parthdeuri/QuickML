@@ -1,0 +1,178 @@
+slug: model-context-protocol-jsonrpc
+title: Model Context Protocol (JSON-RPC Tool Servers)
+url: https://modelcontextprotocol.io/specification/latest/server/tools
+difficulty: Medium
+area: LLM
+topics: [LLM, Tool Use, Protocols, JSON-RPC]
+summary: |
+  A standard wire protocol for an LLM application (the client) to
+  discover and call tools, and read resources, offered by separate
+  servers; every message is JSON-RPC 2.0, so any client can talk to any
+  server.
+intuition: |
+  Without a standard, each of $M$ applications needs custom glue for
+  each of $N$ tools. With one protocol, a server describes its tools once
+  (name, description, JSON Schema) and any client can list and call
+  them, so the glue shrinks from $M \cdot N$ adapters to $M + N$
+  implementations. JSON-RPC supplies the envelope: an id pairs each
+  response with its request, and a message without an id is a
+  notification that never gets a reply.
+  Flow: list tools → model picks one → call with arguments → validate → result or error → back to model.
+approach:
+  - "Parse the text as JSON — on failure reply error $-32700$ with a null id, since no id could be read"
+  - "Check it is a request object with a string method — otherwise error $-32600$"
+  - "If there is no id, treat it as a notification and return nothing — the sender expects no reply"
+  - "Route by method name — an unknown method gives error $-32601$"
+  - "For a tool call, validate the arguments against its input schema — a mismatch gives $-32602$ and the tool never runs"
+  - "Run the tool and return content blocks with an error flag — a failing tool is a result the model can read, not a protocol error"
+  - "Client side: send a fresh id and check the response echoes it — this is how concurrent requests stay matched"
+code: |
+  import json
+  from jsonschema import Draft202012Validator
+
+  PARSE, BAD_REQUEST, NO_METHOD = -32700, -32600, -32601
+  BAD_PARAMS, INTERNAL = -32602, -32603
+
+  class RpcError(Exception):
+      def __init__(self, code, message):
+          self.code, self.message = code, message
+
+  def reply(id_, **body):
+      return json.dumps({"jsonrpc": "2.0", "id": id_, **body})
+
+  def failure(id_, code, message):
+      return reply(id_, error={"code": code, "message": message})
+
+  class Server:
+      def __init__(self):
+          self.tools = {}
+
+      def add_tool(self, name, description, schema, fn):
+          self.tools[name] = (description, schema, fn)
+
+      def tools_list(self, params):
+          return {"tools": [
+              {"name": n, "description": d, "inputSchema": s}
+              for n, (d, s, _) in self.tools.items()]}
+
+      def tools_call(self, params):
+          name = params.get("name")
+          args = params.get("arguments", {})
+          if not isinstance(name, str) or name not in self.tools:
+              raise RpcError(BAD_PARAMS, "unknown tool " + str(name))
+          _, schema, fn = self.tools[name]
+          errs = Draft202012Validator(schema).iter_errors(args)
+          msgs = [e.message for e in errs]
+          if msgs:
+              raise RpcError(BAD_PARAMS, "; ".join(msgs))
+          try:
+              text, is_error = str(fn(**args)), False
+          except Exception as e:
+              text, is_error = repr(e), True
+          return {"content": [{"type": "text", "text": text}],
+                  "isError": is_error}
+
+      def handle(self, text):
+          try:
+              msg = json.loads(text)
+          except ValueError:
+              return failure(None, PARSE, "parse error")
+          ok = (isinstance(msg, dict)
+                and msg.get("jsonrpc") == "2.0"
+                and isinstance(msg.get("method"), str))
+          if not ok:
+              id_ = msg.get("id") if isinstance(msg, dict) else None
+              return failure(id_, BAD_REQUEST, "invalid request")
+          if "id" not in msg:
+              return None
+          route = {"tools/list": self.tools_list,
+                   "tools/call": self.tools_call}
+          try:
+              if msg["method"] not in route:
+                  raise RpcError(NO_METHOD, "method not found")
+              params = msg.get("params", {})
+              if not isinstance(params, dict):
+                  raise RpcError(BAD_PARAMS, "params must be an object")
+              result = route[msg["method"]](params)
+              return reply(msg["id"], result=result)
+          except RpcError as e:
+              return failure(msg["id"], e.code, e.message)
+          except Exception:
+              return failure(msg["id"], INTERNAL, "internal error")
+
+  class Client:
+      def __init__(self, server):
+          self.server, self.n = server, 0
+
+      def request(self, method, params=None, id_=None):
+          self.n += 1
+          id_ = self.n if id_ is None else id_
+          msg = {"jsonrpc": "2.0", "id": id_, "method": method}
+          if params is not None:
+              msg["params"] = params
+          resp = json.loads(self.server.handle(json.dumps(msg)))
+          assert resp["id"] == id_, "response id mismatch"
+          if "error" in resp:
+              raise RpcError(resp["error"]["code"],
+                             resp["error"]["message"])
+          return resp["result"]
+
+      def notify(self, method, params=None):
+          msg = {"jsonrpc": "2.0", "method": method}
+          if params is not None:
+              msg["params"] = params
+          assert self.server.handle(json.dumps(msg)) is None
+key_lines: [38, 58, 63]
+time: "O(|schema| + |arguments|) per call for validation, plus the tool itself"
+space: "O(number of tools) for the registry; no per-connection state"
+when_to_use: |
+  Exposing the same tools or data to several LLM applications, or letting
+  users plug third-party tool servers into an application without writing
+  adapters. The same messages travel over a local process pipe or over
+  HTTP, so one server fits both.
+when_not_to_use: |
+  A single application calling a handful of its own functions in
+  process, where a direct function-calling registry is simpler. A
+  protocol also does not remove the need to treat tool output as
+  untrusted input to the model.
+why_it_works: |
+  Discovery is data, not code: the tool list carries a JSON Schema, so
+  the client can show it to the model and validate arguments without
+  knowing the tool. JSON-RPC makes the exchange stateless per message:
+  the echoed id matches replies to requests, errors have fixed numeric
+  codes, and the no-reply rule for notifications keeps one-way events
+  cheap. The transport only has to move strings.
+math:
+  - "Adapters without a protocol: M · N"
+  - "Adapters with a protocol: M + N"
+  - "Messages for k calls and n notifications: 2(1 + k) + n"
+  - "Tool prompt cost ≈ T · ā tokens"
+  - "Tools in total: T = Σᵢ tᵢ over servers"
+  - "Trajectory success P = Πⱼ pⱼ over k calls"
+interview_qa:
+  - q: "What is the difference between a request and a notification?"
+    a: "A request has an id and must get exactly one response carrying the same id. A notification has no id and the receiver must not reply."
+  - q: "Why does a parse error response have a null id?"
+    a: "If the text is not valid JSON the server cannot read the request id, so the response uses a null id."
+  - q: "Protocol error or tool error: where does a failing tool go?"
+    a: "A malformed call or unknown method is a JSON-RPC error. A tool that ran and failed is better returned as a normal result with an error flag, so the model can read it and retry."
+  - q: "What does the protocol not give you?"
+    a: "Trust. Tool descriptions and outputs come from a server and can carry injected instructions, so clients still need confirmation and filtering."
+hyperparameters:
+  - "Transport: local pipe or HTTP, same messages either way"
+  - "Per-call timeout and result size limit"
+  - "Which tools to expose to the model, since each description costs tokens"
+  - "Whether validation failures are protocol errors or tool results"
+pitfalls:
+  - "Replying to a notification breaks the protocol; the sender is not listening for it"
+  - "Running the tool before validating the arguments lets a malformed model call cause side effects"
+  - "Returning an id other than the request id, or numeric ids as strings, breaks request matching"
+  - "Trusting tool descriptions and outputs: they are untrusted text that goes into the model context"
+related: [structured-outputs-json-schema, prompt-injection-defense, output-validation-guardrails]
+math_tex:
+- 'No protocol: $M \cdot N$ adapters'
+- 'With protocol: $M + N$ implementations'
+- 'Messages: $2(1 + k) + n$'
+- 'Tool prompt cost: $T \cdot \bar{a}$ tokens'
+- 'Servers: $T = \sum_{i} t_i$ tools in total'
+- 'Success: $P = \prod_{j=1}^{k} p_j$'

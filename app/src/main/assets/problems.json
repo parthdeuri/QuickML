@@ -1,5 +1,5 @@
 {
- "contentVersion": 13,
+ "contentVersion": 14,
  "problems": [
   {
    "slug": "ab-test-significance",
@@ -474,6 +474,329 @@
     "lora-low-rank-adaptation",
     "transfer-learning-fine-tuning",
     "parameter-count-flops"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "agent-evaluation-safety",
+   "title": "Agent Evaluation and Safety Controls",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2107.03374",
+   "difficulty": "Hard",
+   "topics": [
+    "LLM",
+    "Agents",
+    "Evaluation",
+    "Safety"
+   ],
+   "patterns": [],
+   "summary": "Score an agent on success, cost, tool-call F1 and trajectory match, separate pass@k (any of $k$ tries) from pass^k (all $k$ tries), and constrain it with permission tiers, confirmation and budgets.",
+   "bruteForce": "Do not grade tasks with many valid paths by exact trajectory match, and do not use pass@k as a reliability number for a user-facing agent. Reference trajectories also go stale when the tool set changes.",
+   "intuition": "An agent run is a trajectory of tool calls, not just a final answer, so you can grade the path as well as the outcome: did it call the right tools with the right arguments, in an acceptable order, within budget. Sampling metrics hide a trap: pass@k rewards a model that succeeds once in $k$ tries, which suits code generation with a verifier, but a deployed agent has to succeed every time, which is pass^k and decays as $p^k$. Safety is separate from scoring: a gate in ordinary code decides what an action may do, and anything unknown is denied. Flow: trajectory → score (success, F1, match) → pass@k vs pass^k → gate actions.",
+   "whyItWorks": "If a run succeeds independently with probability $p$, at least one of $k$ runs succeeds with probability $1-(1-p)^k$ and all $k$ succeed with probability $p^k$, so the two metrics move in opposite directions as $k$ grows. Estimating pass@k as $1 - (1-c/n)^k$ from a finite sample is biased; the combinatorial form counts the chance that a random subset of $k$ of the $n$ samples contains no correct one, which is unbiased. The gate is a lookup in code with a default of deny, so an action the policy never named cannot run, whatever the model asks for.",
+   "approach": [
+    "Compare tool calls to a reference as multisets and compute precision, recall and $F_1$ — extra calls cost precision, missing calls cost recall",
+    "Choose a trajectory match mode: exact, in-order subsequence or any-order — stricter modes suit fixed procedures, looser ones allow extra steps",
+    "Estimate pass@k from $n$ samples with $c$ correct as $1 - \\binom{n-c}{k}/\\binom{n}{k}$ — unbiased, unlike $1-(1-c/n)^k$",
+    "Report reliability as $p^k$ next to pass@k — it shows how often $k$ repeated runs all succeed",
+    "Map every action to a tier and gate it — reads pass, destructive ones need confirmation, unknown actions are denied",
+    "Cap steps and cost per run — a looping or runaway agent stops at a known price"
+   ],
+   "time": "O(L) per trajectory of length L for F1 and matching; pass_at_k is O(1) with exact binomials",
+   "space": "O(L) for the call counters",
+   "solution": "from collections import Counter\nfrom math import comb\n\ndef _key(call, args):\n    name, a = call\n    return (name, tuple(sorted(a.items()))) if args else name\n\ndef tool_call_f1(pred, ref, args=True):\n    p = Counter(_key(c, args) for c in pred)\n    r = Counter(_key(c, args) for c in ref)\n    hit = sum((p & r).values())\n    prec = hit / len(pred) if pred else 0.0\n    rec = hit / len(ref) if ref else 0.0\n    f1 = 2 * prec * rec / (prec + rec) if hit else 0.0\n    return prec, rec, f1\n\ndef trajectory_match(pred, ref, mode):\n    if mode == \"exact\":\n        return pred == ref\n    if mode == \"in_order\":\n        it = iter(pred)\n        return all(step in it for step in ref)\n    if mode == \"any_order\":\n        return not (Counter(ref) - Counter(pred))\n    raise ValueError(mode)\n\ndef pass_at_k(n, c, k):\n    if n - c < k:\n        return 1.0\n    return 1.0 - comb(n - c, k) / comb(n, k)\n\ndef pass_pow_k(p, k):\n    return p ** k\n\ndef permission_gate(action, policy, confirmed=False):\n    tier = policy[\"tiers\"].get(action)\n    if tier is None:\n        return \"deny\"\n    if tier in policy[\"auto\"]:\n        return \"allow\"\n    if tier == \"destructive\":\n        return \"allow\" if confirmed else \"confirm\"\n    return \"deny\"\n\ndef within_budget(steps, cost, max_steps, max_cost):\n    return steps <= max_steps and cost <= max_cost",
+   "keyLines": [
+    24,
+    30,
+    41
+   ],
+   "dryRun": [
+    "Success rate $= c / n$",
+    "Precision: $P = \\mathrm{hits} / |\\mathrm{pred}|$",
+    "Recall: $R = \\mathrm{hits} / |\\mathrm{ref}|$",
+    "F1: $F_1 = \\frac{2PR}{P + R}$",
+    "pass@k: $1 - \\frac{\\binom{n-c}{k}}{\\binom{n}{k}}$",
+    "With success rate $p$: $1 - (1 - p)^k$",
+    "All $k$ runs pass: $p^k$",
+    "Example $p = 0.9$, $k = 5$: $0.9^5 \\approx 0.59$"
+   ],
+   "description": "Comparing agent versions, regression-testing tool use against reference trajectories, and setting the permission and budget rules before an agent touches real systems.",
+   "examples": [
+    {
+     "input": "What is the difference between pass@k and pass^k?",
+     "output": "pass@k is the chance that at least one of k attempts succeeds, which suits tasks with an automatic verifier. pass^k is the chance that all k succeed, which is p to the k and measures the consistency a deployed agent needs.",
+     "explanation": ""
+    },
+    {
+     "input": "Why use the combinatorial pass@k estimator?",
+     "output": "Sampling n and counting c correct gives an unbiased estimate with 1 minus C(n-c, k) over C(n, k). Plugging c/n into 1 minus (1-p)^k is biased, especially for small n.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you evaluate tool use without an exact answer?",
+     "output": "Compare the called tools and arguments to a reference as multisets for precision and recall, and use a lenient trajectory mode such as in-order subsequence, plus an outcome check on the final state.",
+     "explanation": ""
+    },
+    {
+     "input": "Why should an unknown action be denied?",
+     "output": "Fail closed means a tool added later or a hallucinated action name cannot run until someone assigns it a tier. Failing open would let anything unlisted through.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of samples $n$ and the $k$ values reported",
+    "Trajectory match mode and whether arguments must match",
+    "Which tier each action belongs to and which tiers run automatically",
+    "Step and cost budgets per run"
+   ],
+   "edgeCases": [
+    "pass@k with large $k$ looks great even for an unreliable agent; report pass^k next to it",
+    "Both formulas assume independent attempts; correlated failures on hard tasks make the real numbers worse",
+    "Exact argument matching penalises harmless differences such as key order or whitespace; normalise before comparing",
+    "A confirmation prompt that always gets approved is not a control; show the action and its target, and log it"
+   ],
+   "related": [
+    "output-validation-guardrails",
+    "prompt-injection-defense",
+    "llm-as-judge"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "agent-loop-react",
+   "title": "ReAct Agent Loop",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2210.03629",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Agents",
+    "Tool Use",
+    "ReAct"
+   ],
+   "patterns": [],
+   "summary": "The model alternates Thought, Action (a tool and its input) and Observation (the tool result) until it writes a Final Answer, while the program around it enforces a step budget, loop detection and observation limits.",
+   "bruteForce": "When the steps are known, a fixed workflow is cheaper, faster and more predictable, and easier to test. A free-running loop costs more tokens, because the history is resent at every step, and its behaviour varies from run to run.",
+   "intuition": "A single prompt cannot know what a tool will return, so the model commits to one action at a time and reads the result before deciding the next. Writing the thought first gives it a place to plan and to react to surprises. The model supplies the reasoning, but the harness must supply the discipline: without a step budget, loop detection and size limits, the trajectory can spin, repeat itself or flood the context. Flow: thought → action → observation → repeat → final answer.",
+   "whyItWorks": "Each action is chosen after seeing the real result of the previous one, so errors in the world are discovered rather than guessed; the thought text lets the model plan before it commits. The harness bounds the damage: a step budget guarantees termination, a seen-actions set catches the simplest cycles, and capped observations keep the context size linear in the number of steps.",
+   "approach": [
+    "Parse the model text for Action: tool[input] or Final Answer — the text format is the only interface to the model",
+    "On unparseable output, re-prompt once with the expected format and fail clearly if it happens again — one repair is cheap, endless repair is a loop",
+    "Check the action against those already taken — a repeated tool and input will give the same observation, so stop with a loop reason",
+    "Run the tool, mapping unknown names and exceptions to an error observation — the model can read it and adapt",
+    "Truncate the observation to a character limit — one huge result must not fill the context",
+    "Append thought, action and observation to the transcript and call the model again — it sees the whole trajectory so far",
+    "Stop on a final answer or when the step budget is spent, and always return a stop reason — the caller must know whether it succeeded"
+   ],
+   "time": "O(S · (model call + tool call)) for S steps; each model call reads the whole history",
+   "space": "O(P + S · (t + o_max)) transcript, since observations are capped",
+   "solution": "import re\n\nACTION = re.compile(r\"^Action:\\s*(\\w+)\\[(.*)\\]\\s*$\", re.M)\nFINAL = re.compile(r\"^Final Answer:\\s*(.+)$\", re.M)\nREPROMPT = (\"Observation: Invalid format. Reply with \"\n            \"Action: tool[input] or Final Answer: text\")\n\ndef parse_react(text):\n    act, fin = ACTION.search(text), FINAL.search(text)\n    if act and (not fin or act.start() < fin.start()):\n        return (\"action\", act.group(1), act.group(2))\n    if fin:\n        return (\"final\", fin.group(1).strip())\n    return (\"bad\", text.strip())\n\ndef observe(tools, name, arg, limit):\n    if name not in tools:\n        known = \", \".join(sorted(tools))\n        obs = \"Error: unknown tool %r. Tools: %s\" % (name, known)\n    else:\n        try:\n            obs = str(tools[name](arg))\n        except Exception as e:\n            obs = \"Error: \" + repr(e)\n    return obs if len(obs) <= limit else obs[:limit - 3] + \"...\"\n\ndef run_react(llm, tools, question, max_steps=6, max_obs_chars=80):\n    log, seen, bad = [\"Question: \" + question], set(), 0\n\n    def done(stop, answer, steps):\n        return {\"stop\": stop, \"answer\": answer, \"steps\": steps,\n                \"transcript\": \"\\n\".join(log)}\n\n    for step in range(1, max_steps + 1):\n        out = llm(\"\\n\".join(log))\n        log.append(out.strip())\n        kind = parse_react(out)\n        if kind[0] == \"final\":\n            return done(\"answer\", kind[1], step)\n        if kind[0] == \"bad\":\n            bad += 1\n            if bad > 1:\n                return done(\"malformed\", None, step)\n            log.append(REPROMPT)\n            continue\n        bad = 0\n        _, name, arg = kind\n        if (name, arg) in seen:\n            return done(\"loop\", None, step)\n        seen.add((name, arg))\n        obs = observe(tools, name, arg, max_obs_chars)\n        log.append(\"Observation: \" + obs)\n    return done(\"max_steps\", None, max_steps)",
+   "keyLines": [
+    37,
+    48,
+    51
+   ],
+   "dryRun": [
+    "Input tokens: $\\sum_{s=1}^{S}(P + s\\,c) = SP + c\\,\\frac{S(S+1)}{2}$",
+    "Step size: $c \\leq t + o_{\\max}$",
+    "Context: $\\leq P + s\\,(t + o_{\\max})$",
+    "Success: $\\prod_{s=1}^{S} p_s = p^{S}$"
+   ],
+   "description": "Open-ended tasks where the next step depends on what the last tool returned: multi-hop questions, debugging, research, exploring an unfamiliar system. Use it when the path cannot be written down in advance.",
+   "examples": [
+    {
+     "input": "How is ReAct different from plain chain-of-thought?",
+     "output": "Chain-of-thought reasons only from the prompt. ReAct interleaves reasoning with actions, so each thought can use fresh observations from tools.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is the token cost of a loop quadratic in the number of steps?",
+     "output": "Every step resends the whole history, so step $s$ reads about $P + s\\,c$ tokens and the total grows like $S^2$.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you detect and handle a stuck agent?",
+     "output": "Track (tool, input) pairs already used and stop on a repeat, and keep a hard step budget. Then report the stop reason instead of returning a guess.",
+     "explanation": ""
+    },
+    {
+     "input": "ReAct loop or fixed workflow?",
+     "output": "Use a workflow when the steps are known: it is cheaper and predictable. Use the loop when the next step depends on tool results.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Maximum steps",
+    "Observation character or token limit",
+    "Number of format re-prompts allowed",
+    "Which tools are exposed and how they are described"
+   ],
+   "edgeCases": [
+    "No step budget means a confused model can loop forever and spend without limit",
+    "Untruncated observations let one large page or file fill the context window",
+    "Crashing on an unknown tool or a tool error removes the chance for the model to recover",
+    "Tool output is untrusted text and can carry injected instructions that the model may follow"
+   ],
+   "related": [
+    "prompt-injection-defense",
+    "structured-outputs-json-schema",
+    "context-window-limits"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "agent-memory",
+   "title": "Agent Memory (Short-Term Window and Long-Term Store)",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2304.03442",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Agents",
+    "Memory",
+    "Retrieval"
+   ],
+   "patterns": [],
+   "summary": "Short-term memory keeps the conversation under a token budget by replacing old turns with a summary; long-term memory retrieves stored facts by mixing relevance, recency and importance.",
+   "bruteForce": "Short single-shot tasks that fit in context, where memory machinery only adds latency and a chance of retrieving a wrong fact.",
+   "intuition": "The context window is scarce, so an agent needs two policies: what to forget from the live conversation (summarise the oldest turns) and what to bring back from a big store. Relevance alone returns stale trivia; recency alone ignores what matters, so the retrieval score blends similarity with a decaying freshness and a fixed importance. Flow: new turn → trim window + summary → query store → top-k memories → prompt.",
+   "whyItWorks": "Cosine similarity ranks by topical match, the exponential term $0.5^{\\mathrm{age}/h}$ halves a memory's freshness every $h$ time units so recent items get a bounded boost, and importance lifts rare but vital facts. A linear mix lets you tune the trade-off, and normalising each term to a similar range keeps one from swamping the others. A summary of dropped turns trades exact wording for a much smaller token cost.",
+   "approach": [
+    "Count tokens per message and keep the newest turns that fit — the latest turn is what the model must answer",
+    "Replace dropped turns with one summary message — keeps the gist at a small token cost",
+    "Store each memory with its vector, timestamp and importance — three signals to rank on",
+    "Score $a \\cdot \\mathrm{sim} + b \\cdot 0.5^{\\mathrm{age}/h} + c \\cdot \\mathrm{imp}$ — relevance, freshness and importance in one number",
+    "Return the top-$k$ by score — only a few memories enter the prompt"
+   ],
+   "time": "O(n·d) to score n memories of dimension d; the window loop is O(n²) in turns as written",
+   "space": "O(n·d) for the store; the window holds only the budgeted tokens",
+   "solution": "import numpy as np\n\ndef recency_decay(age, half_life):\n    return 0.5 ** (age / half_life)\n\ndef cosine(a, b):\n    return a @ b / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12)\n\ndef retrieve(memories, query_vec, k, weights, now,\n             half_life=10.0):\n    a, b, c = weights\n    scored = []\n    for m in memories:\n        s = (a * cosine(query_vec, m[\"vec\"])\n             + b * recency_decay(now - m[\"t\"], half_life)\n             + c * m[\"imp\"])\n        scored.append((s, m[\"text\"]))\n    scored.sort(key=lambda x: -x[0])\n    return scored[:k]\n\ndef window_with_summary(messages, budget, summarise_fn,\n                        count_tokens):\n    keep, dropped = list(messages), []\n    while True:\n        head = []\n        if dropped:\n            head = [{\"role\": \"system\",\n                     \"content\": summarise_fn(dropped)}]\n        out = head + keep\n        used = sum(count_tokens(m) for m in out)\n        if len(keep) <= 1 or used <= budget:\n            return out\n        dropped.append(keep.pop(0))",
+   "keyLines": [
+    14,
+    16,
+    33
+   ],
+   "dryRun": [
+    "Score: $a\\,\\mathrm{sim}(q,m) + b\\,\\mathrm{decay} + c\\,\\mathrm{imp}$",
+    "Decay: $0.5^{\\mathrm{age}/h} = e^{-\\lambda\\,\\mathrm{age}}$",
+    "with $\\lambda = \\ln 2 / h$, so $\\mathrm{decay}(h) = \\frac{1}{2}$",
+    "Similarity: $\\frac{q \\cdot m}{\\|q\\|\\,\\|m\\|}$",
+    "Window: $\\sum_i \\mathrm{tok}(m_i) \\leq B$ incl. summary"
+   ],
+   "description": "Long-running assistants and agents whose history exceeds the context window, or that must recall earlier facts, preferences or events across sessions.",
+   "examples": [
+    {
+     "input": "What are the two kinds of agent memory?",
+     "output": "Short-term memory is the live conversation inside the context window; long-term memory is an external store of facts retrieved on demand.",
+     "explanation": ""
+    },
+    {
+     "input": "Why mix recency and importance with similarity?",
+     "output": "Similarity alone can return old or trivial items. Recency favours fresh facts and importance protects key facts that are old but still matter.",
+     "explanation": ""
+    },
+    {
+     "input": "What is lost when old turns are summarised?",
+     "output": "Exact wording and rare details. Summaries compress, so critical facts should be written to the long-term store before the turns are dropped.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Score weights $a$, $b$, $c$",
+    "Recency half-life $h$",
+    "Retrieval size $k$",
+    "Token budget for the window"
+   ],
+   "edgeCases": [
+    "Unnormalised terms: if one term has a larger range its weight is effectively larger than intended",
+    "Repeatedly summarising a summary drifts and loses facts; keep key facts in the store",
+    "If the newest turn alone exceeds the budget this code still keeps it, so the budget can be exceeded"
+   ],
+   "related": [
+    "context-engineering",
+    "rag-dense-retrieval",
+    "cosine-similarity-embeddings"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "agentic-workflow-patterns",
+   "title": "Agentic Workflow Patterns",
+   "platform": "LLM",
+   "url": "https://www.anthropic.com/engineering/building-effective-agents",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Agents",
+    "Orchestration",
+    "Prompting"
+   ],
+   "patterns": [],
+   "summary": "Five composable patterns between one prompt and a free-running agent: prompt chaining, routing, parallelisation, orchestrator-workers and evaluator-optimizer. Workflows follow code paths you wrote; agents choose their own steps.",
+   "bruteForce": "When a single well-prompted call with retrieval and examples already meets the bar; every added call costs latency and money. Prefer a workflow over an agent when the steps are known in advance.",
+   "intuition": "The real design choice is who holds the control flow. In a workflow your code decides the next step and the model only fills in the content, so behaviour is predictable and testable; in an agent the model decides, which buys flexibility at the price of latency, cost and compounding errors. Each pattern is a small fixed shape that adds one capability: a gate to stop bad intermediate output, a router to specialise, redundancy to cut variance, a planner for unknown subtasks, a critic for refinement. Start from a single call and add a pattern only when it measurably helps. Flow: input → classify → specialised handler → gate → result.",
+   "whyItWorks": "Gating bounds error propagation, since a chain of $k$ steps with success rate $s$ succeeds end to end with $s^k$ and a gate stops early instead of spending the remaining calls. Voting works because independent errors rarely agree, so the majority is right more often than one worker. Routing, planning and critique each replace one overloaded prompt with several focused ones.",
+   "approach": [
+    "Chain steps with a programmatic gate after each — a failed check stops early instead of passing garbage on",
+    "Route by a classifier with a default handler — each input type gets a focused prompt, unknown types still get an answer",
+    "Run workers in parallel and vote — independent errors cancel, the majority is more reliable than one call",
+    "Let a planner split the task, run each part once, then synthesise in order — for subtasks you cannot list in advance",
+    "Generate, critique, repeat until accepted or $R_{\\max}$ rounds — refinement with a hard cap on cost"
+   ],
+   "time": "Sum of the calls made: $k$ for a chain, $n$ for a vote, up to $R_{\\max}$ generate and evaluate pairs for a loop",
+   "space": "O(1) extra state for a chain or loop; O(n) held results for a vote or orchestrator",
+   "solution": "from collections import Counter\n\ndef chain(steps, gate, x):\n    for i, step in enumerate(steps):\n        x = step(x)\n        ok, why = gate(i, x)\n        if not ok:\n            return x, f\"stop at step {i}: {why}\"\n    return x, \"done\"\n\ndef route(classify, handlers, default, x):\n    return handlers.get(classify(x), default)(x)\n\ndef parallel_vote(workers, x):\n    c = Counter(w(x) for w in workers)\n    top = max(c.values())\n    return min(v for v in c if c[v] == top)\n\ndef orchestrator_workers(plan, worker, synth, x):\n    parts = plan(x)\n    return synth([worker(p) for p in parts])\n\ndef evaluator_optimizer(generate, evaluate, max_rounds):\n    fb = None\n    for r in range(1, max_rounds + 1):\n        draft = generate(fb)\n        ok, fb = evaluate(draft)\n        if ok:\n            break\n    return draft, r",
+   "keyLines": [
+    6,
+    17,
+    27
+   ],
+   "dryRun": [
+    "Chain of $k$ steps, success $s$ each: $s^k$",
+    "Majority of $n$ (odd) voters, right w.p. $p$:",
+    "$\\sum_{k=(n+1)/2}^{n} \\binom{n}{k}\\, p^{k} (1-p)^{n-k}$",
+    "$p > \\frac{1}{2}$: more voters help; $p < \\frac{1}{2}$: they hurt",
+    "Loop, accept prob $q$: $1 - (1-q)^{R}$"
+   ],
+   "description": "When one prompt is not reliable enough and the task decomposes into known shapes: fixed stages (chain), distinct input types (routing), independent checks or a need for lower variance (parallel), unknown subtasks (orchestrator-workers), or a clear quality criterion (evaluator-optimizer).",
+   "examples": [
+    {
+     "input": "What is the difference between a workflow and an agent?",
+     "output": "In a workflow, predefined code paths decide the next step and the model fills in content. In an agent, the model dynamically decides its own steps and tool use, which is more flexible but less predictable and more costly.",
+     "explanation": ""
+    },
+    {
+     "input": "When does voting help, and when does it not?",
+     "output": "It helps when worker errors are independent and each is right more often than not. If the workers share the same bias, or each is right less than half the time, more votes do not help or make things worse.",
+     "explanation": ""
+    },
+    {
+     "input": "How does orchestrator-workers differ from parallelisation?",
+     "output": "In parallelisation the subtasks are fixed in advance; in orchestrator-workers a planner decides the subtasks at run time from the input, then a synthesiser merges the results.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you stop an evaluator-optimizer loop from running forever?",
+     "output": "Cap the rounds and stop as soon as the evaluator accepts, and return the best draft so far when the cap is hit.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Gate checks and what counts as a pass for each chain step",
+    "Number of voters $n$ (odd avoids ties) and the tie-break rule",
+    "Maximum rounds $R_{\\max}$ for the evaluator-optimizer loop",
+    "Default handler used when the router meets an unknown class"
+   ],
+   "edgeCases": [
+    "Voters that share the same prompt and model are correlated, so the $n$ votes carry far less than $n$ independent votes",
+    "A router with no default handler fails on any input the classifier did not anticipate",
+    "Long chains multiply failure: with $s = 0.95$ and $k = 10$ the end-to-end success is only about $0.60$",
+    "An evaluator that is too lenient accepts bad drafts; one that is too strict burns every round"
+   ],
+   "related": [
+    "chain-of-thought-self-consistency",
+    "context-engineering",
+    "llm-as-judge"
    ],
    "diagram": []
   },
@@ -2062,6 +2385,87 @@
     "temperature-sampling",
     "hallucination-detection",
     "autoregressive-decoding"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "chat-completions-request-schema",
+   "title": "Chat Completion Requests, Responses and Token Cost",
+   "platform": "LLM",
+   "url": "https://json-schema.org/understanding-json-schema/reference/object",
+   "difficulty": "Easy",
+   "topics": [
+    "LLM APIs",
+    "JSON Schema",
+    "Token Cost"
+   ],
+   "patterns": [],
+   "summary": "A chat API takes messages, a model name and sampling parameters, and returns choices with a finish reason plus token usage. Validate both sides, price the usage, and check that the prompt and the reply budget fit the context window.",
+   "bruteForce": "Do not rely on the schema alone for correctness of the model's text; it checks shape, not meaning. Providers differ in details, so use their own documented schema when you need strict compatibility.",
+   "intuition": "Almost every chat endpoint has the same contract: a list of role-tagged messages in, a list of choices out, and a usage record that is the basis of the bill. Two numbers matter most operationally. The finish reason says why generation stopped, and length means the reply was cut at the token limit, so the text may be incomplete. The token counts give the cost, and the prompt plus the reply budget must fit in the context window or the call is rejected or truncated. Flow: request → schema check → fits context? → response → usage → cost, truncated?",
+   "whyItWorks": "Billing is linear in token counts, so the cost is a dot product of the counts with the two prices. Generation stops for exactly one reason: an end of sequence, a stop string, a tool call, or the token limit. The finish reason records which, so length is the only case where the model had more to say. The context check holds because the prompt and the generated tokens share one window of size $L$.",
+   "approach": [
+    "Describe the request as a JSON Schema with required model and messages — a malformed call fails before any network use",
+    "Constrain each field: role from a fixed set, $temperature$ in a range, $max\\_tokens$ a positive integer — bad values are caught locally",
+    "Check that $\\mathrm{prompt} + \\mathrm{max\\_tokens} \\leq L$ — otherwise the context window cannot hold the reply budget",
+    "Validate the response: choices with a message and a finish reason, and usage with both counts — parse nothing unchecked",
+    "Compute the cost as $(p \\cdot \\pi_{in} + c \\cdot \\pi_{out}) / 10^6$ — prices are quoted per million tokens",
+    "Treat a finish reason of length as truncation — retry with a larger budget or continue the text"
+   ],
+   "time": "O(size of the message) to validate; O(1) for cost and the context check",
+   "space": "O(1) beyond the request and response themselves",
+   "solution": "import jsonschema\n\nNUM, INT = {\"type\": \"number\"}, {\"type\": \"integer\"}\nSTR = {\"type\": \"string\"}\nMSG = {\"type\": \"object\", \"required\": [\"role\", \"content\"],\n       \"properties\": {\n           \"role\": {\"enum\": [\"system\", \"user\", \"assistant\", \"tool\"]},\n           \"content\": STR}}\n\nREQUEST_SCHEMA = {\n    \"type\": \"object\", \"required\": [\"model\", \"messages\"],\n    \"properties\": {\n        \"model\": {\"type\": \"string\", \"minLength\": 1},\n        \"messages\": {\"type\": \"array\", \"minItems\": 1, \"items\": MSG},\n        \"temperature\": {**NUM, \"minimum\": 0, \"maximum\": 2},\n        \"top_p\": {**NUM, \"exclusiveMinimum\": 0, \"maximum\": 1},\n        \"max_tokens\": {**INT, \"minimum\": 1},\n        \"stop\": {\"type\": \"array\", \"items\": STR},\n        \"tools\": {\"type\": \"array\", \"items\": {\n            \"type\": \"object\", \"required\": [\"name\"]}}}}\n\nCOUNT = {**INT, \"minimum\": 0}\nREASON = {\"enum\": [\"stop\", \"length\", \"tool_calls\"]}\nCHOICE = {\"type\": \"object\",\n          \"required\": [\"message\", \"finish_reason\"],\n          \"properties\": {\n              \"message\": MSG,\n              \"finish_reason\": REASON}}\nRESPONSE_SCHEMA = {\n    \"type\": \"object\", \"required\": [\"choices\", \"usage\"],\n    \"properties\": {\n        \"choices\": {\"type\": \"array\", \"minItems\": 1, \"items\": CHOICE},\n        \"usage\": {\"type\": \"object\",\n                  \"required\": [\"prompt_tokens\", \"completion_tokens\"],\n                  \"properties\": {\"prompt_tokens\": COUNT,\n                                 \"completion_tokens\": COUNT}}}}\n\ndef validate_request(req):\n    jsonschema.validate(req, REQUEST_SCHEMA)\n\ndef usage_cost(usage, price_in, price_out):\n    p, c = usage[\"prompt_tokens\"], usage[\"completion_tokens\"]\n    return (p * price_in + c * price_out) / 1e6\n\ndef is_truncated(resp):\n    return resp[\"choices\"][0][\"finish_reason\"] == \"length\"\n\ndef fits_context(prompt_tokens, max_tokens, limit):\n    return prompt_tokens + max_tokens <= limit",
+   "keyLines": [
+    39,
+    42,
+    46
+   ],
+   "dryRun": [
+    "Cost: $\\frac{p\\,\\pi_{in} + c\\,\\pi_{out}}{10^6}$",
+    "Total tokens: $p + c$",
+    "Fit: $p + \\mathrm{max\\_tokens} \\leq L$",
+    "Reply budget: $\\mathrm{max\\_tokens} \\leq L - p$",
+    "Mean price: $\\frac{\\mathrm{cost}}{p + c}$ per token"
+   ],
+   "description": "Any client or gateway that calls a chat endpoint: validate before sending to fail fast, and read usage and finish reason on every reply to track spend and detect cut-off answers.",
+   "examples": [
+    {
+     "input": "Why are output tokens usually priced higher than input tokens?",
+     "output": "Prompt tokens are processed in one parallel pass, while output tokens are produced one at a time, each needing a full forward step, so they use more compute per token.",
+     "explanation": ""
+    },
+    {
+     "input": "What does a finish reason of length tell you?",
+     "output": "The reply hit the max_tokens limit or the context limit and was cut, so it may end mid-sentence or mid-JSON. Raise the budget, shorten the prompt, or ask the model to continue.",
+     "explanation": ""
+    },
+    {
+     "input": "Why validate the request locally?",
+     "output": "It fails fast with a clear message, avoids a billed or rate-limited round trip for an obviously bad call, and documents the contract in one place.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you budget the context window?",
+     "output": "The prompt tokens plus the requested max_tokens must not exceed the window, so the reply budget is the window minus the prompt length.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Temperature (a range check is $0$ to $2$ here) and $top\\_p$",
+    "Maximum output tokens",
+    "Stop sequences",
+    "Context limit $L$ of the chosen model"
+   ],
+   "edgeCases": [
+    "Ignoring finish reason length and shipping a truncated answer or invalid JSON",
+    "Reading prices as per token when they are quoted per million tokens, which is off by a factor of $10^6$",
+    "Forgetting that $max\\_tokens$ counts against the context window, so a long prompt leaves little room",
+    "Hard-coding one provider's field names; keep the schema in one place so it can be swapped"
+   ],
+   "related": [
+    "context-window-limits",
+    "structured-outputs-json-schema",
+    "temperature-sampling"
    ],
    "diagram": []
   },
@@ -5351,6 +5755,88 @@
    "diagram": []
   },
   {
+   "slug": "function-calling-dispatch",
+   "title": "Function Calling and Tool Dispatch",
+   "platform": "LLM",
+   "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Tool Use",
+    "JSON Schema",
+    "Agents"
+   ],
+   "patterns": [],
+   "summary": "Tools are declared with a name, a description and a JSON Schema; the model emits a call as a name plus JSON arguments, and the application validates, runs the function and feeds the result back as a tool message.",
+   "bruteForce": "Fixed pipelines where the steps are known in advance, which are cheaper and more predictable as plain code. Also avoid exposing tools with side effects, such as deletes or payments, without confirmation or a permission layer.",
+   "intuition": "The model never runs anything. It only writes text that names a tool and its arguments, and that text is untrusted input. All the safety lives in the dispatcher: parse, validate against the schema, and only then execute. Returning a structured error instead of raising turns a bad call into feedback the model can read and correct on its next turn. Flow: declare tools → model emits call → parse JSON → validate → run → tool message → model answers or calls again.",
+   "whyItWorks": "A JSON Schema is a precise, machine-checkable contract. The same schema both tells the model what arguments exist and lets the dispatcher reject anything off-contract before any side effect. Errors are returned as ordinary tool messages, so the loop continues and the model sees exactly what was wrong; the step limit guarantees termination even if it never recovers.",
+   "approach": [
+    "Register each tool with a name, a JSON Schema and a function — the schema is shown to the model and also used to check its calls",
+    "Look the name up first — an unknown tool becomes an error message listing the real names",
+    "Parse the argument string as JSON — models sometimes emit invalid JSON, which is reported rather than crashing",
+    "Validate against the schema before executing — wrong types or missing fields never reach the function",
+    "Run the function inside a try block and wrap the outcome as a tool message tied to the call id — dispatch never raises",
+    "Append the assistant turn and then each tool message in call order — parallel calls stay aligned with their ids",
+    "Stop when the model answers without a call, or when the step limit is hit — the limit bounds cost and runaway loops"
+   ],
+   "time": "O(S · (model call + calls per step · validation)) for S steps",
+   "space": "O(S · c) message history, resent to the model at every step",
+   "solution": "import json\nfrom jsonschema import Draft202012Validator\n\nclass ToolRegistry:\n    def __init__(self):\n        self.tools = {}\n\n    def register(self, name, schema, fn, description=\"\"):\n        check = Draft202012Validator(schema)\n        self.tools[name] = (description, schema, check, fn)\n\n    def declarations(self):\n        return [{\"name\": n, \"description\": d, \"parameters\": s}\n                for n, (d, s, _, _) in self.tools.items()]\n\n    def dispatch(self, call):\n        cid, name = call.get(\"id\"), call.get(\"name\")\n\n        def msg(ok, body):\n            return {\"role\": \"tool\", \"tool_call_id\": cid,\n                    \"name\": name, \"ok\": ok,\n                    \"content\": json.dumps(body)}\n\n        if name not in self.tools:\n            return msg(False, {\"error\": \"unknown_tool\",\n                               \"available\": sorted(self.tools)})\n        _, _, check, fn = self.tools[name]\n        try:\n            args = json.loads(call.get(\"arguments\", \"\"))\n        except ValueError as e:\n            return msg(False, {\"error\": \"invalid_json\",\n                               \"detail\": str(e)})\n        errs = sorted(e.message for e in check.iter_errors(args))\n        if errs:\n            return msg(False, {\"error\": \"invalid_arguments\",\n                               \"details\": errs})\n        try:\n            return msg(True, {\"result\": fn(**args)})\n        except Exception as e:\n            return msg(False, {\"error\": \"tool_failed\",\n                               \"detail\": repr(e)})\n\ndef run_tool_loop(model_fn, messages, registry, max_steps=5):\n    for step in range(1, max_steps + 1):\n        reply = model_fn(messages, registry.declarations())\n        calls = reply.get(\"tool_calls\") or []\n        messages.append({\"role\": \"assistant\",\n                         \"content\": reply.get(\"content\"),\n                         \"tool_calls\": calls})\n        if not calls:\n            return {\"stop\": \"answer\", \"steps\": step,\n                    \"answer\": reply.get(\"content\")}\n        for call in calls:\n            messages.append(registry.dispatch(call))\n    return {\"stop\": \"max_steps\", \"steps\": max_steps, \"answer\": None}",
+   "keyLines": [
+    33,
+    38,
+    46
+   ],
+   "dryRun": [
+    "Input tokens: $\\sum_{s=1}^{S} (P + s\\,c) = SP + c\\,\\frac{S(S+1)}{2}$",
+    "Sequential latency: $\\sum_{i} \\ell_i$",
+    "Parallel latency: $\\max_{i} \\ell_i$",
+    "Success: $P = \\prod_{s=1}^{S} p_s$"
+   ],
+   "description": "Letting a model act on the world or fetch fresh data: look up a record, call an API, run a calculation. Any time the model's output must feed code, a schema check at the boundary keeps bad calls harmless.",
+   "examples": [
+    {
+     "input": "Why validate arguments if the model was given the schema?",
+     "output": "The model is a text generator and can still emit wrong types, missing fields or invalid JSON. Validation at the boundary keeps those out of your functions.",
+     "explanation": ""
+    },
+    {
+     "input": "Why return errors as tool messages instead of raising?",
+     "output": "A raised exception ends the loop. A structured error lets the model read what went wrong and retry with corrected arguments.",
+     "explanation": ""
+    },
+    {
+     "input": "How do parallel calls work?",
+     "output": "The model returns several calls in one turn, each with an id. You run them and return one tool message per id, then the model continues with all results.",
+     "explanation": ""
+    },
+    {
+     "input": "How is the loop kept from running forever?",
+     "output": "A step limit, plus returning a clear stop reason so the caller knows the answer was not reached.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Maximum steps in the loop",
+    "Number of tools exposed, since every schema costs prompt tokens",
+    "Whether the model may emit parallel calls",
+    "Per-tool timeout and result size limit"
+   ],
+   "edgeCases": [
+    "Executing the function before validating lets malformed model output cause side effects",
+    "Letting an exception escape dispatch ends the loop instead of giving the model feedback",
+    "Dropping the call id breaks the pairing of results with parallel calls",
+    "Vague tool descriptions make the model pick the wrong tool, since the description is its only guide"
+   ],
+   "related": [
+    "structured-outputs-json-schema",
+    "output-validation-guardrails",
+    "prompt-injection-defense"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "gae-advantage",
    "title": "Generalised Advantage Estimation",
    "platform": "RL",
@@ -6803,6 +7289,89 @@
     "k-means",
     "dbscan",
     "pca"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "huggingface-generate-pipeline",
+   "title": "Hugging Face Style Text Generation Pipeline",
+   "platform": "LLM",
+   "url": "https://huggingface.co/docs/transformers/llm_tutorial",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Tokenization",
+    "Generation",
+    "Batching"
+   ],
+   "patterns": [],
+   "summary": "A generation call is text → tokenizer → input ids and attention mask → generate → output ids → decode; batches need left padding with a mask so that decoder-only models continue from real tokens.",
+   "bruteForce": "Encoder-decoder models, where the decoder starts from its own start token and padding conventions differ, or serving stacks with their own continuous batching that hide padding entirely.",
+   "intuition": "The model only sees integers. Batching forces equal lengths, so short prompts get pad tokens, and where those pads sit decides everything: a decoder-only model predicts the next token from the last position, so right padding makes it continue from a pad, while left padding keeps the real last token at the end. The attention mask hides the pads from attention, and generate adds each new token to the end of the same ids. Flow: text → ids + mask → generate → new ids → decode.",
+   "whyItWorks": "Causal attention makes the logits at position $i$ depend only on the earlier non-masked tokens. With left padding and position ids from the mask, a padded prompt gives the same logits at its last real token as the unpadded prompt, so batched greedy output equals the single-prompt output.",
+   "approach": [
+    "Tokenize the prompts to ids — the model needs integers, not strings",
+    "Pad on the left to the longest prompt — the last position must hold a real token",
+    "Build the attention mask, 1 for real and 0 for pad — pads must not be attended to",
+    "Derive position ids from the mask cumulative sum — real tokens start at position 0 despite the padding",
+    "Run the model and append the argmax (greedy) or a sampled id, then repeat — one token per step",
+    "Slice off the prompt columns and decode with special tokens skipped — gives only the new text"
+   ],
+   "time": "O(T) forward passes for T new tokens; each costs O(L·d) per layer with a cache, O(L²·d) without",
+   "space": "O(B·L) ids and mask, plus the cache if used",
+   "solution": "import torch\nfrom tokenizers import Tokenizer\nfrom tokenizers.models import WordLevel\nfrom tokenizers.pre_tokenizers import Whitespace\nfrom transformers import GPT2Config, GPT2LMHeadModel\n\nWORDS = [\"<pad>\", \"<unk>\", \"the\", \"cat\", \"sat\", \"on\", \"mat\",\n         \"dog\", \"ran\", \"a\", \"big\"]\n\ndef build(seed=0):\n    vocab = {w: i for i, w in enumerate(WORDS)}\n    tok = Tokenizer(WordLevel(vocab, unk_token=\"<unk>\"))\n    tok.pre_tokenizer = Whitespace()\n    tok.add_special_tokens([\"<pad>\"])\n    torch.manual_seed(seed)\n    cfg = GPT2Config(vocab_size=len(WORDS), n_embd=32, n_layer=2,\n                     n_head=2, n_positions=64, pad_token_id=0)\n    return tok, GPT2LMHeadModel(cfg).eval()\n\ndef encode(tok, texts, side=\"left\"):\n    ids = [tok.encode(t).ids for t in texts]\n    n = max(len(r) for r in ids)\n    rows, mask = [], []\n    for r in ids:\n        pad = [0] * (n - len(r))\n        real = [1] * len(r)\n        rows.append(pad + r if side == \"left\" else r + pad)\n        mask.append([0] * len(pad) + real if side == \"left\"\n                    else real + [0] * len(pad))\n    return torch.tensor(rows), torch.tensor(mask)\n\n@torch.no_grad()\ndef manual_greedy(model, input_ids, attention_mask, max_new_tokens):\n    ids, mask = input_ids, attention_mask\n    for _ in range(max_new_tokens):\n        pos = (mask.cumsum(-1) - 1).clamp(min=0)\n        logits = model(input_ids=ids, attention_mask=mask,\n                       position_ids=pos).logits\n        nxt = logits[:, -1].argmax(-1, keepdim=True)\n        ids = torch.cat([ids, nxt], dim=1)\n        mask = torch.cat([mask, torch.ones_like(nxt)], dim=1)\n    return ids\n\ndef decode(tok, ids):\n    return [tok.decode(r.tolist(), skip_special_tokens=True)\n            for r in ids]",
+   "keyLines": [
+    36,
+    39,
+    40
+   ],
+   "dryRun": [
+    "Position: $p_i = \\left(\\sum_{j \\leq i} m_j\\right) - 1$",
+    "Mask: $s_{ij} = -\\infty$ where $m_j = 0$",
+    "Greedy: $x_{t+1} = \\arg\\max_v\\, z_{\\mathrm{last},v}$",
+    "Pads: $L_{\\max} - L_i$ for prompt $i$",
+    "Use: $\\frac{\\sum_i L_i}{B \\cdot L_{\\max}}$",
+    "Length: $L_{\\max} + T_{\\mathrm{new}}$"
+   ],
+   "description": "Understanding or debugging what a generation call does: why batched outputs differ from single ones, why a pad token must be set, and why generated ids include the prompt unless you slice them off.",
+   "examples": [
+    {
+     "input": "Why must decoder-only models be left-padded for generation?",
+     "output": "The next token is predicted from the last position. With right padding that position is a pad, so the model continues from padding instead of the prompt; left padding keeps the last real token at the end.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the attention mask do?",
+     "output": "It marks real tokens with 1 and pads with 0 so pad positions are excluded from attention. It also lets position ids be computed so real tokens start at position 0.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does generate return the prompt too?",
+     "output": "For decoder-only models the new tokens are appended to the input ids. Slice off the first prompt-length columns to keep only the generated part.",
+     "explanation": ""
+    },
+    {
+     "input": "How do greedy and sampling differ in the call?",
+     "output": "Greedy takes the argmax each step. Sampling arguments such as temperature, top-k and top-p reshape the distribution and draw from it, so outputs vary from run to run.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "max_new_tokens, the generation length cap",
+    "do_sample, temperature, top_k and top_p",
+    "Padding side and the pad token id",
+    "Batch size"
+   ],
+   "edgeCases": [
+    "Using the default right padding with a decoder-only model silently degrades batched outputs",
+    "Forgetting the attention mask or the pad token id makes pads count as real context",
+    "Decoding the full output returns the prompt plus the answer; slice the prompt off first",
+    "The default length cap is small, so set max_new_tokens explicitly"
+   ],
+   "related": [
+    "autoregressive-decoding",
+    "gpt-decoder-only",
+    "kv-cache"
    ],
    "diagram": []
   },
@@ -8322,6 +8891,88 @@
    "diagram": []
   },
   {
+   "slug": "llm-api-retries-rate-limits",
+   "title": "LLM API Rate Limits, Token Buckets and Safe Retries",
+   "platform": "LLM",
+   "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/429",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM APIs",
+    "Rate Limiting",
+    "Reliability"
+   ],
+   "patterns": [],
+   "summary": "Provider limits are counted in requests and in tokens per minute. Estimate the token cost before sending, throttle yourself with a token bucket, honour 429 with Retry-After, and retry with an idempotency key.",
+   "bruteForce": "A single interactive caller far below the limits, where a plain retry on 429 is enough. The local estimate is also only an approximation, so it complements the server's own limit and never replaces it.",
+   "intuition": "A generic retry loop reacts after the server says no, and every rejected call still burns time and may count against your quota. LLM APIs charge and limit by tokens, and you know most of the cost up front: the prompt length plus the $max\\_tokens$ you ask for. So spend a budget you track locally. A token bucket holds up to $C$ units and refills at $r$ per second, which allows a burst of at most $C$ and a long-run rate of at most $r$; a request that does not fit waits exactly $(c - \\mathrm{tokens})/r$ seconds instead of guessing. Flow: estimate cost → bucket check → wait or send → 429 → Retry-After → resend same key.",
+   "whyItWorks": "The bucket holds at most $C$, so any burst is bounded by $C$. Over a window of length $T$ it can release at most $C + rT$, so the long-run throughput cannot exceed $r$. Sleeping exactly the shortfall divided by $r$ means the next attempt succeeds without polling, and the server-provided Retry-After covers the case where your estimate was wrong.",
+   "approach": [
+    "Estimate the cost $c$ as prompt tokens plus requested $max\\_tokens$ — the worst case the provider will count",
+    "Refill lazily as $\\min(C, \\mathrm{tokens} + r\\,\\Delta t)$ — no timer thread, only the injected clock",
+    "Allow the request when $\\mathrm{tokens} \\geq c$ and subtract $c$ — a burst never exceeds $C$",
+    "Otherwise sleep $(c - \\mathrm{tokens})/r$ — the exact time until the budget covers the cost",
+    "Reject $c > C$ at once with a clear error — no wait could ever satisfy it",
+    "On 429 sleep the Retry-After seconds and resend with the same idempotency key — the server can deduplicate"
+   ],
+   "time": "O(1) per acquire; a blocked request sleeps about $(c - \\mathrm{tokens})/r$ seconds",
+   "space": "O(1) per bucket: two numbers, the tokens and the last timestamp",
+   "solution": "import hashlib\n\nclass TokenBucket:\n    def __init__(self, capacity, rate, clock):\n        self.cap, self.rate = capacity, rate\n        self.clock = clock\n        self.tokens = capacity\n        self.last = clock()\n\n    def _refill(self):\n        now = self.clock()\n        gain = (now - self.last) * self.rate\n        self.tokens = min(self.cap, self.tokens + gain)\n        self.last = now\n\n    def try_acquire(self, cost):\n        if cost > self.cap:\n            raise ValueError(f\"cost {cost} > capacity {self.cap}\")\n        self._refill()\n        if self.tokens >= cost - 1e-9:\n            self.tokens = max(0.0, self.tokens - cost)\n            return True\n        return False\n\n    def wait_time(self, cost):\n        self._refill()\n        return max(0.0, (cost - self.tokens) / self.rate)\n\ndef estimate_tokens(text, max_out):\n    return -(-len(text) // 4) + max_out\n\ndef send_with_limits(send, text, max_out, bucket, sleep, tries=3):\n    cost = estimate_tokens(text, max_out)\n    key = hashlib.sha256(text.encode()).hexdigest()[:16]\n    for _ in range(tries):\n        while not bucket.try_acquire(cost):\n            sleep(bucket.wait_time(cost))\n        status, retry_after, body = send(text, key)\n        if status != 429:\n            return body\n        sleep(float(retry_after))\n    raise RuntimeError(\"still rate limited after retries\")",
+   "keyLines": [
+    13,
+    20,
+    27
+   ],
+   "dryRun": [
+    "Refill: $\\mathrm{tokens} = \\min(C,\\, \\mathrm{tokens} + r\\,\\Delta t)$",
+    "Allow if $\\mathrm{tokens} \\geq c$, then subtract $c$",
+    "Wait: $\\max\\left(0, \\frac{c - \\mathrm{tokens}}{r}\\right)$",
+    "Released in a window: $\\leq C + rT$",
+    "N requests need: $T \\geq \\frac{N c - C}{r}$",
+    "Cost: $c \\approx \\lceil \\mathrm{chars}/4 \\rceil + \\mathrm{max\\_tokens}$"
+   ],
+   "description": "Any client that calls a hosted LLM at volume: batch jobs, agents with parallel tool calls, evaluation runs. Combine the bucket with a concurrency cap (a semaphore) and with the general backoff in json-api-requests-retries.",
+   "examples": [
+    {
+     "input": "Why a token bucket instead of a fixed counter per minute?",
+     "output": "A fixed window lets a client send a full quota at the end of one window and another at the start of the next, doubling the burst. The bucket refills continuously and bounds both burst and average rate.",
+     "explanation": ""
+    },
+    {
+     "input": "Why count tokens and not only requests?",
+     "output": "Providers limit tokens per minute and bill per token, so one long prompt can use more quota than many short ones. A request-only limiter would still trigger 429s.",
+     "explanation": ""
+    },
+    {
+     "input": "Why an idempotency key on retries?",
+     "output": "If a timeout hides whether the first call was processed, resending could run and bill the work twice. A stable key lets the server return the original result instead.",
+     "explanation": ""
+    },
+    {
+     "input": "How should concurrency interact with the limiter?",
+     "output": "Cap in-flight requests with a semaphore so a slow endpoint does not pile up work, and let the bucket gate the rate; the two limits protect different things.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Bucket capacity $C$, which sets the largest allowed burst",
+    "Refill rate $r$, set a little below the provider's tokens per minute",
+    "Maximum concurrent requests",
+    "Maximum retries and the safety margin on the token estimate"
+   ],
+   "edgeCases": [
+    "Estimating only the prompt and ignoring $max\\_tokens$ undercounts what the provider reserves and bills",
+    "Sleeping with the real clock inside the limiter makes tests slow and flaky; inject the clock and the sleeper",
+    "Retrying without a stable idempotency key can duplicate a non-idempotent side effect or its cost",
+    "A $c > C$ request waits forever if not rejected up front"
+   ],
+   "related": [
+    "json-api-requests-retries",
+    "context-window-limits",
+    "bpe-tokenization"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "llm-as-judge",
    "title": "LLM-as-a-Judge - Swap Consistency and Cohen's Kappa",
    "platform": "LLM",
@@ -9621,6 +10272,90 @@
    ]
   },
   {
+   "slug": "model-context-protocol-jsonrpc",
+   "title": "Model Context Protocol (JSON-RPC Tool Servers)",
+   "platform": "LLM",
+   "url": "https://modelcontextprotocol.io/specification/latest/server/tools",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Tool Use",
+    "Protocols",
+    "JSON-RPC"
+   ],
+   "patterns": [],
+   "summary": "A standard wire protocol for an LLM application (the client) to discover and call tools, and read resources, offered by separate servers; every message is JSON-RPC 2.0, so any client can talk to any server.",
+   "bruteForce": "A single application calling a handful of its own functions in process, where a direct function-calling registry is simpler. A protocol also does not remove the need to treat tool output as untrusted input to the model.",
+   "intuition": "Without a standard, each of $M$ applications needs custom glue for each of $N$ tools. With one protocol, a server describes its tools once (name, description, JSON Schema) and any client can list and call them, so the glue shrinks from $M \\cdot N$ adapters to $M + N$ implementations. JSON-RPC supplies the envelope: an id pairs each response with its request, and a message without an id is a notification that never gets a reply. Flow: list tools → model picks one → call with arguments → validate → result or error → back to model.",
+   "whyItWorks": "Discovery is data, not code: the tool list carries a JSON Schema, so the client can show it to the model and validate arguments without knowing the tool. JSON-RPC makes the exchange stateless per message: the echoed id matches replies to requests, errors have fixed numeric codes, and the no-reply rule for notifications keeps one-way events cheap. The transport only has to move strings.",
+   "approach": [
+    "Parse the text as JSON — on failure reply error $-32700$ with a null id, since no id could be read",
+    "Check it is a request object with a string method — otherwise error $-32600$",
+    "If there is no id, treat it as a notification and return nothing — the sender expects no reply",
+    "Route by method name — an unknown method gives error $-32601$",
+    "For a tool call, validate the arguments against its input schema — a mismatch gives $-32602$ and the tool never runs",
+    "Run the tool and return content blocks with an error flag — a failing tool is a result the model can read, not a protocol error",
+    "Client side: send a fresh id and check the response echoes it — this is how concurrent requests stay matched"
+   ],
+   "time": "O(|schema| + |arguments|) per call for validation, plus the tool itself",
+   "space": "O(number of tools) for the registry; no per-connection state",
+   "solution": "import json\nfrom jsonschema import Draft202012Validator\n\nPARSE, BAD_REQUEST, NO_METHOD = -32700, -32600, -32601\nBAD_PARAMS, INTERNAL = -32602, -32603\n\nclass RpcError(Exception):\n    def __init__(self, code, message):\n        self.code, self.message = code, message\n\ndef reply(id_, **body):\n    return json.dumps({\"jsonrpc\": \"2.0\", \"id\": id_, **body})\n\ndef failure(id_, code, message):\n    return reply(id_, error={\"code\": code, \"message\": message})\n\nclass Server:\n    def __init__(self):\n        self.tools = {}\n\n    def add_tool(self, name, description, schema, fn):\n        self.tools[name] = (description, schema, fn)\n\n    def tools_list(self, params):\n        return {\"tools\": [\n            {\"name\": n, \"description\": d, \"inputSchema\": s}\n            for n, (d, s, _) in self.tools.items()]}\n\n    def tools_call(self, params):\n        name = params.get(\"name\")\n        args = params.get(\"arguments\", {})\n        if not isinstance(name, str) or name not in self.tools:\n            raise RpcError(BAD_PARAMS, \"unknown tool \" + str(name))\n        _, schema, fn = self.tools[name]\n        errs = Draft202012Validator(schema).iter_errors(args)\n        msgs = [e.message for e in errs]\n        if msgs:\n            raise RpcError(BAD_PARAMS, \"; \".join(msgs))\n        try:\n            text, is_error = str(fn(**args)), False\n        except Exception as e:\n            text, is_error = repr(e), True\n        return {\"content\": [{\"type\": \"text\", \"text\": text}],\n                \"isError\": is_error}\n\n    def handle(self, text):\n        try:\n            msg = json.loads(text)\n        except ValueError:\n            return failure(None, PARSE, \"parse error\")\n        ok = (isinstance(msg, dict)\n              and msg.get(\"jsonrpc\") == \"2.0\"\n              and isinstance(msg.get(\"method\"), str))\n        if not ok:\n            id_ = msg.get(\"id\") if isinstance(msg, dict) else None\n            return failure(id_, BAD_REQUEST, \"invalid request\")\n        if \"id\" not in msg:\n            return None\n        route = {\"tools/list\": self.tools_list,\n                 \"tools/call\": self.tools_call}\n        try:\n            if msg[\"method\"] not in route:\n                raise RpcError(NO_METHOD, \"method not found\")\n            params = msg.get(\"params\", {})\n            if not isinstance(params, dict):\n                raise RpcError(BAD_PARAMS, \"params must be an object\")\n            result = route[msg[\"method\"]](params)\n            return reply(msg[\"id\"], result=result)\n        except RpcError as e:\n            return failure(msg[\"id\"], e.code, e.message)\n        except Exception:\n            return failure(msg[\"id\"], INTERNAL, \"internal error\")\n\nclass Client:\n    def __init__(self, server):\n        self.server, self.n = server, 0\n\n    def request(self, method, params=None, id_=None):\n        self.n += 1\n        id_ = self.n if id_ is None else id_\n        msg = {\"jsonrpc\": \"2.0\", \"id\": id_, \"method\": method}\n        if params is not None:\n            msg[\"params\"] = params\n        resp = json.loads(self.server.handle(json.dumps(msg)))\n        assert resp[\"id\"] == id_, \"response id mismatch\"\n        if \"error\" in resp:\n            raise RpcError(resp[\"error\"][\"code\"],\n                           resp[\"error\"][\"message\"])\n        return resp[\"result\"]\n\n    def notify(self, method, params=None):\n        msg = {\"jsonrpc\": \"2.0\", \"method\": method}\n        if params is not None:\n            msg[\"params\"] = params\n        assert self.server.handle(json.dumps(msg)) is None",
+   "keyLines": [
+    38,
+    58,
+    63
+   ],
+   "dryRun": [
+    "No protocol: $M \\cdot N$ adapters",
+    "With protocol: $M + N$ implementations",
+    "Messages: $2(1 + k) + n$",
+    "Tool prompt cost: $T \\cdot \\bar{a}$ tokens",
+    "Servers: $T = \\sum_{i} t_i$ tools in total",
+    "Success: $P = \\prod_{j=1}^{k} p_j$"
+   ],
+   "description": "Exposing the same tools or data to several LLM applications, or letting users plug third-party tool servers into an application without writing adapters. The same messages travel over a local process pipe or over HTTP, so one server fits both.",
+   "examples": [
+    {
+     "input": "What is the difference between a request and a notification?",
+     "output": "A request has an id and must get exactly one response carrying the same id. A notification has no id and the receiver must not reply.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does a parse error response have a null id?",
+     "output": "If the text is not valid JSON the server cannot read the request id, so the response uses a null id.",
+     "explanation": ""
+    },
+    {
+     "input": "Protocol error or tool error: where does a failing tool go?",
+     "output": "A malformed call or unknown method is a JSON-RPC error. A tool that ran and failed is better returned as a normal result with an error flag, so the model can read it and retry.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the protocol not give you?",
+     "output": "Trust. Tool descriptions and outputs come from a server and can carry injected instructions, so clients still need confirmation and filtering.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Transport: local pipe or HTTP, same messages either way",
+    "Per-call timeout and result size limit",
+    "Which tools to expose to the model, since each description costs tokens",
+    "Whether validation failures are protocol errors or tool results"
+   ],
+   "edgeCases": [
+    "Replying to a notification breaks the protocol; the sender is not listening for it",
+    "Running the tool before validating the arguments lets a malformed model call cause side effects",
+    "Returning an id other than the request id, or numeric ids as strings, breaks request matching",
+    "Trusting tool descriptions and outputs: they are untrusted text that goes into the model context"
+   ],
+   "related": [
+    "structured-outputs-json-schema",
+    "prompt-injection-defense",
+    "output-validation-guardrails"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "model-landscape",
    "title": "Choosing Among LLM Families (Decision Rule)",
    "platform": "LLM",
@@ -9775,6 +10510,87 @@
     "gradient-descent",
     "adam-optimizer",
     "learning-rate-schedules"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "multi-agent-orchestration",
+   "title": "Multi-Agent Orchestration",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2308.08155",
+   "difficulty": "Hard",
+   "topics": [
+    "LLM",
+    "Agents",
+    "Multi-Agent",
+    "Cost"
+   ],
+   "patterns": [],
+   "summary": "Several role-specialised LLM agents cooperate over a shared transcript. Design choices are who speaks next, when to stop, and how to pay for it: every agent re-reads a growing context.",
+   "bruteForce": "Problems one agent with the right tools can solve; extra agents add tokens, latency and failure modes without adding information. Avoid free-form debate when a deterministic workflow would do.",
+   "intuition": "A multi-agent system is a conversation loop with three levers: shared state (a blackboard everyone reads and writes, or direct messages), a turn policy (round-robin, a selector function, or a manager that chooses) and a stop rule (consensus, a judge, or a turn cap). The catch is cost: each message is appended to a transcript that every later turn must read in full, so total input tokens grow roughly quadratically in the number of messages. More agents means more messages, so split roles only when the roles need different context. Flow: board → policy picks speaker → agent reads board → message → stop check.",
+   "whyItWorks": "Roles narrow each agent's prompt and tools, so each does one job better, and a reviewer sees the output with fresh instructions rather than the author's assumptions. The turn policy and stop rule keep the exchange bounded and on task. The price is that each turn reads all earlier messages, so cost is driven by transcript length, not just by the number of calls.",
+   "approach": [
+    "Give every agent the shared board and a role prompt — they cooperate through one state",
+    "Pick the next speaker with a policy: round-robin, selector or manager — decides who adds the next message",
+    "Append the speaker's message to the board — later agents see everything written so far",
+    "Check the stop rule after each turn — consensus or a judge ends early, saving tokens",
+    "Enforce a hard turn limit — guarantees termination when agents loop or never agree"
+   ],
+   "time": "One model call per turn; input tokens grow quadratically in the number of messages",
+   "space": "O(m) transcript for $m$ messages, copied to every reader",
+   "solution": "def round_robin(n):\n    return lambda turn, board: turn % n\n\ndef selector(choose):\n    return lambda turn, board: choose(board)\n\ndef run_conversation(agents, policy, max_turns, stop_fn):\n    board = []\n    for turn in range(max_turns):\n        who = policy(turn, board)\n        board.append((who, agents[who](list(board))))\n        if stop_fn(board):\n            return board, \"stop_fn\"\n    return board, \"max_turns\"\n\ndef token_cost(n_agents, rounds, base_ctx, tokens_per_turn):\n    m = n_agents * rounds\n    read = m * base_ctx + tokens_per_turn * m * (m - 1) // 2\n    return read, m * tokens_per_turn",
+   "keyLines": [
+    10,
+    11,
+    18
+   ],
+   "dryRun": [
+    "Messages: $m = N R$ ($N$ agents, $R$ rounds)",
+    "Context at message $j$: $c_0 + j\\tau$",
+    "Read: $\\sum_{j=0}^{m-1} (c_0 + j\\tau) = m c_0 + \\tau \\frac{m(m-1)}{2}$",
+    "Written: $m\\tau$",
+    "Large $m$: read $\\approx \\frac{\\tau N^2 R^2}{2}$"
+   ],
+   "description": "Tasks that split into roles needing different instructions, tools or context (planner, coder, reviewer), where independent critique adds something, or where work must be parallelised across specialists.",
+   "examples": [
+    {
+     "input": "Blackboard versus message passing?",
+     "output": "A blackboard gives every agent the same full state, which is simple and transparent but grows the context for everyone. Direct messages keep each agent's context smaller but risk lost information and harder debugging.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you choose who speaks next?",
+     "output": "Round-robin is simple and predictable, a selector function encodes rules such as route to the reviewer after code, and a manager agent chooses with an LLM, which is flexible but adds a call per turn and can pick badly.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does cost grow so quickly with more agents?",
+     "output": "Each message is appended to the transcript and every later turn re-reads all of it, so total input tokens grow roughly with the square of the message count, and adding agents adds messages.",
+     "explanation": ""
+    },
+    {
+     "input": "What are typical failure modes?",
+     "output": "Loops with no progress, one early mistake cascading through later agents, and agents agreeing without evidence. Use turn limits, a judge that checks against ground truth, and tools that verify claims.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of agents $N$ and their roles",
+    "Turn policy: round-robin, selector rule, or manager",
+    "Maximum turns $m_{\\max}$ and the stop condition",
+    "Transcript policy: full history, summary or windowed"
+   ],
+   "edgeCases": [
+    "No turn limit means two polite agents can loop indefinitely and spend the whole budget",
+    "Agreement is not evidence: agents that share a model and a board tend to converge on the first plausible answer",
+    "Passing the full transcript to every agent makes input cost grow like $m^2$; summarise or window old turns",
+    "An early wrong message is read by every later agent, so errors cascade instead of averaging out"
+   ],
+   "related": [
+    "context-engineering",
+    "llm-as-judge",
+    "context-window-limits"
    ],
    "diagram": []
   },
@@ -10884,6 +11700,81 @@
    "diagram": []
   },
   {
+   "slug": "planning-decomposition",
+   "title": "Agent Planning and Task Decomposition (DAG)",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2312.04511",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Agents",
+    "Planning",
+    "Graphs"
+   ],
+   "patterns": [],
+   "summary": "Break a goal into sub-tasks with dependencies, run them in a valid topological order, execute independent ones in parallel layers, and replan when a step fails.",
+   "bruteForce": "Short tasks where one or two steps suffice, or highly exploratory work where the next step depends on what the last one revealed, so the graph cannot be known up front and step-by-step reasoning fits better.",
+   "intuition": "A plan is a graph, not a list: a task only waits for the tasks it truly needs, so everything else can run side by side. The longest dependency chain (the critical path) sets the floor on total time no matter how many workers you add, and a failed step only invalidates the tasks downstream of it, so replanning touches a subgraph. Flow: goal → sub-tasks → dependency order → run layers → replan on failure.",
+   "whyItWorks": "A valid order exists exactly when the dependency graph has no cycle, and Kahn's algorithm finds one or proves none exists. With $p$ workers the running time is at least $\\max(T_1 / p, T_\\infty)$, where $T_1$ is total work and $T_\\infty$ is the critical path, so the path is the part parallelism cannot remove. Anything not downstream of the failed task is unaffected, so it can stay.",
+   "approach": [
+    "List sub-tasks with their prerequisites — an explicit graph replaces a vague sequence",
+    "Run Kahn's algorithm, repeatedly taking tasks with zero unmet deps — gives a valid order and detects cycles",
+    "Group tasks into levels of $1 + \\max$ level of their deps — tasks in one level are independent, so run them in parallel",
+    "Compute finish times along the order and trace the longest chain — the critical path bounds total time",
+    "On failure drop the failed task and its transitive dependents — only that subgraph needs a new plan"
+   ],
+   "time": "O(V + E) for ordering and levels; replan is O(V·E) as written",
+   "space": "O(V + E) for the graph and bookkeeping",
+   "solution": "from collections import deque\n\ndef topo_order(deps):\n    indeg = {t: len(d) for t, d in deps.items()}\n    out = {t: [] for t in deps}\n    for t, ds in deps.items():\n        for d in ds:\n            out[d].append(t)\n    ready = deque(sorted(t for t in deps if indeg[t] == 0))\n    order = []\n    while ready:\n        t = ready.popleft()\n        order.append(t)\n        for u in out[t]:\n            indeg[u] -= 1\n            if indeg[u] == 0:\n                ready.append(u)\n    if len(order) != len(deps):\n        raise ValueError(\"cycle in plan\")\n    return order\n\ndef levels(deps):\n    lv = {}\n    for t in topo_order(deps):\n        lv[t] = 1 + max((lv[d] for d in deps[t]), default=-1)\n    top = max(lv.values(), default=-1)\n    return [sorted(t for t in lv if lv[t] == i)\n            for i in range(top + 1)]\n\ndef critical_path(dur, deps):\n    fin, prev = {}, {}\n    for t in topo_order(deps):\n        p = max(deps[t], key=lambda d: fin[d], default=None)\n        prev[t] = p\n        fin[t] = dur[t] + (fin[p] if p is not None else 0)\n    end = max(fin, key=fin.get)\n    path = []\n    while end is not None:\n        path.append(end)\n        end = prev[end]\n    return fin[path[0]], path[::-1]\n\ndef replan(deps, failed):\n    dead, stack = {failed}, [failed]\n    while stack:\n        x = stack.pop()\n        for t, ds in deps.items():\n            if x in ds and t not in dead:\n                dead.add(t)\n                stack.append(t)\n    return {t: ds for t, ds in deps.items() if t not in dead}",
+   "keyLines": [
+    15,
+    25,
+    48
+   ],
+   "dryRun": [
+    "Kahn: take $t$ with indegree $0$, remove it",
+    "Level: $\\mathrm{lvl}(t) = 1 + \\max_{d \\in \\mathrm{deps}(t)} \\mathrm{lvl}(d)$",
+    "Finish: $f(t) = \\mathrm{dur}(t) + \\max_{d} f(d)$",
+    "Critical path length: $\\max_{t} f(t)$",
+    "Time on $p$ workers: $T_p \\geq \\max(T_1 / p,\\; T_\\infty)$",
+    "Dropped tasks: the failed task and all its descendants"
+   ],
+   "description": "Multi-step agent goals where some steps are independent (parallel tool calls, research sub-queries, build pipelines) and you want both a safe order and an estimate of the minimum completion time.",
+   "examples": [
+    {
+     "input": "How do you detect a cycle in a plan?",
+     "output": "Run Kahn's algorithm; if fewer tasks are emitted than exist, the rest sit on a cycle. A cycle means the plan is contradictory and must be regenerated.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does adding workers stop helping?",
+     "output": "Total time is bounded below by the critical path, the longest chain of dependent tasks. Extra workers only shorten the parallel parts.",
+     "explanation": ""
+    },
+    {
+     "input": "What should an agent do when one step fails?",
+     "output": "Drop or regenerate that step and its transitive dependents, keep finished independent work, and ask the planner for a replacement subplan.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Granularity of sub-tasks (too fine adds overhead, too coarse hides parallelism)",
+    "Maximum parallel workers or tool calls",
+    "Retry budget per step before replanning",
+    "Replan policy: drop dependents or regenerate them"
+   ],
+   "edgeCases": [
+    "An LLM-written plan can contain a cycle or a missing prerequisite; always validate before executing",
+    "Durations are estimates; the real critical path can shift at run time",
+    "Dropping dependents silently can leave the goal unmet; check the goal still reaches a final task"
+   ],
+   "related": [
+    "context-engineering",
+    "rag-dense-retrieval"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "positional-encoding",
    "title": "Sinusoidal Positional Encoding",
    "platform": "NLP",
@@ -11585,6 +12476,87 @@
     "prompt-optimization",
     "prompt-templates",
     "ab-test-significance"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "provider-fallback-router",
+   "title": "Provider Fallback Router for LLM Calls",
+   "platform": "LLM",
+   "url": "https://docs.litellm.ai/docs/routing",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Reliability",
+    "Routing",
+    "Inference"
+   ],
+   "patterns": [],
+   "summary": "Send each LLM request down an ordered chain of providers, classify every error, and hop to the next provider only when that can help; unhealthy providers sit out a cool-down.",
+   "bruteForce": "Flows that need identical outputs every time, since fallback models differ in style and capability, or non-idempotent calls where a half-finished request on one provider may still take effect.",
+   "intuition": "Not every failure deserves a fallback. A timeout or rate limit says this provider is struggling, so try another; an invalid request will fail everywhere, so hopping only burns money; an auth failure condemns one provider but not the request. The router is a small state machine: classify the error, then decide whether to retry elsewhere, stop, or bench the provider for a while. Flow: request → provider 1 → classify error → provider 2.",
+   "whyItWorks": "Failures of different providers are roughly independent, so the chance that the whole chain fails is the product of the individual failure probabilities, which shrinks fast with each added provider. Classifying errors keeps the hops useful, and cool-downs stop a dead provider from adding its timeout to every request.",
+   "approach": [
+    "Classify the exception as retryable, fatal for the request, or fatal for the provider — decides whether a hop makes sense",
+    "Order the providers by the strategy (priority, weighted, cheapest, fastest) — the first healthy one gets the call",
+    "Skip providers whose cool-down has not expired — avoids hammering a failing endpoint",
+    "On a retryable or provider error, bench the provider and try the next — auth benches it for much longer",
+    "On a request error, raise at once — every provider would reject it too",
+    "Raise one combined error if the chain is exhausted — the caller sees that nothing is healthy"
+   ],
+   "time": "O(n) per call over n providers, plus O(n log n) to sort",
+   "space": "O(n) for the providers and one cool-down timestamp each",
+   "solution": "import random\n\nclass RateLimit(Exception): pass\nclass ServerError(Exception): pass\nclass InvalidRequest(Exception): pass\nclass ContentPolicy(Exception): pass\nclass AuthError(Exception): pass\nclass AllFailed(Exception): pass\n\ndef classify_error(exc):\n    if isinstance(exc, (TimeoutError, RateLimit, ServerError)):\n        return \"retry\"\n    if isinstance(exc, (InvalidRequest, ContentPolicy)):\n        return \"request\"\n    if isinstance(exc, AuthError):\n        return \"provider\"\n    return \"retry\"\n\ndef weighted_choice(weights, rng):\n    r = rng.random() * sum(weights)\n    for i, w in enumerate(weights):\n        r -= w\n        if r < 0:\n            return i\n    return len(weights) - 1\n\nclass Router:\n    def __init__(self, providers, strategy=\"priority\",\n                 rng=None, clock=None, cooldown=30.0):\n        self.providers = providers  # dicts: name, fn, ...\n        self.strategy = strategy\n        self.rng = rng or random.Random(0)\n        self.clock = clock or (lambda: 0.0)\n        self.cooldown = cooldown\n        self.until = {}  # name -> time it is usable again\n\n    def order(self):\n        ps = list(self.providers)\n        if self.strategy == \"cheapest\":\n            return sorted(ps, key=lambda p: p[\"cost\"])\n        if self.strategy == \"latency\":\n            return sorted(ps, key=lambda p: p[\"latency\"])\n        if self.strategy == \"weighted\":\n            out = []\n            while ps:\n                i = weighted_choice([p[\"weight\"] for p in ps],\n                                    self.rng)\n                out.append(ps.pop(i))\n            return out\n        return ps\n\n    def call(self, request):\n        errors = []\n        for p in self.order():\n            if self.clock() < self.until.get(p[\"name\"], 0.0):\n                continue\n            try:\n                return p[\"name\"], p[\"fn\"](request)\n            except Exception as exc:\n                kind = classify_error(exc)\n                if kind == \"request\":\n                    raise\n                wait = 1e9 if kind == \"provider\" else self.cooldown\n                self.until[p[\"name\"]] = self.clock() + wait\n                errors.append((p[\"name\"], repr(exc)))\n        raise AllFailed(errors)\n\ndef expected_chain_cost(costs, fail_probs):\n    reach, total = 1.0, 0.0\n    for c, f in zip(costs, fail_probs):\n        total += reach * c\n        reach *= f\n    return total",
+   "keyLines": [
+    61,
+    63,
+    72
+   ],
+   "dryRun": [
+    "Reach: $P(\\mathrm{reach}\\ i) = \\prod_{j<i} f_j$",
+    "Cost: $\\mathbb{E}[c] = \\sum_i P(\\mathrm{reach}\\ i)\\,c_i$",
+    "Chain down: $P = \\prod_i f_i$",
+    "Chain up: $P = 1 - \\prod_i f_i$",
+    "Weighted: $P(i) = \\frac{w_i}{\\sum_j w_j}$"
+   ],
+   "description": "Production LLM features that must stay up when one provider is slow, rate limited or down, or that should spread load or cost across several models behind one interface.",
+   "examples": [
+    {
+     "input": "Which errors should trigger a fallback?",
+     "output": "Timeouts, rate limits and server errors, because another provider may succeed. An invalid request or content-policy block would fail everywhere, so it should be raised at once; an auth error only removes that provider.",
+     "explanation": ""
+    },
+    {
+     "input": "Why a cool-down rather than trying every provider each time?",
+     "output": "A provider that just failed is likely still failing, and retrying it adds its full timeout to every request. Benching it for a while keeps latency low and lets it recover.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you compute the expected cost of a fallback chain?",
+     "output": "Sum over providers of the probability of reaching it times its cost, where the probability of reaching provider i is the product of the failure probabilities before it.",
+     "explanation": ""
+    },
+    {
+     "input": "Priority versus weighted routing?",
+     "output": "Priority always prefers the first healthy provider and uses the rest as backup. Weighted random spreads traffic in proportion to the weights, which balances load and quota.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Provider order or weights",
+    "Cool-down duration after a failure",
+    "Number of failures before a provider is benched",
+    "Per-provider timeout"
+   ],
+   "edgeCases": [
+    "Treating every exception as retryable multiplies the bill for requests that can never succeed",
+    "Without a cool-down, a hard-down provider adds its whole timeout to each request",
+    "Fallback models answer differently, so evaluate each chain member on your own task",
+    "Failures are not fully independent: a shared network or quota problem can take several providers down together, so $\\prod_i f_i$ is optimistic"
+   ],
+   "related": [
+    "json-api-requests-retries",
+    "tracing-and-logging"
    ],
    "diagram": []
   },
@@ -12380,6 +13352,80 @@
     "convolution-2d",
     "max-pooling",
     "depthwise-separable-convolution"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "reflection-self-correction",
+   "title": "Reflection and Self-Correction (Generate, Critique, Revise)",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2303.17651",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Agents",
+    "Self-Refine",
+    "Feedback"
+   ],
+   "patterns": [],
+   "summary": "Generate an answer, critique it, revise it and repeat until a check passes, the budget runs out, or revisions stop changing anything.",
+   "bruteForce": "Tasks with no reliable verifier where the model critiques its own reasoning, since it can confirm a wrong answer or break a right one; also latency-sensitive paths where extra rounds are too costly.",
+   "intuition": "Revision only helps when the feedback carries information the generator did not have. An external signal such as a failing test or a tool result supplies that, so each round can fix real errors; pure self-critique reuses the same beliefs and can talk itself into the same mistake. The loop therefore needs a stopping rule as much as a critic. Flow: draft → feedback → revise → verify → stop or repeat.",
+   "whyItWorks": "If the first answer is right with probability $p$ and each round turns a remaining failure into a success with probability $q$, the chance still failing after $n$ rounds is $(1-p)(1-q)^n$. Success is therefore non-decreasing in $n$ with geometrically shrinking gains, and equals $p$ when $q = 0$. A reliable external signal is what makes $q$ positive; with self-critique alone $q$ may be near zero or even negative.",
+   "approach": [
+    "Generate a first answer — the baseline, which may already pass",
+    "Verify it with an external check when one exists — stop at once on a pass so no revise call is wasted",
+    "Critique the answer into feedback — a specific error beats a vague complaint",
+    "Revise using the feedback and compare with the previous answer — an unchanged answer means no progress",
+    "Stop on verified pass, $n = n_{\\max}$, or no improvement — bounds cost and avoids loops"
+   ],
+   "time": "(1 + n) model calls per question plus n critique calls and n verifier calls for n rounds",
+   "space": "O(1) extra: only the current answer and its feedback are kept",
+   "solution": "def refine_loop(generate, critique, revise, verify,\n                max_iters):\n    ans = generate()\n    if verify(ans):\n        return ans, 0, \"verified\"\n    for n in range(1, max_iters + 1):\n        new = revise(ans, critique(ans))\n        if new == ans:\n            return ans, n, \"no_improvement\"\n        ans = new\n        if verify(ans):\n            return ans, n, \"verified\"\n    return ans, max_iters, \"max_iters\"\n\ndef expected_success(p, q, n):\n    return 1 - (1 - p) * (1 - q) ** n",
+   "keyLines": [
+    7,
+    8,
+    11
+   ],
+   "dryRun": [
+    "Start: $P_0 = p$",
+    "After $n$ rounds: $P_n = 1 - (1-p)(1-q)^n$",
+    "Gain: $P_n - P_{n-1} = (1-p)\\,q\\,(1-q)^{n-1}$",
+    "Limit: $P_n \\rightarrow 1$ as $n \\rightarrow \\infty$ if $q > 0$",
+    "Rounds: $n \\geq \\frac{\\ln\\frac{1-P}{1-p}}{\\ln(1-q)}$"
+   ],
+   "description": "Tasks with a cheap, trustworthy check (unit tests for code, a parser, a calculator, a schema validator) where feedback can point at a concrete failure.",
+   "examples": [
+    {
+     "input": "When does self-correction actually help?",
+     "output": "When feedback comes from outside the model, such as test results or tool output. Pure self-critique without new information often fails to fix reasoning errors.",
+     "explanation": ""
+    },
+    {
+     "input": "What stopping rules does a refine loop need?",
+     "output": "Stop on a verified pass, on a maximum number of rounds, and when a revision leaves the answer unchanged so no further progress is likely.",
+     "explanation": ""
+    },
+    {
+     "input": "How many rounds are worth running?",
+     "output": "Gains shrink geometrically as $(1-q)^n$, so a few rounds capture most of the benefit; more rounds mostly add cost.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Maximum rounds $n_{\\max}$",
+    "Verifier choice and strictness",
+    "Critique prompt or feedback format",
+    "Whether to keep earlier attempts in the revise prompt"
+   ],
+   "edgeCases": [
+    "Treating the model's own approval as a verifier can lock in a wrong answer",
+    "Comparing answers by exact equality misses paraphrased non-progress and flags harmless rewording",
+    "Assuming a constant $q$ is optimistic; later rounds usually face harder failures"
+   ],
+   "related": [
+    "hallucination-detection",
+    "context-engineering"
    ],
    "diagram": []
   },
@@ -13493,6 +14539,89 @@
    "diagram": []
   },
   {
+   "slug": "runnable-chain-composition",
+   "title": "Runnable Chains and Pipe Composition",
+   "platform": "LLM",
+   "url": "https://reference.langchain.com/python/langchain_core/runnables/base/Runnable",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Orchestration",
+    "RAG",
+    "Software Design"
+   ],
+   "patterns": [],
+   "summary": "A runnable has invoke, batch and stream; the pipe operator composes runnables left to right, so prompt | model | parser is one runnable and a RAG chain is just a longer pipe.",
+   "bruteForce": "Pipelines with loops, branching on model output or shared state, where an explicit graph or plain code is clearer than a straight pipe, and tiny scripts where a few function calls suffice.",
+   "intuition": "Every stage of an LLM app, whether retriever, prompt template, model or parser, is a function from one value to the next. Give them all one interface and a pipe, and a pipeline becomes plain function composition: associative, testable stage by stage, and able to batch, stream or fan out with no per-stage code. This is the common pattern behind orchestration frameworks, not any one library's API. Flow: input → retriever → prompt → model → parser → output.",
+   "whyItWorks": "A pipe is function composition, and composition is associative, so grouping never changes the result. A common interface means any runnable can sit in any position, and batch and stream are defined once on the interface instead of per stage.",
+   "approach": [
+    "Define one interface with invoke, batch and stream — every stage becomes interchangeable",
+    "Make the pipe operator return a sequence, flattening nested pipes — $(a|b)|c$ and $a|(b|c)$ then behave identically",
+    "Run the steps in order, each output feeding the next — data flows left to right",
+    "Wrap a failure with the step name — you know which stage broke",
+    "Add a parallel runnable that feeds one input to a dict of branches — builds the prompt inputs such as context and question",
+    "Stream by letting the last step yield chunks — the user sees tokens before the chain ends"
+   ],
+   "time": "O(n) calls for an n-step chain; parallel branches cost the slowest branch if run concurrently",
+   "space": "O(n) step objects; streaming keeps one chunk in flight",
+   "solution": "class StepError(Exception): pass\n\nclass Runnable:\n    name = \"runnable\"\n\n    def invoke(self, x):\n        raise NotImplementedError\n\n    def batch(self, xs):\n        return [self.invoke(x) for x in xs]\n\n    def stream(self, x):\n        yield self.invoke(x)\n\n    def __or__(self, other):\n        return Seq(self._steps() + other._steps())\n\n    def _steps(self):\n        return [self]\n\ndef join(chunks):\n    chunks = list(chunks)\n    if all(isinstance(c, str) for c in chunks):\n        return \"\".join(chunks)\n    return chunks[-1]\n\nclass RunnableLambda(Runnable):\n    def __init__(self, fn):\n        self.fn, self.name = fn, fn.__name__\n\n    def invoke(self, x):\n        return join(self.stream(x))\n\n    def stream(self, x):\n        out = self.fn(x)\n        if hasattr(out, \"__next__\"):\n            yield from out\n        else:\n            yield out\n\nclass Parallel(Runnable):\n    name = \"parallel\"\n\n    def __init__(self, branches):\n        self.branches = branches\n\n    def invoke(self, x):\n        return {k: r.invoke(x) for k, r in self.branches.items()}\n\nclass Seq(Runnable):\n    def __init__(self, steps):\n        self.steps = steps\n        self.name = \" | \".join(s.name for s in steps)\n\n    def _steps(self):\n        return self.steps\n\n    def invoke(self, x):\n        for s in self.steps:\n            try:\n                x = s.invoke(x)\n            except Exception as e:\n                raise StepError(f\"{s.name}: {e}\") from e\n        return x\n\n    def stream(self, x):\n        for s in self.steps[:-1]:\n            x = s.invoke(x)\n        yield from self.steps[-1].stream(x)",
+   "keyLines": [
+    35,
+    61,
+    69
+   ],
+   "dryRun": [
+    "Pipe: $(f \\mid g)(x) = g(f(x))$",
+    "Assoc: $(a \\mid b) \\mid c = a \\mid (b \\mid c)$",
+    "Parallel: $\\{k: f_k(x)\\}$ for each branch $k$",
+    "Batch: $[\\,f(x) \\ \\mathrm{for}\\ x \\in X\\,]$",
+    "Stream: $\\mathrm{join}(\\mathrm{stream}(x)) = f(x)$",
+    "Time: $\\sum_i t_i$ in series, $\\max_k t_k$ in parallel"
+   ],
+   "description": "Pipelines of retriever, prompt, model and parser where each stage should be swappable, testable alone, and runnable over a batch or as a stream without rewriting glue code.",
+   "examples": [
+    {
+     "input": "What is a runnable?",
+     "output": "Any component with a common interface of invoke for one input, batch for many and stream for incremental output, so retrievers, prompts, models and parsers can be composed freely.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the pipe operator do?",
+     "output": "It composes two runnables into a sequence where the output of the left becomes the input of the right, which is ordinary function composition.",
+     "explanation": ""
+    },
+    {
+     "input": "How is a RAG chain built this way?",
+     "output": "A parallel step builds the context from a retriever and passes the question through, then a prompt template, a model and a parser follow in the pipe.",
+     "explanation": ""
+    },
+    {
+     "input": "How does streaming work through a chain?",
+     "output": "Earlier steps run to completion, and the last step yields chunks as it produces them. Fully streaming every stage needs steps that can transform an incoming stream.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Which stages form the chain and their order",
+    "Batch size and concurrency limit",
+    "Retry and timeout policy per stage",
+    "Retriever top-$k$"
+   ],
+   "edgeCases": [
+    "A pipe needs compatible shapes: a prompt expects a dict, a parser expects text, and mismatches fail only at run time",
+    "Wrapped errors without the step name make long chains hard to debug",
+    "Streaming through a non-streaming middle step still waits for that step to finish",
+    "Branches of a parallel step must not share mutable state"
+   ],
+   "related": [
+    "prompt-templates",
+    "rag-dense-retrieval",
+    "python-generators-functional"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "scaling-laws",
    "title": "Neural Scaling Laws (Chinchilla)",
    "platform": "LLM",
@@ -14210,6 +15339,90 @@
    "diagram": []
   },
   {
+   "slug": "state-graph-workflows",
+   "title": "Agent Workflows as State Graphs",
+   "platform": "LLM",
+   "url": "https://docs.langchain.com/oss/python/langgraph/graph-api",
+   "difficulty": "Hard",
+   "topics": [
+    "LLM",
+    "Agents",
+    "Orchestration",
+    "State Machines"
+   ],
+   "patterns": [],
+   "summary": "Model an agent workflow as nodes that read a shared state and return updates, edges that pick the next node, per-key reducers that merge updates, a step limit against cycles, and a checkpoint after each node.",
+   "bruteForce": "A single model call or a short fixed chain, where a plain function is simpler. Also a poor fit when the flow is too open-ended to name its nodes in advance and the model must plan freely.",
+   "intuition": "A free-running agent loop hides its control flow inside prompts, so it is hard to test, pause or resume. Making the flow an explicit graph moves the decisions into ordinary code: nodes only return updates, a router reads the state to choose the next node, and reducers decide whether an update overwrites a key or accumulates into it. Because the whole run is a pure function of the state and the next node, a snapshot after every node is enough to resume, replay or stop for a human. Flow: state → node → update → next edge → checkpoint.",
+   "whyItWorks": "A node is a function of the state and the router is a function of the new state, so the pair (next node, state) fully determines the rest of the run. A checkpoint stores exactly that pair, which makes resuming from it identical to never having stopped, provided the nodes are deterministic or their random choices are stored in the state. Reducers make merging explicit: a key written by many nodes accumulates by $r_k$ instead of losing earlier writes. If each pass through a loop exits with chance $p$, the expected number of passes is $\\frac{1}{p}$ and the limit $T$ is hit with chance $(1-p)^T$.",
+   "approach": [
+    "Make each node a function from state to a partial update — nodes never mutate the shared state",
+    "Merge each update key with its reducer, default overwrite — lists append and counters add, so parallel or repeated writes combine",
+    "Choose the next node by a fixed edge or a router on the new state — loops end when the condition holds",
+    "Count executed nodes and raise at $T$ — a cycle with no exit fails loudly instead of running forever",
+    "Snapshot (next node, state) after every node — resuming from snapshot $k$ replays the run exactly",
+    "Stop before a named node and return the state — a human can edit it, then resume from that node"
+   ],
+   "time": "O(T) node calls per run, each node's own cost plus O(keys) to merge",
+   "space": "O(T·|state|) for the checkpoints, one deep copy per step",
+   "solution": "import copy\n\nEND = \"__end__\"\n\nclass Graph:\n    def __init__(self, reducers=None):\n        self.reducers = reducers or {}\n        self.nodes, self.edges, self.cond = {}, {}, {}\n        self.entry = None\n\n    def add_node(self, name, fn):\n        self.nodes[name] = fn\n\n    def add_edge(self, a, b):\n        self.edges[a] = b\n\n    def add_conditional_edges(self, a, router):\n        self.cond[a] = router\n\n    def set_entry(self, name):\n        self.entry = name\n\n    def merge(self, state, update):\n        out = dict(state)\n        for k, v in update.items():\n            r = self.reducers.get(k)\n            out[k] = r(state[k], v) if r and k in state else v\n        return out\n\n    def run(self, state, max_steps=25, checkpoints=None,\n            start=None, interrupt_before=()):\n        state = copy.deepcopy(state)\n        node, steps = start or self.entry, 0\n        while node != END:\n            if node in interrupt_before:\n                return state, node\n            if steps == max_steps:\n                raise RuntimeError(\n                    f\"step limit {max_steps} hit before {node!r}\")\n            state = self.merge(state, self.nodes[node](state))\n            steps += 1\n            if node in self.cond:\n                node = self.cond[node](state)\n            else:\n                node = self.edges.get(node, END)\n            if checkpoints is not None:\n                checkpoints.append((node, copy.deepcopy(state)))\n        return state, None",
+   "keyLines": [
+    27,
+    37,
+    40
+   ],
+   "dryRun": [
+    "Per key: $s_k^{\\prime} = r_k(s_k, u_k)$",
+    "Step: $u = f_n(s)$, then $s^{\\prime} = r(s, u)$",
+    "Next node: $n^{\\prime} = \\mathrm{route}(s^{\\prime})$",
+    "Checkpoint: $c_i = (n_i, s_i)$",
+    "Resume: $\\mathrm{run}(c_k) = \\mathrm{run}(c_0)$",
+    "Exit chance $p$ per pass: $\\mathbb{E}[\\mathrm{passes}] = \\frac{1}{p}$",
+    "Hit the limit $T$: $(1 - p)^T$"
+   ],
+   "description": "Multi-step agent flows with branches, retry loops or a human approval point, where you need to test the control flow, resume after a crash, or inspect and edit the state between steps.",
+   "examples": [
+    {
+     "input": "Why do nodes return updates instead of editing the state?",
+     "output": "Returned updates can be merged by per-key reducers, recorded in a checkpoint and replayed. In-place edits hide what changed and make resuming and parallel branches unsafe.",
+     "explanation": ""
+    },
+    {
+     "input": "What does a reducer do and why does it matter?",
+     "output": "It defines how an update combines with the old value of a key. Overwrite is the default, but a list key needs append and a counter needs add, otherwise a later node silently erases earlier results.",
+     "explanation": ""
+    },
+    {
+     "input": "How do checkpoints enable human-in-the-loop?",
+     "output": "The run stops before a chosen node and returns the state. A person can approve or edit it, and the run continues from that node with the edited state, with no hidden state left in the process.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is a step limit needed when conditional edges can loop?",
+     "output": "A router that never reaches its exit condition would loop forever and burn tokens. The limit turns that into a clear error, and the checkpoints show where it was stuck.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Step limit $T$ (maximum node executions per run)",
+    "Reducer per state key (overwrite, append, add, custom)",
+    "Where to interrupt for human review",
+    "Checkpoint storage and how often to snapshot"
+   ],
+   "edgeCases": [
+    "Resuming is exact only if nodes are deterministic; store model samples and clock reads in the state",
+    "A node that mutates the state it receives corrupts earlier checkpoints unless every snapshot is a deep copy",
+    "A reducer on a key missing from the initial state is skipped here; initialise accumulating keys such as lists up front",
+    "Re-running a node with side effects after resume repeats the effect; make tool calls idempotent"
+   ],
+   "related": [
+    "structured-outputs-json-schema",
+    "prompt-injection-defense",
+    "output-validation-guardrails"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "statistics-hypothesis-testing",
    "title": "Hypothesis Testing, Welch's t-Test, Bootstrap and FDR",
    "platform": "Math",
@@ -14373,6 +15586,87 @@
     "cross-validation",
     "class-imbalance",
     "data-leakage"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "streaming-sse-parsing",
+   "title": "Streaming Tokens with Server-Sent Events",
+   "platform": "LLM",
+   "url": "https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM APIs",
+    "Streaming",
+    "HTTP"
+   ],
+   "patterns": [],
+   "summary": "A streamed completion is a text/event-stream: lines of data, event and comment fields, each event closed by a blank line. Buffer bytes, decode incrementally, and join the JSON deltas into the final text.",
+   "bruteForce": "Short answers or batch jobs where one complete response is simpler, and bidirectional or binary protocols, where a WebSocket or a different framing fits better.",
+   "intuition": "The network cuts the stream wherever it likes, so a read can end in the middle of a line, in the middle of a JSON object, or in the middle of a multi-byte character such as an emoji. The parser must therefore never treat one chunk as one event: it appends bytes to an incremental decoder, splits only on complete lines, and emits an event only at a blank line. A correct parser gives the same events for every possible way of cutting the same bytes. Flow: bytes → incremental decode → line buffer → complete events → delta text.",
+   "whyItWorks": "SSE framing depends only on newlines, and a newline byte never occurs inside a multi-byte UTF-8 sequence, so splitting the decoded text on newlines is safe. The incremental decoder keeps incomplete trailing bytes as state, so the decoded text depends on the byte sequence and not on how it was chunked. Joining deltas is concatenation, which is associative, so the final text is also independent of chunking.",
+   "approach": [
+    "Decode bytes with an incremental UTF-8 decoder — a split multi-byte character is held back until complete",
+    "Append to a text buffer and split on newline — a partial last line stays buffered",
+    "Ignore lines that start with a colon — they are comments, often keep-alives",
+    "Collect data lines and an optional event name — several data lines belong to one event",
+    "Emit the event at a blank line and join its data lines with newlines — the event boundary",
+    "Stop at the [DONE] sentinel — nothing after it is read",
+    "Concatenate text deltas, and concatenate tool-argument fragments but parse them only when they form complete JSON — a fragment alone is not valid JSON"
+   ],
+   "time": "O(n) in the stream length; each byte is decoded and scanned once",
+   "space": "O(m) for the buffer of the current partial line and event",
+   "solution": "import codecs, json\n\nclass SSEParser:\n    def __init__(self):\n        self.dec = codecs.getincrementaldecoder(\"utf-8\")()\n        self.buf, self.done = \"\", False\n        self.data, self.event = [], None\n\n    def feed(self, chunk):\n        out = []\n        self.buf += self.dec.decode(chunk)\n        while \"\\n\" in self.buf and not self.done:\n            line, self.buf = self.buf.split(\"\\n\", 1)\n            ev = self._line(line.rstrip(\"\\r\"))\n            if ev:\n                out.append(ev)\n        return out\n\n    def _line(self, line):\n        if line == \"\":\n            if not self.data:\n                return None\n            ev = {\"event\": self.event, \"data\": \"\\n\".join(self.data)}\n            self.data, self.event = [], None\n            self.done = ev[\"data\"] == \"[DONE]\"\n            return ev\n        if line.startswith(\":\"):\n            return None\n        name, _, value = line.partition(\":\")\n        value = value[1:] if value.startswith(\" \") else value\n        if name == \"data\":\n            self.data.append(value)\n        elif name == \"event\":\n            self.event = value\n\ndef deltas(events):\n    for ev in events:\n        if ev[\"data\"] != \"[DONE]\":\n            yield json.loads(ev[\"data\"])[\"delta\"]\n\ndef assemble_text(events):\n    return \"\".join(d.get(\"text\", \"\") for d in deltas(events))\n\ndef assemble_tool_args(events):\n    raw = \"\".join(d.get(\"tool_args\", \"\") for d in deltas(events))\n    try:\n        return json.loads(raw)\n    except json.JSONDecodeError:\n        return None",
+   "keyLines": [
+    11,
+    13,
+    23
+   ],
+   "dryRun": [
+    "Event: lines up to a blank line",
+    "Text: $\\sum_{i} \\delta_i$ (concatenated deltas)",
+    "Chunkings of $n$ bytes: $2^{n-1}$",
+    "UTF-8: 1 to 4 bytes per character",
+    "Cuts inside a $k$-byte character: $k - 1$"
+   ],
+   "description": "Reading any token stream from a chat endpoint, so the user sees text as it is generated and a long answer does not wait for the last token. The same parser works for any text/event-stream source.",
+   "examples": [
+    {
+     "input": "Why must the parser decode incrementally instead of decoding each chunk?",
+     "output": "A chunk can end halfway through a multi-byte character, and decoding that fragment alone raises an error or produces garbage. An incremental decoder holds the partial bytes until the rest arrives.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you know an event is finished?",
+     "output": "A blank line ends it. Until then the data lines seen so far are buffered, and several data lines are joined with a newline.",
+     "explanation": ""
+    },
+    {
+     "input": "Why not parse tool-call arguments as each fragment arrives?",
+     "output": "Fragments of a JSON string are generally not valid JSON on their own. Concatenate them and parse once the call is complete, for example at the end of the stream.",
+     "explanation": ""
+    },
+    {
+     "input": "What is a good test for the parser?",
+     "output": "Feed the same bytes cut at every boundary and check that the events are identical, including cuts inside a multi-byte character.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Read chunk size from the HTTP client, which the parser must not depend on",
+    "Idle timeout between events, since comments may act as keep-alives",
+    "Maximum buffered line length to bound memory"
+   ],
+   "edgeCases": [
+    "Calling bytes.decode on each chunk breaks on emoji and other multi-byte characters that straddle a boundary",
+    "Treating each network chunk as one event fails as soon as an event spans two chunks or one chunk holds two events",
+    "Calling json.loads on a partial tool-argument string raises an error; parse only the full concatenation",
+    "Treating [DONE] as JSON raises an error; check for the sentinel before parsing"
+   ],
+   "related": [
+    "structured-outputs-json-schema",
+    "json-api-requests-retries",
+    "bpe-tokenization"
    ],
    "diagram": []
   },
@@ -16635,219 +17929,299 @@
      "order": 96
     },
     {
-     "slug": "transfer-learning-fine-tuning",
-     "section": "12. Fine-tuning and adaptation",
+     "slug": "chat-completions-request-schema",
+     "section": "11. LLM APIs and development tools",
      "order": 97
     },
     {
-     "slug": "sft-loss-masking",
-     "section": "12. Fine-tuning and adaptation",
+     "slug": "llm-api-retries-rate-limits",
+     "section": "11. LLM APIs and development tools",
      "order": 98
     },
     {
-     "slug": "instruction-tuning-chat-templates",
-     "section": "12. Fine-tuning and adaptation",
+     "slug": "streaming-sse-parsing",
+     "section": "11. LLM APIs and development tools",
      "order": 99
     },
     {
-     "slug": "finetune-dataset-prep",
-     "section": "12. Fine-tuning and adaptation",
+     "slug": "provider-fallback-router",
+     "section": "11. LLM APIs and development tools",
      "order": 100
     },
     {
-     "slug": "lora-low-rank-adaptation",
-     "section": "12. Fine-tuning and adaptation",
+     "slug": "huggingface-generate-pipeline",
+     "section": "11. LLM APIs and development tools",
      "order": 101
     },
     {
-     "slug": "qlora-nf4-quantization",
-     "section": "12. Fine-tuning and adaptation",
+     "slug": "runnable-chain-composition",
+     "section": "11. LLM APIs and development tools",
      "order": 102
     },
     {
-     "slug": "adapter-layers",
-     "section": "12. Fine-tuning and adaptation",
+     "slug": "model-context-protocol-jsonrpc",
+     "section": "11. LLM APIs and development tools",
      "order": 103
     },
     {
-     "slug": "int8-quantization",
+     "slug": "transfer-learning-fine-tuning",
      "section": "12. Fine-tuning and adaptation",
      "order": 104
     },
     {
-     "slug": "knowledge-distillation",
+     "slug": "sft-loss-masking",
      "section": "12. Fine-tuning and adaptation",
      "order": 105
     },
     {
-     "slug": "reward-model-bradley-terry",
+     "slug": "instruction-tuning-chat-templates",
      "section": "12. Fine-tuning and adaptation",
      "order": 106
     },
     {
-     "slug": "rlhf-kl-penalty",
+     "slug": "finetune-dataset-prep",
      "section": "12. Fine-tuning and adaptation",
      "order": 107
     },
     {
-     "slug": "dpo-loss",
+     "slug": "lora-low-rank-adaptation",
      "section": "12. Fine-tuning and adaptation",
      "order": 108
     },
     {
-     "slug": "finetune-evaluation",
+     "slug": "qlora-nf4-quantization",
      "section": "12. Fine-tuning and adaptation",
      "order": 109
     },
     {
-     "slug": "rag-dense-retrieval",
-     "section": "13. Retrieval-augmented generation",
+     "slug": "adapter-layers",
+     "section": "12. Fine-tuning and adaptation",
      "order": 110
     },
     {
-     "slug": "document-loading-extraction",
-     "section": "13. Retrieval-augmented generation",
+     "slug": "int8-quantization",
+     "section": "12. Fine-tuning and adaptation",
      "order": 111
     },
     {
-     "slug": "document-chunking",
-     "section": "13. Retrieval-augmented generation",
+     "slug": "knowledge-distillation",
+     "section": "12. Fine-tuning and adaptation",
      "order": 112
     },
     {
-     "slug": "ann-vector-index",
-     "section": "13. Retrieval-augmented generation",
+     "slug": "reward-model-bradley-terry",
+     "section": "12. Fine-tuning and adaptation",
      "order": 113
     },
     {
-     "slug": "metadata-filtering",
-     "section": "13. Retrieval-augmented generation",
+     "slug": "rlhf-kl-penalty",
+     "section": "12. Fine-tuning and adaptation",
      "order": 114
     },
     {
-     "slug": "hybrid-search-rrf",
-     "section": "13. Retrieval-augmented generation",
+     "slug": "dpo-loss",
+     "section": "12. Fine-tuning and adaptation",
      "order": 115
     },
     {
-     "slug": "reranking-mmr",
-     "section": "13. Retrieval-augmented generation",
+     "slug": "finetune-evaluation",
+     "section": "12. Fine-tuning and adaptation",
      "order": 116
     },
     {
-     "slug": "query-transformation-hyde",
+     "slug": "rag-dense-retrieval",
      "section": "13. Retrieval-augmented generation",
      "order": 117
     },
     {
-     "slug": "retrieval-metrics-recall-at-k",
+     "slug": "document-loading-extraction",
      "section": "13. Retrieval-augmented generation",
      "order": 118
     },
     {
-     "slug": "rag-evaluation-faithfulness",
+     "slug": "document-chunking",
      "section": "13. Retrieval-augmented generation",
      "order": 119
     },
     {
+     "slug": "ann-vector-index",
+     "section": "13. Retrieval-augmented generation",
+     "order": 120
+    },
+    {
+     "slug": "metadata-filtering",
+     "section": "13. Retrieval-augmented generation",
+     "order": 121
+    },
+    {
+     "slug": "hybrid-search-rrf",
+     "section": "13. Retrieval-augmented generation",
+     "order": 122
+    },
+    {
+     "slug": "reranking-mmr",
+     "section": "13. Retrieval-augmented generation",
+     "order": 123
+    },
+    {
+     "slug": "query-transformation-hyde",
+     "section": "13. Retrieval-augmented generation",
+     "order": 124
+    },
+    {
+     "slug": "retrieval-metrics-recall-at-k",
+     "section": "13. Retrieval-augmented generation",
+     "order": 125
+    },
+    {
+     "slug": "rag-evaluation-faithfulness",
+     "section": "13. Retrieval-augmented generation",
+     "order": 126
+    },
+    {
+     "slug": "function-calling-dispatch",
+     "section": "14. AI agents and tool calling",
+     "order": 127
+    },
+    {
+     "slug": "agent-loop-react",
+     "section": "14. AI agents and tool calling",
+     "order": 128
+    },
+    {
+     "slug": "planning-decomposition",
+     "section": "14. AI agents and tool calling",
+     "order": 129
+    },
+    {
+     "slug": "agent-memory",
+     "section": "14. AI agents and tool calling",
+     "order": 130
+    },
+    {
+     "slug": "reflection-self-correction",
+     "section": "14. AI agents and tool calling",
+     "order": 131
+    },
+    {
+     "slug": "agentic-workflow-patterns",
+     "section": "14. AI agents and tool calling",
+     "order": 132
+    },
+    {
+     "slug": "multi-agent-orchestration",
+     "section": "14. AI agents and tool calling",
+     "order": 133
+    },
+    {
+     "slug": "state-graph-workflows",
+     "section": "14. AI agents and tool calling",
+     "order": 134
+    },
+    {
+     "slug": "agent-evaluation-safety",
+     "section": "14. AI agents and tool calling",
+     "order": 135
+    },
+    {
      "slug": "bleu-score",
      "section": "16. Evaluation and observability",
-     "order": 120
+     "order": 136
     },
     {
      "slug": "rouge-score",
      "section": "16. Evaluation and observability",
-     "order": 121
+     "order": 137
     },
     {
      "slug": "llm-as-judge",
      "section": "16. Evaluation and observability",
-     "order": 122
+     "order": 138
     },
     {
      "slug": "elo-pairwise-ranking",
      "section": "16. Evaluation and observability",
-     "order": 123
+     "order": 139
     },
     {
      "slug": "benchmark-contamination",
      "section": "16. Evaluation and observability",
-     "order": 124
+     "order": 140
     },
     {
      "slug": "tracing-and-logging",
      "section": "16. Evaluation and observability",
-     "order": 125
+     "order": 141
     },
     {
      "slug": "prompt-versioning",
      "section": "16. Evaluation and observability",
-     "order": 126
+     "order": 142
     },
     {
      "slug": "concept-drift",
      "section": "16. Evaluation and observability",
-     "order": 127
+     "order": 143
     },
     {
      "slug": "magnitude-pruning",
      "section": "17. Inference and optimisation",
-     "order": 128
+     "order": 144
     },
     {
      "slug": "gpu-memory-estimation",
      "section": "17. Inference and optimisation",
-     "order": 129
+     "order": 145
     },
     {
      "slug": "continuous-batching",
      "section": "17. Inference and optimisation",
-     "order": 130
+     "order": 146
     },
     {
      "slug": "speculative-decoding",
      "section": "17. Inference and optimisation",
-     "order": 131
+     "order": 147
     },
     {
      "slug": "flash-attention-online-softmax",
      "section": "17. Inference and optimisation",
-     "order": 132
+     "order": 148
     },
     {
      "slug": "tensor-parallel-matmul",
      "section": "17. Inference and optimisation",
-     "order": 133
+     "order": 149
     },
     {
      "slug": "pipeline-parallel-schedule",
      "section": "17. Inference and optimisation",
-     "order": 134
+     "order": 150
     },
     {
      "slug": "jailbreak-and-red-teaming",
      "section": "18. Security and responsible AI",
-     "order": 135
+     "order": 151
     },
     {
      "slug": "pii-redaction",
      "section": "18. Security and responsible AI",
-     "order": 136
+     "order": 152
     },
     {
      "slug": "output-validation-guardrails",
      "section": "18. Security and responsible AI",
-     "order": 137
+     "order": 153
     },
     {
      "slug": "content-safety-classifiers",
      "section": "18. Security and responsible AI",
-     "order": 138
+     "order": 154
     },
     {
      "slug": "fairness-metrics",
      "section": "18. Security and responsible AI",
-     "order": 139
+     "order": 155
     }
    ]
   },

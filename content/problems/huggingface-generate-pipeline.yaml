@@ -1,0 +1,124 @@
+slug: huggingface-generate-pipeline
+title: Hugging Face Style Text Generation Pipeline
+url: https://huggingface.co/docs/transformers/llm_tutorial
+difficulty: Medium
+area: LLM
+topics: [LLM, Tokenization, Generation, Batching]
+summary: |
+  A generation call is text → tokenizer → input ids and attention mask
+  → generate → output ids → decode; batches need left padding with a
+  mask so that decoder-only models continue from real tokens.
+intuition: |
+  The model only sees integers. Batching forces equal lengths, so short
+  prompts get pad tokens, and where those pads sit decides everything:
+  a decoder-only model predicts the next token from the last position,
+  so right padding makes it continue from a pad, while left padding
+  keeps the real last token at the end. The attention mask hides the
+  pads from attention, and generate adds each new token to the end of
+  the same ids.
+  Flow: text → ids + mask → generate → new ids → decode.
+approach:
+  - "Tokenize the prompts to ids — the model needs integers, not strings"
+  - "Pad on the left to the longest prompt — the last position must hold a real token"
+  - "Build the attention mask, 1 for real and 0 for pad — pads must not be attended to"
+  - "Derive position ids from the mask cumulative sum — real tokens start at position 0 despite the padding"
+  - "Run the model and append the argmax (greedy) or a sampled id, then repeat — one token per step"
+  - "Slice off the prompt columns and decode with special tokens skipped — gives only the new text"
+code: |
+  import torch
+  from tokenizers import Tokenizer
+  from tokenizers.models import WordLevel
+  from tokenizers.pre_tokenizers import Whitespace
+  from transformers import GPT2Config, GPT2LMHeadModel
+
+  WORDS = ["<pad>", "<unk>", "the", "cat", "sat", "on", "mat",
+           "dog", "ran", "a", "big"]
+
+  def build(seed=0):
+      vocab = {w: i for i, w in enumerate(WORDS)}
+      tok = Tokenizer(WordLevel(vocab, unk_token="<unk>"))
+      tok.pre_tokenizer = Whitespace()
+      tok.add_special_tokens(["<pad>"])
+      torch.manual_seed(seed)
+      cfg = GPT2Config(vocab_size=len(WORDS), n_embd=32, n_layer=2,
+                       n_head=2, n_positions=64, pad_token_id=0)
+      return tok, GPT2LMHeadModel(cfg).eval()
+
+  def encode(tok, texts, side="left"):
+      ids = [tok.encode(t).ids for t in texts]
+      n = max(len(r) for r in ids)
+      rows, mask = [], []
+      for r in ids:
+          pad = [0] * (n - len(r))
+          real = [1] * len(r)
+          rows.append(pad + r if side == "left" else r + pad)
+          mask.append([0] * len(pad) + real if side == "left"
+                      else real + [0] * len(pad))
+      return torch.tensor(rows), torch.tensor(mask)
+
+  @torch.no_grad()
+  def manual_greedy(model, input_ids, attention_mask, max_new_tokens):
+      ids, mask = input_ids, attention_mask
+      for _ in range(max_new_tokens):
+          pos = (mask.cumsum(-1) - 1).clamp(min=0)
+          logits = model(input_ids=ids, attention_mask=mask,
+                         position_ids=pos).logits
+          nxt = logits[:, -1].argmax(-1, keepdim=True)
+          ids = torch.cat([ids, nxt], dim=1)
+          mask = torch.cat([mask, torch.ones_like(nxt)], dim=1)
+      return ids
+
+  def decode(tok, ids):
+      return [tok.decode(r.tolist(), skip_special_tokens=True)
+              for r in ids]
+key_lines: [36, 39, 40]
+time: "O(T) forward passes for T new tokens; each costs O(L·d) per layer with a cache, O(L²·d) without"
+space: "O(B·L) ids and mask, plus the cache if used"
+when_to_use: |
+  Understanding or debugging what a generation call does: why batched
+  outputs differ from single ones, why a pad token must be set, and
+  why generated ids include the prompt unless you slice them off.
+when_not_to_use: |
+  Encoder-decoder models, where the decoder starts from its own start
+  token and padding conventions differ, or serving stacks with their
+  own continuous batching that hide padding entirely.
+why_it_works: |
+  Causal attention makes the logits at position $i$ depend only on the
+  earlier non-masked tokens. With left padding and position ids from
+  the mask, a padded prompt gives the same logits at its last real
+  token as the unpadded prompt, so batched greedy output equals the
+  single-prompt output.
+math:
+  - "pᵢ = (Σ_{j≤i} mⱼ) − 1  (position ids from mask m)"
+  - "sᵢⱼ = −∞ where mⱼ = 0  (attention mask hides pads)"
+  - "xₜ₊₁ = argmax_v logits[last, v]  (greedy step)"
+  - "Pad count of prompt i = L_max − Lᵢ"
+  - "Batch utilisation = Σᵢ Lᵢ / (B · L_max)"
+  - "Output length = L_max + max_new_tokens"
+interview_qa:
+  - q: "Why must decoder-only models be left-padded for generation?"
+    a: "The next token is predicted from the last position. With right padding that position is a pad, so the model continues from padding instead of the prompt; left padding keeps the last real token at the end."
+  - q: "What does the attention mask do?"
+    a: "It marks real tokens with 1 and pads with 0 so pad positions are excluded from attention. It also lets position ids be computed so real tokens start at position 0."
+  - q: "Why does generate return the prompt too?"
+    a: "For decoder-only models the new tokens are appended to the input ids. Slice off the first prompt-length columns to keep only the generated part."
+  - q: "How do greedy and sampling differ in the call?"
+    a: "Greedy takes the argmax each step. Sampling arguments such as temperature, top-k and top-p reshape the distribution and draw from it, so outputs vary from run to run."
+hyperparameters:
+  - "max_new_tokens, the generation length cap"
+  - "do_sample, temperature, top_k and top_p"
+  - "Padding side and the pad token id"
+  - "Batch size"
+pitfalls:
+  - "Using the default right padding with a decoder-only model silently degrades batched outputs"
+  - "Forgetting the attention mask or the pad token id makes pads count as real context"
+  - "Decoding the full output returns the prompt plus the answer; slice the prompt off first"
+  - "The default length cap is small, so set max_new_tokens explicitly"
+related: [autoregressive-decoding, gpt-decoder-only, kv-cache]
+math_tex:
+- 'Position: $p_i = \left(\sum_{j \leq i} m_j\right) - 1$'
+- 'Mask: $s_{ij} = -\infty$ where $m_j = 0$'
+- 'Greedy: $x_{t+1} = \arg\max_v\, z_{\mathrm{last},v}$'
+- 'Pads: $L_{\max} - L_i$ for prompt $i$'
+- 'Use: $\frac{\sum_i L_i}{B \cdot L_{\max}}$'
+- 'Length: $L_{\max} + T_{\mathrm{new}}$'

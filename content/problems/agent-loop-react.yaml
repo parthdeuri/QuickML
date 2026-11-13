@@ -1,0 +1,132 @@
+slug: agent-loop-react
+title: ReAct Agent Loop
+url: https://arxiv.org/abs/2210.03629
+difficulty: Medium
+area: LLM
+topics: [LLM, Agents, Tool Use, ReAct]
+summary: |
+  The model alternates Thought, Action (a tool and its input) and
+  Observation (the tool result) until it writes a Final Answer, while the
+  program around it enforces a step budget, loop detection and
+  observation limits.
+intuition: |
+  A single prompt cannot know what a tool will return, so the model
+  commits to one action at a time and reads the result before deciding
+  the next. Writing the thought first gives it a place to plan and to
+  react to surprises. The model supplies the reasoning, but the
+  harness must supply the discipline: without a step budget, loop
+  detection and size limits, the trajectory can spin, repeat itself or
+  flood the context.
+  Flow: thought → action → observation → repeat → final answer.
+approach:
+  - "Parse the model text for Action: tool[input] or Final Answer — the text format is the only interface to the model"
+  - "On unparseable output, re-prompt once with the expected format and fail clearly if it happens again — one repair is cheap, endless repair is a loop"
+  - "Check the action against those already taken — a repeated tool and input will give the same observation, so stop with a loop reason"
+  - "Run the tool, mapping unknown names and exceptions to an error observation — the model can read it and adapt"
+  - "Truncate the observation to a character limit — one huge result must not fill the context"
+  - "Append thought, action and observation to the transcript and call the model again — it sees the whole trajectory so far"
+  - "Stop on a final answer or when the step budget is spent, and always return a stop reason — the caller must know whether it succeeded"
+code: |
+  import re
+
+  ACTION = re.compile(r"^Action:\s*(\w+)\[(.*)\]\s*$", re.M)
+  FINAL = re.compile(r"^Final Answer:\s*(.+)$", re.M)
+  REPROMPT = ("Observation: Invalid format. Reply with "
+              "Action: tool[input] or Final Answer: text")
+
+  def parse_react(text):
+      act, fin = ACTION.search(text), FINAL.search(text)
+      if act and (not fin or act.start() < fin.start()):
+          return ("action", act.group(1), act.group(2))
+      if fin:
+          return ("final", fin.group(1).strip())
+      return ("bad", text.strip())
+
+  def observe(tools, name, arg, limit):
+      if name not in tools:
+          known = ", ".join(sorted(tools))
+          obs = "Error: unknown tool %r. Tools: %s" % (name, known)
+      else:
+          try:
+              obs = str(tools[name](arg))
+          except Exception as e:
+              obs = "Error: " + repr(e)
+      return obs if len(obs) <= limit else obs[:limit - 3] + "..."
+
+  def run_react(llm, tools, question, max_steps=6, max_obs_chars=80):
+      log, seen, bad = ["Question: " + question], set(), 0
+
+      def done(stop, answer, steps):
+          return {"stop": stop, "answer": answer, "steps": steps,
+                  "transcript": "\n".join(log)}
+
+      for step in range(1, max_steps + 1):
+          out = llm("\n".join(log))
+          log.append(out.strip())
+          kind = parse_react(out)
+          if kind[0] == "final":
+              return done("answer", kind[1], step)
+          if kind[0] == "bad":
+              bad += 1
+              if bad > 1:
+                  return done("malformed", None, step)
+              log.append(REPROMPT)
+              continue
+          bad = 0
+          _, name, arg = kind
+          if (name, arg) in seen:
+              return done("loop", None, step)
+          seen.add((name, arg))
+          obs = observe(tools, name, arg, max_obs_chars)
+          log.append("Observation: " + obs)
+      return done("max_steps", None, max_steps)
+key_lines: [37, 48, 51]
+time: "O(S · (model call + tool call)) for S steps; each model call reads the whole history"
+space: "O(P + S · (t + o_max)) transcript, since observations are capped"
+when_to_use: |
+  Open-ended tasks where the next step depends on what the last tool
+  returned: multi-hop questions, debugging, research, exploring an
+  unfamiliar system. Use it when the path cannot be written down in
+  advance.
+when_not_to_use: |
+  When the steps are known, a fixed workflow is cheaper, faster and more
+  predictable, and easier to test. A free-running loop costs more tokens,
+  because the history is resent at every step, and its behaviour varies
+  from run to run.
+why_it_works: |
+  Each action is chosen after seeing the real result of the previous one,
+  so errors in the world are discovered rather than guessed; the thought
+  text lets the model plan before it commits. The harness bounds the
+  damage: a step budget guarantees termination, a seen-actions set
+  catches the simplest cycles, and capped observations keep the context
+  size linear in the number of steps.
+math:
+  - "Input tokens = Σₛ (P + s·c) = S·P + c·S(S+1)/2"
+  - "Step size c ≤ t + o_max (thought plus capped observation)"
+  - "Context after s steps ≤ P + s · (t + o_max)"
+  - "Success with step success p: Πₛ pₛ = pˢ"
+interview_qa:
+  - q: "How is ReAct different from plain chain-of-thought?"
+    a: "Chain-of-thought reasons only from the prompt. ReAct interleaves reasoning with actions, so each thought can use fresh observations from tools."
+  - q: "Why is the token cost of a loop quadratic in the number of steps?"
+    a: 'Every step resends the whole history, so step $s$ reads about $P + s\,c$ tokens and the total grows like $S^2$.'
+  - q: "How do you detect and handle a stuck agent?"
+    a: "Track (tool, input) pairs already used and stop on a repeat, and keep a hard step budget. Then report the stop reason instead of returning a guess."
+  - q: "ReAct loop or fixed workflow?"
+    a: "Use a workflow when the steps are known: it is cheaper and predictable. Use the loop when the next step depends on tool results."
+hyperparameters:
+  - "Maximum steps"
+  - "Observation character or token limit"
+  - "Number of format re-prompts allowed"
+  - "Which tools are exposed and how they are described"
+pitfalls:
+  - "No step budget means a confused model can loop forever and spend without limit"
+  - "Untruncated observations let one large page or file fill the context window"
+  - "Crashing on an unknown tool or a tool error removes the chance for the model to recover"
+  - "Tool output is untrusted text and can carry injected instructions that the model may follow"
+related: [prompt-injection-defense, structured-outputs-json-schema, context-window-limits]
+math_tex:
+- 'Input tokens: $\sum_{s=1}^{S}(P + s\,c) = SP + c\,\frac{S(S+1)}{2}$'
+- 'Step size: $c \leq t + o_{\max}$'
+- 'Context: $\leq P + s\,(t + o_{\max})$'
+- 'Success: $\prod_{s=1}^{S} p_s = p^{S}$'

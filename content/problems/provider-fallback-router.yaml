@@ -1,0 +1,148 @@
+slug: provider-fallback-router
+title: Provider Fallback Router for LLM Calls
+url: https://docs.litellm.ai/docs/routing
+difficulty: Medium
+area: LLM
+topics: [LLM, Reliability, Routing, Inference]
+summary: |
+  Send each LLM request down an ordered chain of providers, classify
+  every error, and hop to the next provider only when that can help;
+  unhealthy providers sit out a cool-down.
+intuition: |
+  Not every failure deserves a fallback. A timeout or rate limit says
+  this provider is struggling, so try another; an invalid request will
+  fail everywhere, so hopping only burns money; an auth failure
+  condemns one provider but not the request. The router is a small
+  state machine: classify the error, then decide whether to retry
+  elsewhere, stop, or bench the provider for a while.
+  Flow: request → provider 1 → classify error → provider 2.
+approach:
+  - "Classify the exception as retryable, fatal for the request, or fatal for the provider — decides whether a hop makes sense"
+  - "Order the providers by the strategy (priority, weighted, cheapest, fastest) — the first healthy one gets the call"
+  - "Skip providers whose cool-down has not expired — avoids hammering a failing endpoint"
+  - "On a retryable or provider error, bench the provider and try the next — auth benches it for much longer"
+  - "On a request error, raise at once — every provider would reject it too"
+  - "Raise one combined error if the chain is exhausted — the caller sees that nothing is healthy"
+code: |
+  import random
+
+  class RateLimit(Exception): pass
+  class ServerError(Exception): pass
+  class InvalidRequest(Exception): pass
+  class ContentPolicy(Exception): pass
+  class AuthError(Exception): pass
+  class AllFailed(Exception): pass
+
+  def classify_error(exc):
+      if isinstance(exc, (TimeoutError, RateLimit, ServerError)):
+          return "retry"
+      if isinstance(exc, (InvalidRequest, ContentPolicy)):
+          return "request"
+      if isinstance(exc, AuthError):
+          return "provider"
+      return "retry"
+
+  def weighted_choice(weights, rng):
+      r = rng.random() * sum(weights)
+      for i, w in enumerate(weights):
+          r -= w
+          if r < 0:
+              return i
+      return len(weights) - 1
+
+  class Router:
+      def __init__(self, providers, strategy="priority",
+                   rng=None, clock=None, cooldown=30.0):
+          self.providers = providers  # dicts: name, fn, ...
+          self.strategy = strategy
+          self.rng = rng or random.Random(0)
+          self.clock = clock or (lambda: 0.0)
+          self.cooldown = cooldown
+          self.until = {}  # name -> time it is usable again
+
+      def order(self):
+          ps = list(self.providers)
+          if self.strategy == "cheapest":
+              return sorted(ps, key=lambda p: p["cost"])
+          if self.strategy == "latency":
+              return sorted(ps, key=lambda p: p["latency"])
+          if self.strategy == "weighted":
+              out = []
+              while ps:
+                  i = weighted_choice([p["weight"] for p in ps],
+                                      self.rng)
+                  out.append(ps.pop(i))
+              return out
+          return ps
+
+      def call(self, request):
+          errors = []
+          for p in self.order():
+              if self.clock() < self.until.get(p["name"], 0.0):
+                  continue
+              try:
+                  return p["name"], p["fn"](request)
+              except Exception as exc:
+                  kind = classify_error(exc)
+                  if kind == "request":
+                      raise
+                  wait = 1e9 if kind == "provider" else self.cooldown
+                  self.until[p["name"]] = self.clock() + wait
+                  errors.append((p["name"], repr(exc)))
+          raise AllFailed(errors)
+
+  def expected_chain_cost(costs, fail_probs):
+      reach, total = 1.0, 0.0
+      for c, f in zip(costs, fail_probs):
+          total += reach * c
+          reach *= f
+      return total
+key_lines: [61, 63, 72]
+time: "O(n) per call over n providers, plus O(n log n) to sort"
+space: "O(n) for the providers and one cool-down timestamp each"
+when_to_use: |
+  Production LLM features that must stay up when one provider is slow,
+  rate limited or down, or that should spread load or cost across
+  several models behind one interface.
+when_not_to_use: |
+  Flows that need identical outputs every time, since fallback models
+  differ in style and capability, or non-idempotent calls where a
+  half-finished request on one provider may still take effect.
+why_it_works: |
+  Failures of different providers are roughly independent, so the
+  chance that the whole chain fails is the product of the individual
+  failure probabilities, which shrinks fast with each added provider.
+  Classifying errors keeps the hops useful, and cool-downs stop a dead
+  provider from adding its timeout to every request.
+math:
+  - "P(reach i) = ∏_{j<i} fⱼ"
+  - "E[cost] = Σᵢ P(reach i) · cᵢ"
+  - "P(all fail) = ∏ᵢ fᵢ"
+  - "P(success) = 1 − ∏ᵢ fᵢ"
+  - "Weighted pick: P(i) = wᵢ / Σⱼ wⱼ"
+interview_qa:
+  - q: "Which errors should trigger a fallback?"
+    a: "Timeouts, rate limits and server errors, because another provider may succeed. An invalid request or content-policy block would fail everywhere, so it should be raised at once; an auth error only removes that provider."
+  - q: "Why a cool-down rather than trying every provider each time?"
+    a: "A provider that just failed is likely still failing, and retrying it adds its full timeout to every request. Benching it for a while keeps latency low and lets it recover."
+  - q: "How do you compute the expected cost of a fallback chain?"
+    a: "Sum over providers of the probability of reaching it times its cost, where the probability of reaching provider i is the product of the failure probabilities before it."
+  - q: "Priority versus weighted routing?"
+    a: "Priority always prefers the first healthy provider and uses the rest as backup. Weighted random spreads traffic in proportion to the weights, which balances load and quota."
+hyperparameters:
+  - "Provider order or weights"
+  - "Cool-down duration after a failure"
+  - "Number of failures before a provider is benched"
+  - "Per-provider timeout"
+pitfalls:
+  - "Treating every exception as retryable multiplies the bill for requests that can never succeed"
+  - "Without a cool-down, a hard-down provider adds its whole timeout to each request"
+  - "Fallback models answer differently, so evaluate each chain member on your own task"
+  - 'Failures are not fully independent: a shared network or quota problem can take several providers down together, so $\prod_i f_i$ is optimistic'
+related: [json-api-requests-retries, tracing-and-logging]
+math_tex:
+- 'Reach: $P(\mathrm{reach}\ i) = \prod_{j<i} f_j$'
+- 'Cost: $\mathbb{E}[c] = \sum_i P(\mathrm{reach}\ i)\,c_i$'
+- 'Chain down: $P = \prod_i f_i$'
+- 'Chain up: $P = 1 - \prod_i f_i$'
+- 'Weighted: $P(i) = \frac{w_i}{\sum_j w_j}$'

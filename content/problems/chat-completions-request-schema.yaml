@@ -1,0 +1,127 @@
+slug: chat-completions-request-schema
+title: Chat Completion Requests, Responses and Token Cost
+url: https://json-schema.org/understanding-json-schema/reference/object
+difficulty: Easy
+area: LLM
+topics: [LLM APIs, JSON Schema, Token Cost]
+summary: |
+  A chat API takes messages, a model name and sampling parameters, and
+  returns choices with a finish reason plus token usage. Validate both
+  sides, price the usage, and check that the prompt and the reply budget
+  fit the context window.
+intuition: |
+  Almost every chat endpoint has the same contract: a list of role-tagged
+  messages in, a list of choices out, and a usage record that is the
+  basis of the bill. Two numbers matter most operationally. The finish
+  reason says why generation stopped, and length means the reply was cut
+  at the token limit, so the text may be incomplete. The token counts
+  give the cost, and the prompt plus the reply budget must fit in the
+  context window or the call is rejected or truncated.
+  Flow: request → schema check → fits context? → response → usage → cost, truncated?
+approach:
+  - 'Describe the request as a JSON Schema with required model and messages — a malformed call fails before any network use'
+  - 'Constrain each field: role from a fixed set, $temperature$ in a range, $max\_tokens$ a positive integer — bad values are caught locally'
+  - 'Check that $\mathrm{prompt} + \mathrm{max\_tokens} \leq L$ — otherwise the context window cannot hold the reply budget'
+  - 'Validate the response: choices with a message and a finish reason, and usage with both counts — parse nothing unchecked'
+  - 'Compute the cost as $(p \cdot \pi_{in} + c \cdot \pi_{out}) / 10^6$ — prices are quoted per million tokens'
+  - 'Treat a finish reason of length as truncation — retry with a larger budget or continue the text'
+code: |
+  import jsonschema
+
+  NUM, INT = {"type": "number"}, {"type": "integer"}
+  STR = {"type": "string"}
+  MSG = {"type": "object", "required": ["role", "content"],
+         "properties": {
+             "role": {"enum": ["system", "user", "assistant", "tool"]},
+             "content": STR}}
+
+  REQUEST_SCHEMA = {
+      "type": "object", "required": ["model", "messages"],
+      "properties": {
+          "model": {"type": "string", "minLength": 1},
+          "messages": {"type": "array", "minItems": 1, "items": MSG},
+          "temperature": {**NUM, "minimum": 0, "maximum": 2},
+          "top_p": {**NUM, "exclusiveMinimum": 0, "maximum": 1},
+          "max_tokens": {**INT, "minimum": 1},
+          "stop": {"type": "array", "items": STR},
+          "tools": {"type": "array", "items": {
+              "type": "object", "required": ["name"]}}}}
+
+  COUNT = {**INT, "minimum": 0}
+  REASON = {"enum": ["stop", "length", "tool_calls"]}
+  CHOICE = {"type": "object",
+            "required": ["message", "finish_reason"],
+            "properties": {
+                "message": MSG,
+                "finish_reason": REASON}}
+  RESPONSE_SCHEMA = {
+      "type": "object", "required": ["choices", "usage"],
+      "properties": {
+          "choices": {"type": "array", "minItems": 1, "items": CHOICE},
+          "usage": {"type": "object",
+                    "required": ["prompt_tokens", "completion_tokens"],
+                    "properties": {"prompt_tokens": COUNT,
+                                   "completion_tokens": COUNT}}}}
+
+  def validate_request(req):
+      jsonschema.validate(req, REQUEST_SCHEMA)
+
+  def usage_cost(usage, price_in, price_out):
+      p, c = usage["prompt_tokens"], usage["completion_tokens"]
+      return (p * price_in + c * price_out) / 1e6
+
+  def is_truncated(resp):
+      return resp["choices"][0]["finish_reason"] == "length"
+
+  def fits_context(prompt_tokens, max_tokens, limit):
+      return prompt_tokens + max_tokens <= limit
+key_lines: [39, 42, 46]
+time: "O(size of the message) to validate; O(1) for cost and the context check"
+space: "O(1) beyond the request and response themselves"
+when_to_use: |
+  Any client or gateway that calls a chat endpoint: validate before
+  sending to fail fast, and read usage and finish reason on every reply
+  to track spend and detect cut-off answers.
+when_not_to_use: |
+  Do not rely on the schema alone for correctness of the model's text; it
+  checks shape, not meaning. Providers differ in details, so use their
+  own documented schema when you need strict compatibility.
+why_it_works: |
+  Billing is linear in token counts, so the cost is a dot product of the
+  counts with the two prices. Generation stops for exactly one reason:
+  an end of sequence, a stop string, a tool call, or the token limit.
+  The finish reason records which, so length is the only case where the
+  model had more to say. The context check holds because the prompt and
+  the generated tokens share one window of size $L$.
+math:
+  - "cost = (p · π_in + c · π_out) / 10⁶"
+  - "total tokens = p + c"
+  - "Fit condition: p + max_tokens ≤ L"
+  - "Largest safe reply budget: max_tokens ≤ L − p"
+  - "Average price per token = cost / (p + c)"
+interview_qa:
+  - q: "Why are output tokens usually priced higher than input tokens?"
+    a: "Prompt tokens are processed in one parallel pass, while output tokens are produced one at a time, each needing a full forward step, so they use more compute per token."
+  - q: "What does a finish reason of length tell you?"
+    a: "The reply hit the max_tokens limit or the context limit and was cut, so it may end mid-sentence or mid-JSON. Raise the budget, shorten the prompt, or ask the model to continue."
+  - q: "Why validate the request locally?"
+    a: "It fails fast with a clear message, avoids a billed or rate-limited round trip for an obviously bad call, and documents the contract in one place."
+  - q: "How do you budget the context window?"
+    a: "The prompt tokens plus the requested max_tokens must not exceed the window, so the reply budget is the window minus the prompt length."
+hyperparameters:
+  - "Temperature (a range check is $0$ to $2$ here) and $top\\_p$"
+  - "Maximum output tokens"
+  - "Stop sequences"
+  - "Context limit $L$ of the chosen model"
+pitfalls:
+  - "Ignoring finish reason length and shipping a truncated answer or invalid JSON"
+  - "Reading prices as per token when they are quoted per million tokens, which is off by a factor of $10^6$"
+  - "Forgetting that $max\\_tokens$ counts against the context window, so a long prompt leaves little room"
+  - "Hard-coding one provider's field names; keep the schema in one place so it can be swapped"
+related: [context-window-limits, structured-outputs-json-schema, temperature-sampling]
+math_tex:
+- 'Cost: $\frac{p\,\pi_{in} + c\,\pi_{out}}{10^6}$'
+- 'Total tokens: $p + c$'
+- 'Fit: $p + \mathrm{max\_tokens} \leq L$'
+- 'Reply budget: $\mathrm{max\_tokens} \leq L - p$'
+- 'Mean price: $\frac{\mathrm{cost}}{p + c}$ per token'

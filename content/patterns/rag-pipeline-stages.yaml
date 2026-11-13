@@ -1,0 +1,55 @@
+id: rag-pipeline-stages
+name: RAG pipeline stages
+order: 29
+summary: Ground a language model in your documents with a chain of stages, load,
+  chunk, index, retrieve, fuse, rerank and evaluate, each failing in its own way.
+when_to_use:
+- The model must answer from private or fresh documents it was not trained on.
+- Answers need citations you can trace back to a source passage.
+- You need to find out which stage of a RAG system is losing the right evidence.
+key_idea: Retrieval-augmented generation is a pipeline, and an error in an early
+  stage cannot be repaired later. Chunking with overlap decides what can be found,
+  embedding and cosine similarity find candidates, reciprocal rank fusion merges
+  rankings from different retrievers without comparing their raw scores, and recall
+  at k tells you whether the evidence even reached the generator.
+template: |
+  import numpy as np
+
+  def chunks(tokens, size, overlap):
+      step = size - overlap
+      stop = max(len(tokens) - overlap, 1)
+      return [tokens[i:i + size] for i in range(0, stop, step)]
+
+  def retrieve(q, D, k):
+      q = q / np.linalg.norm(q)
+      D = D / np.linalg.norm(D, axis=1, keepdims=True)
+      return [int(i) for i in np.argsort(-(D @ q))[:k]]
+
+  def rrf(rank_lists, k=60):
+      fused = {}
+      for ranking in rank_lists:
+          for r, doc in enumerate(ranking, start=1):
+              fused[doc] = fused.get(doc, 0.0) + 1.0 / (k + r)
+      return sorted(fused, key=lambda d: (-fused[d], d))
+
+  def recall_at_k(ranked, relevant, k):
+      hit = set(ranked[:k]) & set(relevant)
+      return len(hit) / len(relevant)
+complexity: Brute-force retrieval is O(N·d) per query; an ANN index trades a little recall for sub-linear search.
+pitfalls:
+- Chunks that are too small lose context and chunks that are too large dilute the embedding.
+- Scores from different retrievers are not comparable, so fuse ranks rather than raw scores.
+- Judging only the final answer hides whether retrieval or generation failed; measure recall at k separately.
+problems:
+- document-loading-extraction
+- document-chunking
+- rag-dense-retrieval
+- ann-vector-index
+- metadata-filtering
+- hybrid-search-rrf
+- reranking-mmr
+- query-transformation-hyde
+- rag-evaluation-faithfulness
+aliases:
+- RAG pipeline stages
+- Retrieval-augmented generation pipeline

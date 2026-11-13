@@ -93,4 +93,4 @@ math_tex:
 - 'Chance: $p_e = \sum_{c} P_1(c)\,P_2(c)$'
 - 'Kappa: $\kappa = \frac{p_o - p_e}{1 - p_e}$'
 - 'Perfect: $\kappa = 1$, chance: $\kappa = 0$'
-patterns: ["Text evaluation and retrieval"]
+patterns: ["Text evaluation and retrieval", "LLM evaluation methods"]

@@ -99,3 +99,4 @@ math_tex:
 - 'Set $G = C/6$, so $D = G/N$'
 - '$N^{*} = \left(\frac{\alpha A}{\beta B}\right)^{\frac{1}{\alpha+\beta}} G^{\frac{\beta}{\alpha+\beta}}$'
 - 'Then $D^{*} = G / N^{*}$'
+patterns: ["LLM efficiency and parallelism"]

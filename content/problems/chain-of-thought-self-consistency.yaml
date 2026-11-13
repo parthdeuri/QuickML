@@ -92,3 +92,4 @@ math_tex:
 - 'Vote: $a^{*} = \arg\max_a \sum_i 1[a_i = a]$'
 - 'At $p = 0.7$: 0.700, 0.837, 0.974 for $n$ = 1, 5, 21'
 - 'For $p < 0.5$ accuracy $\rightarrow 0$ as $n$ grows'
+patterns: ["Prompting and context"]

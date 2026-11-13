@@ -83,4 +83,4 @@ math_tex:
 - $L_{t \to i} = -\frac{1}{N}\sum_j \log \mathrm{softmax}(S_{:,j})_j$ (columns)
 - $L = (L_{i \to t} + L_{t \to i})\,/\,2$
 - CLIP learns $\tau = \exp(-\mathrm{logit\_scale})$, a scalar
-patterns: ["Information-theoretic losses"]
+patterns: ["Information-theoretic losses", "Multimodal and speech"]

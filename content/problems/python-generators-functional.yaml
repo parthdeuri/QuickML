@@ -105,3 +105,4 @@ math_tex:
 - 'Batches: $\lceil n/b \rceil$ for batch size $b$'
 - 'compose(f, g, h)(x) $= h(g(f(x)))$'
 - '$k$ distinct args, $c$ calls: $k$ runs, $c-k$ hits'
+patterns: ["Programming and tooling"]

@@ -99,3 +99,4 @@ math_tex:
 - 'Break-even in segment: $t = \frac{kG + O}{p}$'
 - 'Valid if $(k-1)u\,\mathrm{cap} < t \leq k\,u\,\mathrm{cap}$'
 - 'Long run: $\frac{G}{u\,\mathrm{cap}}$ per token'
+patterns: ["LLM production operations"]

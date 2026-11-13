@@ -98,3 +98,4 @@ math_tex:
 - '$\|a_i - b_j\|^2 = \|a_i\|^2 + \|b_j\|^2 - 2\,a_i \cdot b_j$'
 - 'Broadcast temp: $n \cdot m \cdot d$ floats; identity: $n \cdot m$'
 - 'Row softmax, $m = \max_j x_j$: $\frac{e^{x_i-m}}{\sum_j e^{x_j-m}}$'
+patterns: ["Programming and tooling"]

@@ -552,6 +552,16 @@ EXTRA6 = {
 for _k, _v in EXTRA6.items():
     MEMBERS[_k] = MEMBERS[_k] + [x for x in _v if x not in MEMBERS[_k]]
 
+EXTRA7 = {
+ "validation-hygiene": ["feature-engineering-encoding", "sklearn-pipeline-column-transformer"],
+ "information-theoretic-losses": ["loss-functions-regression-classification"],
+ "network-building-blocks": ["perceptron-learning-rule", "micrograd-autograd-engine",
+                             "pytorch-training-loop-anatomy"],
+ "gradient-optimisation": ["adamw-decoupled-weight-decay"],
+}
+for _k, _v in EXTRA7.items():
+    MEMBERS[_k] = MEMBERS[_k] + [x for x in _v if x not in MEMBERS[_k]]
+
 KEYS = ["id", "name", "order", "summary", "when_to_use", "key_idea",
         "template", "complexity", "pitfalls", "problems", "aliases"]
 

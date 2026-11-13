@@ -1,0 +1,64 @@
+id: programming-and-tooling
+name: Programming and tooling
+order: 33
+summary: Write data code that is vectorised, lazy, typed and reproducible, so it is
+  fast to run, cheap in memory and exact to repeat.
+when_to_use:
+- A Python loop over rows or elements is the bottleneck.
+- Data is too large to hold in memory and must be processed in batches.
+- A result must be re-created exactly on another day or another machine.
+- You need to tell whether two configurations or runs are the same.
+key_idea: Good data code pushes work out of the interpreter and into array
+  operations, so broadcasting rules decide shapes instead of loops. It streams data
+  lazily with generators so memory stays flat, and it fixes every source of
+  randomness with a seed. Hashing a canonical form of the configuration then gives
+  a stable fingerprint, so a run can be named, compared and reproduced.
+template: |
+  import hashlib, itertools, json
+  import numpy as np
+
+  def broadcast_shape(a, b):
+      n = max(len(a), len(b))
+      a = (1,) * (n - len(a)) + tuple(a)
+      b = (1,) * (n - len(b)) + tuple(b)
+      out = []
+      for x, y in zip(a, b):
+          if x != y and x != 1 and y != 1:
+              raise ValueError("cannot broadcast")
+          out.append(y if x == 1 else x)
+      return tuple(out)
+
+  def batched(iterable, n):
+      it = iter(iterable)
+      while batch := list(itertools.islice(it, n)):
+          yield batch                    # lazy: one batch at a time
+
+  def run(seed, n=5):
+      return np.random.default_rng(seed).normal(size=n)
+
+  def config_hash(cfg):
+      blob = json.dumps(cfg, sort_keys=True, separators=(",", ":"))
+      return hashlib.sha256(blob.encode()).hexdigest()
+complexity: Vectorised code is still O(n) work but runs in compiled loops; a
+  generator keeps memory at O(batch size) instead of O(n).
+pitfalls:
+- Broadcasting can silently produce a large temporary array (an n by n matrix from
+  two vectors); check shapes and memory.
+- A generator can be consumed only once; materialise it if you need a second pass.
+- Seeding one library is not enough; seed every source of randomness you use, and
+  note that some parallel or GPU operations stay non-deterministic.
+- A config hash only fingerprints what you put in it; include the data version and
+  the code version too.
+problems:
+- numpy-broadcasting-vectorisation
+- pandas-groupby-merge-window
+- python-generators-functional
+- python-oop-protocols-dataclasses
+- json-api-requests-retries
+- git-object-model
+- big-o-empirical-complexity
+- sql-interview-patterns
+- reproducibility-seeds-determinism
+aliases:
+- Programming and tooling
+- Data engineering hygiene

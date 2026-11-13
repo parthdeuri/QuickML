@@ -98,3 +98,4 @@ math_tex:
 - 'Cascade: $\mathbb{E}[C] = c_1 + e\,c_2$'
 - 'Cheaper iff $c_1 < (1-e)\,c_2$'
 - 'Equivalently $e < 1 - \frac{c_1}{c_2}$'
+patterns: ["LLM production operations"]

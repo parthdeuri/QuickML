@@ -1,0 +1,54 @@
+id: compare-greedy-vs-sampling-vs-beam
+name: 'Compare: Greedy vs Sampling vs Beam Search'
+order: 118
+summary: Greedy and beam search decode deterministically; temperature and top-p
+  sampling trade exactness for diversity.
+when_to_use:
+- Pick greedy when you need the cheapest, fully repeatable output and the task has one clear answer.
+- Pick beam search for translation, summarisation or speech, where the highest-probability whole sequence is the goal.
+- Pick temperature plus top-p sampling for open-ended text, chat and creative writing, where varied output matters.
+- Avoid beam search for open-ended generation; it favours bland, repetitive text.
+key_idea: Greedy takes the best token at each step, but a locally best first token
+  can lead to a poor continuation, so its sequence probability can be low. Beam
+  search keeps the k best partial sequences and can find a higher-probability
+  whole sequence at k times the cost. Sampling draws from the distribution instead
+  of maximising it, with temperature sharpening or flattening it and top-p cutting
+  off the unlikely tail, so each run differs.
+template: |
+  import numpy as np
+  P0 = {"A": .5, "B": .4, "C": .1}          # first-token table
+  NEXT = {"A": {"x": .4, "y": .3, "z": .3},
+          "B": {"x": .9, "y": .05, "z": .05},
+          "C": {"x": .4, "y": .3, "z": .3}}
+  def greedy():
+      a = max(P0, key=P0.get)
+      b = max(NEXT[a], key=NEXT[a].get)
+      return a + b, P0[a] * NEXT[a][b]
+  def beam(k=2):
+      top = sorted(P0, key=P0.get, reverse=True)[:k]
+      c = [(P0[a] * q, a + b) for a in top
+           for b, q in NEXT[a].items()]
+      p, s = max(c)
+      return s, p
+  def pick(d, T, top_p, rng):
+      ks = sorted(d, key=d.get, reverse=True)
+      w = np.array([d[t] ** (1 / T) for t in ks])
+      w /= w.sum()
+      n = int(np.searchsorted(np.cumsum(w), top_p - 1e-9)) + 1
+      return ks[rng.choice(n, p=w[:n] / w[:n].sum())]
+  def sample(T, top_p, seed):
+      r = np.random.default_rng(seed)
+      a = pick(P0, T, top_p, r)
+      return a + pick(NEXT[a], T, top_p, r)
+complexity: Greedy is O(L) model steps, beam search is O(k·L), sampling is O(L) per
+  sequence; top-p adds a sort of the vocabulary per step.
+pitfalls:
+- Beam search with large k tends to produce short or repetitive output unless a length penalty is used.
+- Very low temperature makes sampling behave like greedy, so diversity vanishes.
+- Top-p of 1.0 with high temperature lets rare, incoherent tokens through.
+problems:
+- beam-search
+- temperature-sampling
+- top-k-top-p-sampling
+aliases:
+- 'Compare: Greedy vs Sampling vs Beam Search'

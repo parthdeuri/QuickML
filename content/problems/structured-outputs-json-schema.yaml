@@ -135,3 +135,4 @@ pitfalls:
   - "Masking tokens can force a valid but wrong answer when the model wanted a forbidden token; the content may degrade"
   - "Treating $1-(1-p)^n$ as exact: failures are often correlated across attempts, so real success is lower"
 related: [temperature-sampling, autoregressive-decoding, top-k-top-p-sampling]
+patterns: ["Prompting and context"]

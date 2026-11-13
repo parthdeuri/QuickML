@@ -122,3 +122,4 @@ math_tex:
 - 'Scaler: $z = \frac{x - \mu}{\sigma}$, from training data'
 - 'Pipeline: $\hat{y} = f(T_2(T_1(X)))$'
 - 'Fit cost: $\sum_s (F_s + T_s) + F_{model}$'
+patterns: ["Programming and tooling"]

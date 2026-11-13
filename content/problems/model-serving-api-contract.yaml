@@ -120,3 +120,4 @@ math_tex:
 - $S(b) = a + c\,b$ (fixed + per item)
 - $\mathrm{thr}(b) = \frac{b}{a + c\,b} \rightarrow \frac{1}{c}$
 - Batch size $b \approx \min(B,\; 1 + \lambda W)$
+patterns: ["LLM production operations"]

@@ -1,0 +1,43 @@
+id: compare-mha-vs-gqa-vs-sliding-window
+name: 'Compare: MHA vs GQA vs Sliding Window'
+order: 122
+summary: Multi-head, grouped-query and sliding-window attention cut the
+  memory or compute of attention in different ways.
+when_to_use:
+- Pick multi-head attention for the best quality when memory and long contexts are not a constraint.
+- Pick grouped-query attention to shrink the KV cache and speed up decoding with little quality loss.
+- Pick sliding-window attention when sequences are very long and local context is enough for most tokens.
+- Combine grouped-query and sliding-window attention to cut both cache size and attended positions.
+key_idea: Multi-head attention stores separate keys and values for every head, so
+  the KV cache grows with the number of heads. Grouped-query attention lets several
+  query heads share one key-value head, shrinking the cache by n_heads divided by
+  n_kv without changing how many positions are attended. Sliding-window attention
+  keeps the heads but lets each token see only the last W positions, so the cost
+  is about T times W instead of T squared.
+template: |
+  def kv_bytes(layers, n_kv, d_head, T, dtype=2):
+      return 2 * layers * n_kv * d_head * T * dtype   # keys and values
+
+  def attended_full(T):
+      return T * (T + 1) // 2           # causal, every past token
+
+  def attended_window(T, W):
+      return sum(min(i + 1, W) for i in range(T))
+
+  n_heads, n_kv, d, L, T, W = 32, 8, 128, 32, 4096, 512
+  mha = kv_bytes(L, n_heads, d, T)
+  gqa = kv_bytes(L, n_kv, d, T)
+  print(mha / gqa)                             # n_heads / n_kv
+  print(attended_full(T) / attended_window(T, W))
+complexity: Full attention is O(T squared) compute and O(T) KV cache per layer; a window
+  gives O(T·W) compute and a cache of at most W positions.
+pitfalls:
+- Sharing too few key-value heads, as in the extreme of a single head, can cost quality.
+- A window hides distant tokens within one layer; information only travels further by stacking layers.
+- GQA reduces KV cache memory and bandwidth, not the number of attended positions.
+problems:
+- multi-head-attention
+- llama-rmsnorm-gqa
+- sliding-window-attention
+aliases:
+- 'Compare: MHA vs GQA vs Sliding Window'

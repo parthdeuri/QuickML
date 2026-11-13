@@ -81,3 +81,4 @@ math_tex:
 - '$T \to 0^{+}$: one-hot at argmax. $T=1$: softmax'
 - 'As $T \to \infty$: $p_i \to 1/V$'
 - '$H(T) = -\sum_{i} p_i \log p_i \leq \log V$'
+patterns: ["Decoding and sampling"]

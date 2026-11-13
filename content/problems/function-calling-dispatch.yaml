@@ -130,3 +130,4 @@ math_tex:
 - 'Sequential latency: $\sum_{i} \ell_i$'
 - 'Parallel latency: $\max_{i} \ell_i$'
 - 'Success: $P = \prod_{s=1}^{S} p_s$'
+patterns: ["Agent building blocks"]

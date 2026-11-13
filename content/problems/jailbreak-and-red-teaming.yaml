@@ -120,3 +120,4 @@ math_tex:
 - 'Half-width: $\frac{z\sqrt{\hat{p}(1-\hat{p})/n + z^2/4n^2}}{1 + z^2/n}$'
 - 'Interval: centre $\pm$ half-width'
 - 'Zero successes: upper $\approx 3 / n$ (95%)'
+patterns: ["LLM safety and guardrails"]

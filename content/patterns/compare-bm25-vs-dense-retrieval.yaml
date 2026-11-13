@@ -1,0 +1,49 @@
+id: compare-bm25-vs-dense-retrieval
+name: 'Compare: BM25 vs Dense Retrieval'
+order: 117
+summary: BM25 matches exact words and rewards rare ones; dense embeddings match meaning
+  and paraphrase but can blur exact codes. Fusing both usually beats either.
+when_to_use:
+- Pick BM25 when queries contain identifiers, error codes, names or rare jargon that must match literally.
+- Pick dense retrieval when users paraphrase, ask in natural language or write in another language than the documents.
+- Pick hybrid search with reciprocal rank fusion when you cannot predict the query mix, which is the usual case.
+- Start with BM25 as the baseline, since it needs no training and is hard to beat on in-domain keyword queries.
+key_idea: BM25 scores a document by summing, over query terms, an inverse document frequency weight times a saturating term-frequency factor, so a rare term that appears in the text dominates, but a word that is absent contributes exactly nothing. A dense encoder compresses text into a vector where related meanings are close, so synonyms match, but a rare code is mapped to an arbitrary point and loses its exactness. Because the two fail on different queries, fusing their rankings with reciprocal rank fusion recovers both.
+template: |
+  import numpy as np
+  docs = [["error", "e4021"], ["network", "outage"], ["pasta"]]
+  vec = {"error": [1, 0, 0], "e4021": [0, .6, .8],  # blurry code
+         "network": [0, 1, 0], "outage": [0, 1, 0],
+         "internet": [0, 1, 0], "pasta": [0, 0, 1]}
+
+  def bm25(q, k1=1.5, b=0.75):
+      N, avg = len(docs), sum(map(len, docs)) / len(docs)
+      out = np.zeros(N)
+      for t in set(q):
+          n = sum(t in d for d in docs)
+          idf = np.log(1 + (N - n + .5) / (n + .5))
+          for i, d in enumerate(docs):
+              f = d.count(t)
+              out[i] += idf * f * (k1 + 1) / (
+                  f + k1 * (1 - b + b * len(d) / avg))
+      return out
+  def emb(ws):
+      m = np.mean([vec[w] for w in ws], axis=0)
+      return m / np.linalg.norm(m)
+  def cosine(q): return np.array([emb(d) @ emb(q) for d in docs])
+  def rrf(*s, k=60):      # fuse ranks; zero score gets no vote
+      r = [np.argsort(-x, kind="stable").argsort() + 1 for x in s]
+      return sum((x > 0) / (k + i) for x, i in zip(s, r))
+complexity: BM25 uses an inverted index and costs about the number of postings of
+  the query terms; dense search needs an embedding per query plus a nearest-neighbour
+  index, roughly O(N·d) exact or sublinear approximate.
+pitfalls:
+- Dense scores and BM25 scores live on different scales, so never add them directly; fuse ranks or normalise first.
+- Embedding models can ignore negation and exact numbers, so a near-miss passage may rank above the right one.
+- BM25 needs consistent tokenisation and stemming between index and query, or exact matches silently fail.
+problems:
+- hybrid-search-rrf
+- rag-dense-retrieval
+- tf-idf
+aliases:
+- 'Compare: BM25 vs Dense Retrieval'

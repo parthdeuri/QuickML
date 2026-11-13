@@ -121,3 +121,4 @@ pitfalls:
   - "Changing the salt reshuffles every user between old and new, which breaks comparisons"
   - "Versioning the template alone misses model, temperature and tool changes that also alter behaviour"
 related: [prompt-optimization, prompt-templates, ab-test-significance]
+patterns: ["Prompting and context"]

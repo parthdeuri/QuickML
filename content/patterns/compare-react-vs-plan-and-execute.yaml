@@ -1,0 +1,51 @@
+id: compare-react-vs-plan-and-execute
+name: 'Compare: ReAct vs Plan-and-Execute'
+order: 121
+summary: ReAct chooses one step at a time from what it observes; plan-and-execute
+  writes the whole plan first and then runs it.
+when_to_use:
+- Pick ReAct when the next step depends on what earlier tools return and the path cannot be known upfront.
+- Pick plan-and-execute when the task has known sub-tasks, some of which are independent and can run in parallel.
+- Pick plan-and-execute to cut cost and latency, since the planner is called once rather than at every step.
+- Add a re-planning step to plan-and-execute when tool results can invalidate the plan.
+key_idea: ReAct calls the model before every action, so it adapts to each
+  observation but pays one model call per step and can wander. Plan-and-execute
+  asks the model once for a dependency graph, so independent steps can run together
+  and the elapsed time is set by the critical path, the longest chain of
+  dependencies, not by the step count. The price is brittleness, because an
+  early mistake in the plan is not noticed until execution fails.
+template: |
+  # task graph: step -> steps it depends on
+  GRAPH = {"a": [], "b": [], "c": ["a", "b"],
+           "d": [], "e": ["c", "d"]}
+
+  def react_calls(graph):
+      # one model call per action, plus one to give the answer
+      return len(graph) + 1
+
+  def plan_execute_calls(graph):
+      # one call to plan, one to write the final answer
+      return 2
+
+  def critical_path(graph):
+      depth = {}
+      def d(n):
+          if n not in depth:
+              depth[n] = 1 + max([d(m) for m in graph[n]], default=0)
+          return depth[n]
+      return max(d(n) for n in graph)
+
+  print(react_calls(GRAPH), plan_execute_calls(GRAPH))
+  print(len(GRAPH), critical_path(GRAPH))   # sequential vs parallel
+complexity: ReAct needs n+1 model calls for n steps, run one after another; plan-and-execute
+  needs 2 model calls, and its tool steps take as long as the critical path.
+pitfalls:
+- ReAct can loop or repeat the same action, so cap the number of steps.
+- A plan written without seeing tool output can reference data that does not exist.
+- Plan-and-execute with no re-planning fails the whole task when one step fails.
+problems:
+- agent-loop-react
+- planning-decomposition
+- agentic-workflow-patterns
+aliases:
+- 'Compare: ReAct vs Plan-and-Execute'

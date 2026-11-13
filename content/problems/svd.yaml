@@ -88,4 +88,4 @@ math_tex:
 - 'Rank-$k$ truncation: $A_k = \sum_{i \leq k} s_i\,u_i v_i^{\top}$'
 - $\|A - A_k\|_F^2 = \sum_{i > k} s_i^2$
 - $\|A - A_k\|_2 = s_{k+1}$
-patterns: ["Dimensionality reduction"]
+patterns: ["Dimensionality reduction", "Math foundations"]

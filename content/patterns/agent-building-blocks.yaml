@@ -1,0 +1,61 @@
+id: agent-building-blocks
+name: Agent building blocks
+order: 27
+summary: Build agents as a controlled loop where the model decides, a tool acts,
+  and the observation goes back into the context.
+when_to_use:
+- A task needs several steps whose order depends on intermediate results.
+- The model must call external tools, search or code.
+- You need explicit limits, state and logs so runs are safe and testable.
+key_idea: An agent is a loop of model decision, tool call and observation, and the
+  surrounding code owns the control. A registry validates tool names and arguments,
+  a step limit guarantees termination, and a state graph makes the allowed transitions
+  explicit. Memory, planning, reflection and multi-agent designs are variations on
+  what is stored in the context and who gets to act next.
+template: |
+  TOOLS = {"add": lambda a, b: a + b, "neg": lambda a: -a}
+  GRAPH = {"plan": "act", "act": "check", "check": "done"}
+
+  def call_tool(name, args):
+      if name not in TOOLS:
+          return "error: unknown tool " + name
+      try:
+          return TOOLS[name](*args)
+      except TypeError:
+          return "error: bad arguments"
+
+  def run(model, max_steps=5):
+      log = []
+      for _ in range(max_steps):
+          kind, *rest = model(log)
+          if kind == "final":
+              return rest[0], log
+          log.append((rest[0], call_tool(*rest)))
+      return None, log             # step limit hit
+
+  def step(state):                 # state-graph transition
+      return GRAPH.get(state, "done")
+  def script(steps):               # scripted stub model
+      it = iter(steps)
+      return lambda log: next(it)
+complexity: O(steps) model calls and tool calls, bounded by the step limit.
+pitfalls:
+- Without a step limit and a repeated-call check, a confused model loops forever.
+- Tool arguments from the model are untrusted input; validate them before acting.
+- Long observations flood the context, so truncate or summarise them.
+problems:
+- function-calling-dispatch
+- agent-loop-react
+- planning-decomposition
+- agent-memory
+- reflection-self-correction
+- agentic-workflow-patterns
+- multi-agent-orchestration
+- state-graph-workflows
+- agent-evaluation-safety
+- model-context-protocol-jsonrpc
+- runnable-chain-composition
+aliases:
+- Agent building blocks
+- Agents
+- Tool-using agents

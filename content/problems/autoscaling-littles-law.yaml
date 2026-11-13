@@ -105,3 +105,4 @@ pitfalls:
   - 'Assuming exponential service times when output lengths vary widely'
   - 'Using $\mu$ measured at low load; per-server speed can drop under contention'
 related: [continuous-batching, gpu-memory-estimation, llm-api-retries-rate-limits]
+patterns: ["LLM production operations"]

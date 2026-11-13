@@ -99,3 +99,4 @@ math_tex:
 - 'Half-width: $\frac{z\sqrt{\hat{p}(1-\hat{p})/n + z^2/4n^2}}{1 + z^2/n}$'
 - 'Paired gap: $\bar{d} = \frac{1}{n}\sum_{i}(a_i - b_i)$'
 - 'P(A beats B) = share of resamples, $\bar{d} > 0$'
+patterns: ["Prompting and context"]

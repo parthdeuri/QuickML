@@ -102,3 +102,4 @@ interview_qa:
   - q: "How does FlashAttention help in roofline terms?"
     a: "It does the same FLOPs but avoids writing and re-reading the large score matrix, so bytes moved fall and intensity rises."
 related: [flash-attention-online-softmax, kv-cache, gpu-memory-estimation]
+patterns: ["LLM efficiency and parallelism"]

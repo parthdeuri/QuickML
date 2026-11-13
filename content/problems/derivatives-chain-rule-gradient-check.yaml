@@ -99,3 +99,4 @@ math_tex:
 - 'Forward: $\frac{f(x+h)-f(x)}{h} = f^{\prime} + O(h)$'
 - 'Central: $\frac{f(x+h)-f(x-h)}{2h} = f^{\prime} + O(h^2)$'
 - 'Relative error: $\frac{\|a-n\|}{\|a\|+\|n\|}$'
+patterns: ["Math foundations"]

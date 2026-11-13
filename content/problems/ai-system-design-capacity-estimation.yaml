@@ -113,3 +113,4 @@ pitfalls:
   - "Counting only weights and forgetting that the KV cache for in-flight sequences can fill the rest of the GPU"
   - "Treating replica failures as independent when they share a zone, a rollout or a dependency"
 related: [gpu-memory-estimation, autoscaling-littles-law, llm-cost-latency-optimisation]
+patterns: ["LLM production operations"]

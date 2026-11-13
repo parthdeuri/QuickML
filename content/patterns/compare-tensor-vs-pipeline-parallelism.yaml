@@ -1,0 +1,49 @@
+id: compare-tensor-vs-pipeline-parallelism
+name: 'Compare: Tensor vs Pipeline Parallelism'
+order: 119
+summary: Tensor parallelism splits the matrices inside every layer; pipeline
+  parallelism splits the model into consecutive groups of layers.
+when_to_use:
+- Pick tensor parallelism inside a node, where fast links such as NVLink make a per-layer all-reduce cheap.
+- Pick pipeline parallelism across nodes, where only small activations cross the slow link between stages.
+- Use both together for very large models, tensor inside a node and pipeline across nodes.
+- Use many micro-batches with pipeline parallelism, otherwise the idle bubble wastes the devices.
+key_idea: Tensor parallelism cuts each weight matrix, so every layer produces
+  partial results that must be summed with an all-reduce, which is frequent and
+  needs high bandwidth. Pipeline parallelism gives each device whole layers and
+  only sends activations at stage boundaries, which is light on communication,
+  but the stages must wait for one another at the start and end of each batch.
+  That waiting is the bubble, a fraction (p-1)/(m+p-1) of the time for p stages
+  and m micro-batches.
+template: |
+  def tp_allreduce_bytes(b, s, h, t, dtype=2):
+      # ring all-reduce moves 2(t-1)/t of the tensor per device
+      tensor = b * s * h * dtype
+      return 2 * (t - 1) / t * tensor
+
+  def tp_layer_bytes(b, s, h, t):
+      # one all-reduce after attention, one after the MLP
+      return 2 * tp_allreduce_bytes(b, s, h, t)
+
+  def pp_boundary_bytes(b, s, h, dtype=2):
+      # one activation tensor sent per stage boundary
+      return b * s * h * dtype
+
+  def bubble_fraction(p, m):
+      return (p - 1) / (m + p - 1)
+
+  b, s, h = 1, 2048, 4096
+  print(tp_layer_bytes(b, s, h, t=8), pp_boundary_bytes(b, s, h))
+  print(bubble_fraction(p=4, m=4), bubble_fraction(p=4, m=32))
+complexity: Tensor parallelism communicates twice per layer in the forward pass; pipeline
+  parallelism communicates once per stage boundary, per micro-batch.
+pitfalls:
+- Tensor parallelism across slow inter-node links makes the all-reduce dominate the step time.
+- Pipeline stages with unequal numbers of layers leave the lighter stages idle.
+- Too few micro-batches leaves a large bubble; too many shrinks each micro-batch and hurts efficiency.
+problems:
+- tensor-parallel-matmul
+- pipeline-parallel-schedule
+- gpu-memory-estimation
+aliases:
+- 'Compare: Tensor vs Pipeline Parallelism'

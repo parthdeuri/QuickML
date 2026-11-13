@@ -107,3 +107,4 @@ math_tex:
 - 'Inner join rows: $\sum_k l_k \cdot r_k$'
 - 'Rolling: $\bar{x}_t = \frac{1}{w}\sum_{i=0}^{w-1} x_{t-i}$'
 - 'Lag: $\mathrm{lag}_k(x)_t = x_{t-k}$, with $k \geq 1$'
+patterns: ["Programming and tooling"]

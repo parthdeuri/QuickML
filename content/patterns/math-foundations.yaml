@@ -1,0 +1,62 @@
+id: math-foundations
+name: Math foundations
+order: 32
+summary: The small set of linear algebra, calculus and probability tools that every
+  model is built from, and that every model is checked with.
+when_to_use:
+- You need to compare vectors, rank directions or measure similarity.
+- You want to verify a hand-derived gradient before trusting a training run.
+- You need to draw samples from a distribution given only uniform random numbers.
+- You want the dominant direction of a matrix without a full decomposition.
+key_idea: Almost every model reduces to a few primitives. Norms and dot products
+  turn vectors into lengths and angles, repeated matrix-vector products expose the
+  dominant eigenvector, the chain rule gives gradients that a central difference can
+  verify, and the inverse cumulative distribution turns uniform noise into any
+  distribution. Learning these once lets you read and debug everything built on top.
+template: |
+  import numpy as np
+
+  def cosine(a, b):
+      return a @ b / (np.linalg.norm(a) * np.linalg.norm(b))
+
+  def power_iteration(A, iters=100):
+      v = np.ones(A.shape[0])
+      for _ in range(iters):
+          v = A @ v
+          v = v / np.linalg.norm(v)      # keep length 1
+      return v @ A @ v, v                # Rayleigh quotient, vector
+
+  def num_grad(f, x, h=1e-5):
+      g = np.zeros_like(x)
+      for i in range(len(x)):
+          e = np.zeros_like(x)
+          e[i] = h
+          g[i] = (f(x + e) - f(x - e)) / (2 * h)
+      return g
+
+  def sample_exponential(lam, n, rng):
+      u = rng.random(n)                  # uniform on [0, 1)
+      return -np.log(1 - u) / lam        # inverse CDF
+complexity: O(d) per norm or dot product, O(d^2) per matrix-vector product, O(d)
+  function evaluations for a numerical gradient.
+pitfalls:
+- A forward difference is only first-order accurate; use the central difference to
+  check gradients and compare with a relative error, not an absolute one.
+- Power iteration converges slowly when the top two eigenvalues are close in magnitude.
+- Cosine similarity ignores length, so it can hide a large magnitude difference.
+- Inverse-transform sampling needs a cheap inverse CDF; otherwise use rejection or
+  transformation methods.
+problems:
+- vectors-norms-distances
+- dot-product-matrix-multiplication
+- eigen-decomposition-power-iteration
+- derivatives-chain-rule-gradient-check
+- probability-distributions-sampling
+- statistics-hypothesis-testing
+- convex-optimisation-lagrange
+- svd
+- bayes-theorem
+- maximum-likelihood
+aliases:
+- Math foundations
+- Linear algebra and probability basics

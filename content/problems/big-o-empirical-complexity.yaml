@@ -122,3 +122,4 @@ math_tex:
 - 'Local slope: $n \log n$ gives $1 + \frac{1}{\ln n}$'
 - 'Bounds: $\lceil \log_2 (n+1) \rceil$ and $n \lceil \log_2 n \rceil$'
 - 'Attention $T^2 d$ vs KV-cache step $T d$'
+patterns: ["Programming and tooling"]

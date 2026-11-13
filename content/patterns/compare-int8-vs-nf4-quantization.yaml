@@ -1,0 +1,52 @@
+id: compare-int8-vs-nf4-quantization
+name: 'Compare: Int8 vs NF4 vs Pruning'
+order: 120
+summary: Int8 and NF4 keep every weight at lower precision; pruning keeps
+  precision but removes weights.
+when_to_use:
+- Pick int8 when you want a near-lossless 2x memory saving with simple, widely supported kernels.
+- Pick NF4 to fit a model in 4 bits, especially for fine-tuning with LoRA adapters on a frozen base.
+- Pick magnitude pruning when sparse kernels or hardware can turn zeros into real speed or size savings.
+- Combine pruning with quantization when you need to shrink the model further.
+key_idea: Uniform levels waste resolution on the tails of a bell-shaped weight
+  distribution, where few weights live. NF4 places its 16 levels at quantiles of
+  a normal distribution, so each level serves about the same number of weights
+  and the round-trip error at 4 bits is lower. Pruning is different in kind, since
+  it zeroes the smallest weights rather than rounding all of them.
+template: |
+  import numpy as np
+  from statistics import NormalDist
+
+  def nf4_levels(off=0.9677083):
+      q = NormalDist().inv_cdf
+      pos = [q(p) for p in np.linspace(off, .5, 9)[:-1]]
+      neg = [-q(p) for p in np.linspace(off, .5, 8)[:-1]]
+      lv = np.sort(np.array(pos + [0.0] + neg))
+      return lv / np.abs(lv).max()
+
+  def roundtrip(w, levels, block=64):
+      b = w.reshape(-1, block)
+      s = np.abs(b).max(axis=1, keepdims=True)
+      idx = np.abs(b[..., None] / s[..., None] - levels).argmin(-1)
+      return (levels[idx] * s).ravel()
+
+  def prune(w, frac):
+      cut = np.quantile(np.abs(w), frac)
+      return np.where(np.abs(w) < cut, 0.0, w)
+
+  uniform4 = np.linspace(-1, 1, 16)
+  int8 = np.arange(-127, 128) / 127
+  nf4 = nf4_levels()
+complexity: Quantisation is O(n) with a per-block scale; the nearest-level search
+  costs O(n·levels) here, but real kernels use lookups or arithmetic.
+pitfalls:
+- A single outlier inflates a block's scale and wastes levels, so use small blocks.
+- NF4 assumes roughly normal weights; for other distributions the advantage shrinks.
+- Unstructured pruning gives no speed-up on dense hardware, only zeros.
+- Heavy pruning without retraining sharply hurts accuracy.
+problems:
+- int8-quantization
+- qlora-nf4-quantization
+- magnitude-pruning
+aliases:
+- 'Compare: Int8 vs NF4 vs Pruning'

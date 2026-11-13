@@ -92,4 +92,4 @@ math_tex:
 - 'Embedding: $e(x) = \frac{v(x)}{\|v(x)\|_2}$ (unit length)'
 - $\cos(q,c) = e(q)\cdot e(c)$ for unit vectors
 - 'Top-$k$: indices of the $k$ largest $\cos(q, c_i)$'
-patterns: ["Text evaluation and retrieval"]
+patterns: ["Text evaluation and retrieval", "RAG pipeline stages"]

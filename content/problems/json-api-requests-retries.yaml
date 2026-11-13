@@ -120,3 +120,4 @@ math_tex:
 - 'Retry-After $r$: $d = \max(d_a,\ r)$'
 - 'Requests: $\lceil N / s \rceil$'
 - 'Success within $n$ tries: $1 - p^{n}$'
+patterns: ["Programming and tooling"]

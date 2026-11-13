@@ -93,3 +93,4 @@ math_tex:
 - 'Commit: $\mathrm{SHA1}(\mathrm{header}\ \|\ \mathrm{tree}, \mathrm{parents}, \mathrm{msg})$'
 - 'Edit $\Rightarrow$ new blob id $\Rightarrow$ new tree ids $\Rightarrow$ new commit ids'
 - 'Id size: $40\ \mathrm{hex} = 160\ \mathrm{bits} = 20\ \mathrm{bytes}$'
+patterns: ["Programming and tooling"]

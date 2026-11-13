@@ -130,3 +130,4 @@ pitfalls:
   - "Exact argument matching penalises harmless differences such as key order or whitespace; normalise before comparing"
   - "A confirmation prompt that always gets approved is not a control; show the action and its target, and log it"
 related: [output-validation-guardrails, prompt-injection-defense, llm-as-judge]
+patterns: ["Agent building blocks"]

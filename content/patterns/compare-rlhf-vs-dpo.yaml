@@ -1,0 +1,48 @@
+id: compare-rlhf-vs-dpo
+name: 'Compare: RLHF vs DPO'
+order: 116
+summary: RLHF fits a reward model and then optimises the policy with sampling and a
+  KL penalty; DPO optimises a closed-form preference loss directly on pairs.
+when_to_use:
+- Pick DPO when you have a fixed set of preference pairs and want a simple, stable supervised-style training loop.
+- Pick RLHF when you need an explicit reusable reward model, or want the policy to learn from its own fresh samples.
+- Pick RLHF when the reward can be queried online, for example from a verifier or a live preference source.
+- Pick DPO first if compute or engineering time is limited, since it needs no sampler and no reward model.
+key_idea: Both start from the same Bradley-Terry model of preferences, where the chance that response w beats l is a sigmoid of a reward difference. RLHF fits that reward from pairs, then maximises reward minus a KL penalty to the reference using sampled responses. The optimum of that objective has a closed form in which the reward equals beta times the log-ratio of policy to reference, up to a term that cancels in a difference, so DPO plugs that implicit reward straight into the Bradley-Terry loss and skips both the reward model and the sampling loop.
+template: |
+  import numpy as np
+
+  def logsig(x):
+      return -np.logaddexp(0.0, -x)
+
+  def bt_loss(r_w, r_l):        # RLHF stage 1: reward model loss
+      return -logsig(r_w - r_l).mean()
+
+  def rlhf_objective(reward, logp, logp_ref, beta):
+      # RLHF stage 2: per sampled response, to be maximised
+      return reward - beta * (logp - logp_ref)
+
+  def dpo_loss(pi_w, pi_l, ref_w, ref_l, beta):
+      m = beta * ((pi_w - ref_w) - (pi_l - ref_l))
+      return -logsig(m).mean()
+
+  # same summed log-probs of chosen (w) and rejected (l) responses
+  pi_w, pi_l = np.array([-10.0, -12.0]), np.array([-14.0, -13.0])
+  ref_w, ref_l = np.array([-11.0, -12.5]), np.array([-13.0, -13.5])
+  beta = 0.1
+  at_ref = dpo_loss(ref_w, ref_l, ref_w, ref_l, beta)   # log 2
+  now = dpo_loss(pi_w, pi_l, ref_w, ref_l, beta)
+  implicit = lambda p, r: beta * (p - r)  # DPO's hidden reward
+complexity: DPO costs one forward-backward pass over chosen and rejected text per
+  step, plus cached reference log-probs; RLHF adds reward-model training and
+  repeated generation, usually several times the cost.
+pitfalls:
+- DPO treats the pairs as fixed, so it cannot explore and can drift when pairs come from a different model than the policy.
+- Both depend on beta; too small lets the policy wander far from the reference, too large barely moves it.
+- Log-probs must be summed over response tokens only, with the same prompt and tokenizer for policy and reference.
+problems:
+- rlhf-kl-penalty
+- dpo-loss
+- reward-model-bradley-terry
+aliases:
+- 'Compare: RLHF vs DPO'

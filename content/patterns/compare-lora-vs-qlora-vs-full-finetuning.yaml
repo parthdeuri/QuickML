@@ -1,0 +1,37 @@
+id: compare-lora-vs-qlora-vs-full-finetuning
+name: 'Compare: LoRA vs QLoRA vs Full Fine-Tuning'
+order: 113
+summary: Full fine-tuning trains every weight, LoRA trains two small matrices per layer,
+  and QLoRA also stores the frozen base weights in 4 bits.
+when_to_use:
+- Pick full fine-tuning when you have the memory budget and need the largest possible shift in behaviour.
+- Pick LoRA when you want most of the quality with a tiny trainable footprint and small adapter files per task.
+- Pick QLoRA when the frozen base model in 16 bits does not fit on your GPU but a 4-bit copy does.
+- Prefer LoRA over QLoRA if memory is not the limit, since quantisation adds a little noise and some speed cost.
+key_idea: Training memory is dominated by gradients and optimiser states, and those exist only for trainable parameters. Full fine-tuning pays for them on every weight, LoRA pays only on the low-rank factors, which are a tiny fraction of the layer, and QLoRA additionally shrinks the frozen weights from 2 bytes to about half a byte each. The model sees the same frozen base, so quality stays close while the bill drops sharply.
+template: |
+  def counts(d, k, r, adam=8, w=2, g=2):
+      P = d * k                   # one dense weight matrix
+      T = r * (d + k)             # LoRA factors A (r x k), B (d x r)
+      full = (P, P * (w + g + adam))
+      lora = (T, P * w + T * (w + g + adam))
+      q_bytes = (4 + 8 / 64 + 32 / (64 * 256)) / 8  # NF4 + scales
+      qlora = (T, P * q_bytes + T * (w + g + adam))
+      return {"full": full, "lora": lora, "qlora": qlora}
+
+  # (trainable params, bytes) for one 4096 x 4096 layer, rank 16
+  res = counts(4096, 4096, 16)
+  for name, (params, mem) in res.items():
+      print(name, params, round(mem / 2**20, 1), "MiB")
+complexity: Adapter parameters are r·(d+k) per matrix against d·k for full training;
+  QLoRA adds a dequantise step to every forward pass.
+pitfalls:
+- Counting only weights hides the real cost; with Adam the optimiser states are about four times the 2-byte weights.
+- Activations and the KV cache are not reduced by LoRA or QLoRA, so batch size and sequence length still matter.
+- A very low rank can underfit tasks that need large changes in behaviour.
+problems:
+- lora-low-rank-adaptation
+- qlora-nf4-quantization
+- transfer-learning-fine-tuning
+aliases:
+- 'Compare: LoRA vs QLoRA vs Full Fine-Tuning'

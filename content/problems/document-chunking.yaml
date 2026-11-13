@@ -117,4 +117,4 @@ math_tex:
 - 'Blow-up $\approx \frac{\mathrm{size}}{\mathrm{size} - \mathrm{overlap}}$'
 - 'Fact of length $L$ whole if $\mathrm{overlap} \geq L - 1$'
 - '$P(\mathrm{cut}) = \frac{L - 1}{\mathrm{size}}$ with no overlap'
-patterns: ["Text evaluation and retrieval"]
+patterns: ["Text evaluation and retrieval", "RAG pipeline stages"]

@@ -176,3 +176,4 @@ math_tex:
 - 'Tool prompt cost: $T \cdot \bar{a}$ tokens'
 - 'Servers: $T = \sum_{i} t_i$ tools in total'
 - 'Success: $P = \prod_{j=1}^{k} p_j$'
+patterns: ["Agent building blocks"]

@@ -110,3 +110,4 @@ math_tex:
 - 'Savings: $h\,c_{llm} - c_{lookup}$'
 - 'Break-even: $h^{*} = \frac{c_{lookup}}{c_{llm}}$'
 - 'Live iff $\mathrm{now} - t_{put} < \mathrm{TTL}$'
+patterns: ["LLM production operations"]

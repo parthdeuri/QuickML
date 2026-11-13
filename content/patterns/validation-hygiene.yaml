@@ -32,5 +32,7 @@ problems:
 - ab-test-significance
 - stratified-split
 - finetune-dataset-prep
+- feature-engineering-encoding
+- sklearn-pipeline-column-transformer
 aliases:
 - Validation hygiene

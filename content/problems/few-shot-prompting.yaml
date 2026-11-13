@@ -90,3 +90,4 @@ math_tex:
 - 'Length: $L = L_{instr} + \sum_{S}(L_x + L_y) + L_q$'
 - 'Limit: $L \leq$ context length'
 - 'Balance: $p_c = \frac{n_c}{k}$, imbalance $= \max_c p_c$'
+patterns: ["Prompting and context"]

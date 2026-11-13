@@ -124,3 +124,4 @@ math_tex:
 - 'Chunkings of $n$ bytes: $2^{n-1}$'
 - 'UTF-8: 1 to 4 bytes per character'
 - 'Cuts inside a $k$-byte character: $k - 1$'
+patterns: ["LLM production operations"]

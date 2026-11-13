@@ -99,3 +99,4 @@ math_tex:
 - 'Sparsity $s = 1 - \frac{\mathrm{nnz}(W)}{\mathrm{numel}(W)}$'
 - 'Threshold $\tau$ is the $k$-th smallest $|w|$'
 - 'Channel score $\|W_{i,:}\|_p$, keep top $\lceil f n \rceil$'
+patterns: ["LLM efficiency and parallelism"]

@@ -96,3 +96,4 @@ math_tex:
 - 'Unit vectors: $\|u - v\|^2 = 2 - 2\cos(u, v)$'
 - '$d_M(x, y) = \sqrt{(x-y)^{\top} \Sigma^{-1} (x-y)}$'
 - 'High dimension: $\frac{d_{\max}}{d_{\min}} \rightarrow 1$'
+patterns: ["Math foundations"]

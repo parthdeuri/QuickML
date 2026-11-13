@@ -116,4 +116,4 @@ math_tex:
 - 'Best split: $n_{list} \approx \sqrt{N}$'
 - 'Lloyd step: $c_j \leftarrow$ mean of cell $j$ vectors'
 - '$\mathrm{recall@}k = \frac{|\mathrm{approx} \cap \mathrm{exact}|}{k}$'
-patterns: ["Text evaluation and retrieval"]
+patterns: ["Text evaluation and retrieval", "RAG pipeline stages"]

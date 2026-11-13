@@ -1,0 +1,55 @@
+id: decoding-and-sampling
+name: Decoding and sampling
+order: 23
+summary: Turn next-token logits into text by choosing a token rule, from greedy
+  argmax to temperature, truncation and beam search.
+when_to_use:
+- You have a model that outputs a score for every vocabulary item at each step.
+- You must trade determinism against variety in generated text.
+- You want higher-probability whole sequences than greedy choice finds.
+- You need to cut the cost of generating many tokens one at a time.
+key_idea: Generation is a loop that converts logits into one token, appends it
+  and repeats. Greedy takes the argmax, temperature rescales logits before the
+  softmax, top-k and top-p drop the unlikely tail and renormalise before sampling,
+  and beam search keeps the best few partial sequences by total log probability.
+template: |
+  import numpy as np
+  def probs(z, T=1.0):
+      e = np.exp((np.asarray(z, float) - np.max(z)) / T)
+      return e / e.sum()
+  def truncate(p, k=None, top_p=None):
+      o = np.argsort(-p)
+      keep = len(p) if k is None else k
+      if top_p is not None:
+          cum = np.cumsum(p[o])
+          keep = min(keep, 1 + int(np.searchsorted(cum, top_p)))
+      q = np.where(np.isin(np.arange(len(p)), o[:keep]), p, 0)
+      return q / q.sum()
+  def decode(step, seq, n, rng=None, T=1.0, k=None, top_p=None):
+      for _ in range(n):
+          p = truncate(probs(step(seq), T), k, top_p)
+          t = p.argmax() if rng is None else rng.choice(len(p), p=p)
+          seq = seq + [int(t)]
+      return seq
+  def beam(step, seq, n, w=2):
+      B = [(0.0, seq)]
+      for _ in range(n):
+          c = [(s + np.log(p[t]), q + [t]) for s, q in B
+               for p in [probs(step(q))] for t in range(len(p))]
+          B = sorted(c, key=lambda x: -x[0])[:w]
+      return B
+complexity: O(V) per generated token for sampling and O(width * V) for beam search.
+pitfalls:
+- Temperature zero is a division by zero; treat it as greedy argmax.
+- Truncate before renormalising, or the kept probabilities will not sum to one.
+- Beam search favours short or repetitive outputs unless lengths are normalised.
+problems:
+- autoregressive-decoding
+- temperature-sampling
+- top-k-top-p-sampling
+- beam-search
+- speculative-decoding
+- huggingface-generate-pipeline
+aliases:
+- Decoding and sampling
+- Decoding strategies

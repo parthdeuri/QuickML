@@ -103,4 +103,4 @@ math_tex:
 - '$\log L = \sum_{ij} W_{ij}\left[\log p_i - \log(p_i + p_j)\right]$'
 - '$p_i \leftarrow \frac{W_i}{\sum_{j} n_{ij}/(p_i + p_j)}$'
 - 'Rating: $R_i = 400\log_{10} p_i + c$'
-patterns: ["Text evaluation and retrieval"]
+patterns: ["Text evaluation and retrieval", "LLM evaluation methods"]

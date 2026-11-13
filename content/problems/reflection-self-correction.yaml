@@ -86,3 +86,4 @@ math_tex:
 - 'Gain: $P_n - P_{n-1} = (1-p)\,q\,(1-q)^{n-1}$'
 - 'Limit: $P_n \rightarrow 1$ as $n \rightarrow \infty$ if $q > 0$'
 - 'Rounds: $n \geq \frac{\ln\frac{1-P}{1-p}}{\ln(1-q)}$'
+patterns: ["Agent building blocks"]

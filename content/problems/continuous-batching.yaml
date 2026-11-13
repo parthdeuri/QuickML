@@ -94,3 +94,4 @@ math_tex:
 - 'Bound $\mathrm{steps} \geq \frac{\sum_i L_i}{B}$'
 - 'Blocks $n = \lceil T / s \rceil$'
 - 'Waste $= n s - T < s$'
+patterns: ["LLM efficiency and parallelism"]

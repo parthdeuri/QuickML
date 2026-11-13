@@ -112,3 +112,4 @@ math_tex:
 - 'Need $T \leq$ context length'
 - 'Trim: keep $m_0$, newest turns while $T \leq B$'
 - 'Reply: $\prod_t P(y_t \mid \mathrm{chat}, y_{<t})$'
+patterns: ["Prompting and context"]

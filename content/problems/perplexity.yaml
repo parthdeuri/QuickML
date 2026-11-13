@@ -73,4 +73,4 @@ math_tex:
 - $\mathrm{PPL} = \exp(\mathrm{CE})$
 - $\mathrm{PPL} = \left(\prod_n \frac{1}{p(y_n\,|\,\mathrm{context}_n)}\right)^{1/N}$
 - 'Uniform over $V$ tokens: $\mathrm{PPL} = V$'
-patterns: ["Text processing"]
+patterns: ["Text processing", "LLM evaluation methods"]

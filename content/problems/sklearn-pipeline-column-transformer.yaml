@@ -144,3 +144,4 @@ math_tex:
 - 'Concat: $X^{\prime} = [\,T_1(X_{S_1}) \,|\, T_2(X_{S_2})\,]$'
 - 'Chain: $X_{i+1} = T_i(X_i)$, then $\hat{y} = f(X_L)$'
 - 'Centred fit: minimise $\|A\beta - t\|^2$'
+patterns: ["Validation hygiene"]

@@ -143,3 +143,4 @@ math_tex:
 - 'Batch: $[\,f(x) \ \mathrm{for}\ x \in X\,]$'
 - 'Stream: $\mathrm{join}(\mathrm{stream}(x)) = f(x)$'
 - 'Time: $\sum_i t_i$ in series, $\max_k t_k$ in parallel'
+patterns: ["Agent building blocks"]

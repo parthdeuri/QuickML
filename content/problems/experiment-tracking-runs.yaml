@@ -101,3 +101,4 @@ math_tex:
 - $\mathrm{SE}_{\Delta} = \sqrt{\frac{s_A^2}{n_A} + \frac{s_B^2}{n_B}}$
 - Credible gap $\Delta = \bar{x}_A - \bar{x}_B$ if $|\Delta| > 2\,\mathrm{SE}_{\Delta}$
 - Seeds per arm $n \geq 2\left(\frac{1.96\,s}{\delta}\right)^2$
+patterns: ["LLM production operations"]

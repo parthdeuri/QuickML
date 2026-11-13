@@ -91,3 +91,4 @@ interview_qa:
   - q: "What happens to AdamW weights when the gradient is zero?"
     a: "The moments decay but the decay term still applies, so the weight keeps shrinking by about $\\eta\\lambda w$ each step."
 related: [adam-optimizer, ridge-lasso-regularization, gradient-descent]
+patterns: ["Gradient-based optimisation"]

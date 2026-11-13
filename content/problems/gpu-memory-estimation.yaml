@@ -107,3 +107,4 @@ math_tex:
 - 'ZeRO-1 $4P + \frac{12P}{G}$, ZeRO-2 $2P + \frac{14P}{G}$'
 - 'ZeRO-3 per GPU $\frac{16P}{G}$'
 - 'Largest $B$ with $\mathrm{mem}(B) \leq$ budget'
+patterns: ["LLM efficiency and parallelism"]

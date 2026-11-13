@@ -109,3 +109,4 @@ math_tex:
 - '$\sum_{k=(n+1)/2}^{n} \binom{n}{k}\, p^{k} (1-p)^{n-k}$'
 - '$p > \frac{1}{2}$: more voters help; $p < \frac{1}{2}$: they hurt'
 - 'Loop, accept prob $q$: $1 - (1-q)^{R}$'
+patterns: ["Agent building blocks"]

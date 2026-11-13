@@ -125,3 +125,4 @@ pitfalls:
   - "Putting a filter on the right table in WHERE after a LEFT JOIN, which turns it into an inner join; put it in ON"
   - "Using NOT IN with a nullable column, which returns no rows if any value is NULL"
 related: [pandas-groupby-merge-window, data-structures-algorithms, feature-engineering-encoding]
+patterns: ["Programming and tooling"]

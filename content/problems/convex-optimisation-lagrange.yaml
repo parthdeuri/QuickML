@@ -94,3 +94,4 @@ math_tex:
 - 'KKT system: $[Q, A^\top; A, 0]\,[x; \lambda] = [-c; b]$'
 - 'KKT: $g(x) \leq 0$, $\lambda \geq 0$, $\lambda_i g_i(x) = 0$'
 - 'Shadow price: $dp^{*}/db = -\lambda$'
+patterns: ["Math foundations"]

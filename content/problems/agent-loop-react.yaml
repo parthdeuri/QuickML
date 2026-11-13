@@ -130,3 +130,4 @@ math_tex:
 - 'Step size: $c \leq t + o_{\max}$'
 - 'Context: $\leq P + s\,(t + o_{\max})$'
 - 'Success: $\prod_{s=1}^{S} p_s = p^{S}$'
+patterns: ["Agent building blocks"]

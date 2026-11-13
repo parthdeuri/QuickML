@@ -80,4 +80,4 @@ math_tex:
 - 'Candidates per step: $B \cdot |V|$'
 - $B = 1$ gives greedy decoding
 - '$B \geq |V|^T$ keeps every prefix: exact search'
-patterns: ["Text processing"]
+patterns: ["Text processing", "Decoding and sampling"]

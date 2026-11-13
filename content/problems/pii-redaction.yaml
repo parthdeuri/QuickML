@@ -135,3 +135,4 @@ math_tex:
 - 'Recall: $R = \frac{TP}{TP + FN}$'
 - 'F1: $\frac{2PR}{P + R}$'
 - 'Random digits pass Luhn: $\approx 1/10$'
+patterns: ["LLM safety and guardrails"]

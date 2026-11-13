@@ -1,0 +1,64 @@
+id: llm-production-operations
+name: LLM production operations
+order: 28
+summary: Keep a model service fast, cheap and reliable using small pieces of
+  arithmetic and guards around every call.
+when_to_use:
+- Calls to a model API fail, time out or hit rate limits.
+- You must size capacity, estimate cost or set an availability target.
+- A flaky dependency should not take the whole service down.
+key_idea: Production model serving is controlled by a few simple rules. Retries use
+  exponential backoff with jitter so clients do not stampede, a token bucket caps
+  the request rate, and a circuit breaker stops calling a failing dependency until
+  it recovers. Capacity follows Little's law, concurrency equals arrival rate times
+  latency, which turns a traffic forecast into a number of workers.
+template: |
+  import random
+
+  def backoff(attempt, base=0.5, cap=30.0):
+      return random.uniform(0, min(cap, base * 2 ** attempt))
+
+  class TokenBucket:
+      def __init__(self, cap, rate):
+          self.cap, self.rate, self.tokens = cap, rate, cap
+      def tick(self, dt):
+          self.tokens = min(self.cap, self.tokens + dt * self.rate)
+      def take(self, cost=1):
+          ok = self.tokens >= cost
+          self.tokens -= cost if ok else 0
+          return ok
+
+  class Breaker:
+      def __init__(self, limit):
+          self.limit, self.fails, self.state = limit, 0, "closed"
+      def record(self, ok):
+          self.fails = 0 if ok else self.fails + 1
+          if self.fails >= self.limit:
+              self.state = "open"
+
+  def concurrency(rate, latency):
+      return rate * latency        # Little's law
+complexity: O(1) per request for each guard; capacity planning is arithmetic.
+pitfalls:
+- Retrying without jitter or a cap turns a brief outage into a retry storm.
+- Retrying non-idempotent calls can duplicate side effects.
+- Little's law uses average values; leave headroom for bursts and tail latency.
+problems:
+- llm-api-retries-rate-limits
+- streaming-sse-parsing
+- chat-completions-request-schema
+- provider-fallback-router
+- semantic-cache
+- llm-cost-latency-optimisation
+- reliability-circuit-breaker-slo
+- autoscaling-littles-law
+- container-binpacking-scheduling
+- experiment-tracking-runs
+- model-serving-api-contract
+- managed-vs-self-host-breakeven
+- tracing-and-logging
+- ai-system-design-capacity-estimation
+aliases:
+- LLM production operations
+- LLMOps
+- Serving reliability

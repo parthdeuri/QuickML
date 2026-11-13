@@ -104,3 +104,4 @@ math_tex:
 - 'Update: $X_{i+1} = S \cdot \frac{Y_i}{|Y_i|}$'
 - 'where $Y_i = \mathrm{STFT}(\mathrm{ISTFT}(X_i))$'
 - 'Error: $\frac{\|\,|\mathrm{STFT}(x)| - S\,\|}{\|S\|}$'
+patterns: ["Multimodal and speech"]

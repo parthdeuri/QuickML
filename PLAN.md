@@ -31,7 +31,7 @@ names were renamed from Problem to Concept; table and column names were not.
 
 ## Done
 - Skeleton, CI, signing, stable-key builds; logo (flash cards with a bolt).
-- 255 cards (245 full, 10 link-only) with all code tests passing; 22 families, 12 compare cards, 4 sheets.
+- 255 cards (245 full, 10 link-only) with all code tests passing; 33 families, 23 compare cards, 4 sheets.
 - Card wording (card / learned / implementation), Ask prompt includes math.
 - Reference links all return HTTP 200 (`tools/check_links.py`).
 - 17 diagrams as pre-drawn light/dark images (replaced the text art that broke on phones).
@@ -43,7 +43,8 @@ names were renamed from Problem to Concept; table and column names were not.
 communities, articles, papers, interview prep). New cards have no image diagram yet (an arrow-flow line
 ends the Intuition text). Several cards cite abstract pages only; facts beyond them are checked by the
 card's own tests, not by the cited page.
-To do, in order: final checks, families and compare cards, flash cards, image diagrams for the new cards.
+Families and compare cards done (11 new families, 11 new compare cards; project blueprints and link-only entries stay untagged).
+To do, in order: flash cards, image diagrams for the new cards.
 
 ## Next: flash cards (planned, nothing started)
 Auto-generated from the existing cards, spaced repetition, new bottom tab.

@@ -91,3 +91,4 @@ math_tex:
 - 'Rayleigh: $R(v) = \frac{v^\top A v}{v^\top v}$'
 - 'Bounds: $\lambda_{\min} \leq R(v) \leq \lambda_{\max}$'
 - 'Deflated: $A - \lambda_1 u_1 u_1^\top$ has $\lambda_1 \rightarrow 0$'
+patterns: ["Math foundations"]

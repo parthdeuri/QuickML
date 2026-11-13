@@ -101,4 +101,4 @@ math_tex:
 - 'LCS DP: $L[i,j] = L[i-1,j-1] + 1$ if $a_i = b_j$'
 - else $\max(L[i-1,j],\, L[i,j-1])$
 - 'ROUGE-L: overlap $= L[|cand|, |ref|]$, then $P, R, F_1$'
-patterns: ["Text evaluation and retrieval"]
+patterns: ["Text evaluation and retrieval", "LLM evaluation methods"]

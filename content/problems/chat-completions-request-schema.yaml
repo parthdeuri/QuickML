@@ -125,3 +125,4 @@ math_tex:
 - 'Fit: $p + \mathrm{max\_tokens} \leq L$'
 - 'Reply budget: $\mathrm{max\_tokens} \leq L - p$'
 - 'Mean price: $\frac{\mathrm{cost}}{p + c}$ per token'
+patterns: ["LLM production operations"]

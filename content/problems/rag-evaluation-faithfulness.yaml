@@ -107,4 +107,4 @@ math_tex:
 - 'Recall: $\frac{\mathrm{facts\ found}}{\mathrm{facts\ needed}}$'
 - 'Faithfulness: $\frac{\mathrm{supported\ claims}}{\mathrm{all\ claims}}$'
 - 'Support: $\frac{|c \cap C|}{|c|} \geq \theta$'
-patterns: ["Text evaluation and retrieval"]
+patterns: ["Text evaluation and retrieval", "RAG pipeline stages"]

@@ -94,3 +94,4 @@ math_tex:
 - 'After pooling: $T^{\prime} = \lceil T / k \rceil$'
 - 'Pooled: $z_j = \frac{1}{k} \sum_{t \in G_j} f_t$'
 - 'Keyframe if $\|f_t - f_{t-1}\| > \tau$'
+patterns: ["Multimodal and speech"]

@@ -98,4 +98,4 @@ math_tex:
 - 'Rank: $k = \lceil r \cdot P \rceil$, thr = $k$-th top positive'
 - 'Cascade cost: $\mathbb{E}[C] = c_1 + p\,c_2$'
 - 'Cheaper than $c_2$ iff $p < 1 - \frac{c_1}{c_2}$'
-patterns: ["Classification metrics"]
+patterns: ["Classification metrics", "LLM safety and guardrails"]

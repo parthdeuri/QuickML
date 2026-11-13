@@ -118,3 +118,4 @@ math_tex:
 - 'Inverse transform: $x = F^{-1}(u)$, $u$ uniform'
 - 'Exponential sample: $x = -\ln(1-u)/\lambda$'
 - 'Box-Muller: $z = \sqrt{-2\ln u_1}\cos(2\pi u_2)$'
+patterns: ["Math foundations"]

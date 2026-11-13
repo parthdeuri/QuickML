@@ -132,3 +132,4 @@ pitfalls:
   - "Word-overlap grounding passes fluent but unsupported claims; use entailment checks for high stakes"
   - "Validate for the destination, for example escape text before putting it in HTML or SQL, not only for content"
 related: [structured-outputs-json-schema, prompt-injection-defense, hallucination-detection]
+patterns: ["LLM safety and guardrails"]

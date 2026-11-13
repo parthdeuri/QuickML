@@ -237,6 +237,16 @@ def main():
         for s in slugs:
             if s in have:
                 tags.setdefault(s, []).append(fam_name[fid])
+    # families written straight into patterns/*.yaml (not in make_families) tag their members too
+    for pf in sorted((C / "patterns").glob("*.yaml")):
+        pd = yaml.safe_load(pf.read_text(encoding="utf-8"))
+        if pd["id"].startswith("compare-"):
+            continue
+        for slug in pd["problems"]:
+            if slug in have:
+                names = tags.setdefault(slug, [])
+                if pd["name"] not in names:
+                    names.append(pd["name"])
     for slug, names in tags.items():
         path = PROBLEMS / f"{slug}.yaml"
         text = path.read_text(encoding="utf-8")

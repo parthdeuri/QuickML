@@ -104,3 +104,4 @@ math_tex:
 - '$P(\mathrm{emit}\ x) = \min(p,q) + \max(0, p-q) = p(x)$'
 - '$\alpha = 1 - \mathrm{TV}(p, q) = \sum_x \min(p(x), q(x))$'
 - 'Tokens per pass $= \frac{1-\alpha^{\gamma+1}}{1-\alpha}$'
+patterns: ["Decoding and sampling"]

@@ -1,0 +1,59 @@
+id: prompting-and-context
+name: Prompting and context
+order: 25
+summary: Control a language model by shaping the text it sees, then check and
+  compare what it returns.
+when_to_use:
+- You steer a pretrained model with instructions and examples instead of training.
+- The context window is limited and you must choose what goes in.
+- Downstream code needs the answer in a fixed machine-readable shape.
+- You are choosing between two prompt or model versions.
+key_idea: A prompt is an input you can engineer. Fill a fixed template with the
+  task and examples, pack the most useful context into a token budget, then
+  parse and validate the reply against a schema so that failures are caught. To
+  choose between prompts, score both on the same cases and compare the paired
+  results rather than overall averages.
+template: |
+  import json
+
+  def render(template, **fields):
+      return template.format(**fields)
+
+  def pack(chunks, budget):
+      order = sorted(chunks, key=lambda c: -c[2] / c[1])
+      kept, used = [], 0
+      for name, tok, score in order:
+          if used + tok <= budget:
+              kept.append(name)
+              used += tok
+      return kept, used
+
+  def parse(text, required):
+      try:
+          obj = json.loads(text)
+      except ValueError:
+          return None
+      ok = isinstance(obj, dict) and all(k in obj for k in required)
+      return obj if ok else None
+
+  def paired(a, b):
+      return (sum(x > y for x, y in zip(a, b)),
+              sum(x < y for x, y in zip(a, b)))
+complexity: O(n log n) to rank n context chunks and O(n) per prompt to score n cases.
+pitfalls:
+- Untrusted text placed in a template can carry instructions, so delimit and treat it as data.
+- A reply that looks like valid JSON can still miss required fields; validate it.
+- Small test sets make prompt differences look larger than they are.
+problems:
+- few-shot-prompting
+- chain-of-thought-self-consistency
+- role-system-prompts
+- prompt-templates
+- context-engineering
+- structured-outputs-json-schema
+- prompt-optimization
+- prompt-versioning
+- model-landscape
+aliases:
+- Prompting and context
+- Prompt engineering

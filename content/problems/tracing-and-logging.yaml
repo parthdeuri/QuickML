@@ -128,3 +128,4 @@ pitfalls:
   - "Streaming responses need both time to first token and total time, or the span hides the wait users feel"
   - "A redact list misses new field names; prefer logging an allow-list of fields for sensitive paths"
 related: [context-window-limits, hallucination-detection]
+patterns: ["LLM production operations"]

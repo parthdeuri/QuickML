@@ -130,3 +130,4 @@ pitfalls:
   - "A reducer on a key missing from the initial state is skipped here; initialise accumulating keys such as lists up front"
   - "Re-running a node with side effects after resume repeats the effect; make tool calls idempotent"
 related: [structured-outputs-json-schema, prompt-injection-defense, output-validation-guardrails]
+patterns: ["Agent building blocks"]

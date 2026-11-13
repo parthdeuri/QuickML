@@ -101,3 +101,4 @@ math_tex:
 - 'Blocked: $1 - \prod_{i}(1 - q_i)$'
 - 'Example: $q = 0.5$ twice gives $0.5 \cdot 0.5 = 0.25$'
 - 'Shared weakness: $P \geq \prod_{i}(1 - q_i)$'
+patterns: ["LLM safety and guardrails"]

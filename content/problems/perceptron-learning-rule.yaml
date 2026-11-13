@@ -98,3 +98,4 @@ math_tex:
 - '$\gamma = \min_i \frac{y_i\,(w^* \cdot x_i)}{\|w^*\|}$, $R = \max_i \|x_i\|$'
 - 'After $k$ mistakes: $w \cdot w^* \geq k\eta\gamma$'
 - 'and $\|w\|^2 \leq k\eta^2 R^2$, so $k \leq (R/\gamma)^2$'
+patterns: ["Network building blocks"]

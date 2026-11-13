@@ -102,4 +102,4 @@ pitfalls:
   - "This code stores indices as uint8 for clarity; real storage packs two 4-bit codes per byte"
   - "Dequantisation happens on every forward pass, so 4-bit saves memory, not necessarily time"
 related: [lora-low-rank-adaptation, int8-quantization, transfer-learning-fine-tuning]
-patterns: ["Transfer and adaptation"]
+patterns: ["Transfer and adaptation", "LLM efficiency and parallelism"]

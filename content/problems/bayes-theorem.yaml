@@ -72,4 +72,4 @@ math_tex:
 - $\mathrm{posterior} \propto \mathrm{likelihood} \times \mathrm{prior}$
 - $\mathrm{odds}(H\,|\,E) = \mathrm{odds}(H)\,\frac{P(E\,|\,H)}{P(E\,|\,\neg H)}$
 - 'Sequential: posterior after $E_1$ is the prior for $E_2$'
-patterns: ["Probabilistic models"]
+patterns: ["Probabilistic models", "Math foundations"]

@@ -111,3 +111,4 @@ math_tex:
 - 'Speed score: $s_{speed}(m) = \frac{\min_j \ell_j}{\ell_m}$'
 - 'Utility: $U(m) = \frac{\sum_c w_c\, s_c(m)}{\sum_c w_c}$'
 - 'Scaling: $w_c \rightarrow \lambda w_c$ leaves $U$ unchanged'
+patterns: ["Prompting and context"]

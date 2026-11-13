@@ -98,4 +98,4 @@ math_tex:
 - 'Output: $o^{\prime} = o\, e^{m-m^{\prime}} + \sum_j e^{s_j-m^{\prime}} v_j$'
 - 'Result: $\frac{o}{\ell} = \sum_i \mathrm{softmax}(s)_i\, v_i$'
 - 'Scores: $s_j = \frac{q \cdot k_j}{\sqrt{d}}$'
-patterns: ["Attention and sequences"]
+patterns: ["Attention and sequences", "LLM efficiency and parallelism"]

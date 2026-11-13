@@ -121,3 +121,4 @@ math_tex:
 - 'Released in a window: $\leq C + rT$'
 - 'N requests need: $T \geq \frac{N c - C}{r}$'
 - 'Cost: $c \approx \lceil \mathrm{chars}/4 \rceil + \mathrm{max\_tokens}$'
+patterns: ["LLM production operations"]

@@ -27,5 +27,8 @@ problems:
 - residual-connections
 - feed-forward-gelu-swiglu
 - mixture-of-experts-routing
+- perceptron-learning-rule
+- micrograd-autograd-engine
+- pytorch-training-loop-anatomy
 aliases:
 - Network building blocks

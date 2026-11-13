@@ -137,3 +137,4 @@ math_tex:
 - 'CE gradient: $\mathrm{softmax}(z) - \mathrm{onehot}(y)$'
 - 'Gaussian NLL: $\frac{(y-p)^2}{2\sigma^2} + \ln\sigma + \frac{1}{2}\ln 2\pi$'
 - 'Laplace NLL: $\frac{|y-p|}{b} + \ln 2b$'
+patterns: ["Information-theoretic losses"]

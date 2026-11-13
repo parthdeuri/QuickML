@@ -102,3 +102,4 @@ math_tex:
 - 'with $\lambda = \ln 2 / h$, so $\mathrm{decay}(h) = \frac{1}{2}$'
 - 'Similarity: $\frac{q \cdot m}{\|q\|\,\|m\|}$'
 - 'Window: $\sum_i \mathrm{tok}(m_i) \leq B$ incl. summary'
+patterns: ["Agent building blocks"]

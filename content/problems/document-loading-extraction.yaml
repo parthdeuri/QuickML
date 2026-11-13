@@ -128,3 +128,4 @@ math_tex:
 - '$\mathrm{pc}(\ell)$ = number of pages containing line $\ell$'
 - 'Drop line $\ell$ if $\frac{\mathrm{pc}(\ell)}{\mathrm{pages}} \geq \mathrm{min\_frac}$'
 - 'Threshold in pages $= \lceil \mathrm{min\_frac} \cdot \mathrm{pages} \rceil$'
+patterns: ["RAG pipeline stages"]

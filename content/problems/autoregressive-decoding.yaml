@@ -95,4 +95,4 @@ math_tex:
 - 'Next token: $z_t = f(x_{1:t})_{\mathrm{last}}$'
 - '$x_{t+1} = \arg\max_{v}\, z_t[v]$'
 - 'Stop at EOS or after $n_{\max}$ new tokens'
-patterns: ["Attention and sequences"]
+patterns: ["Attention and sequences", "Decoding and sampling"]

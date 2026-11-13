@@ -99,3 +99,4 @@ math_tex:
 - 'Inference: $\approx 2 N$ FLOPs per token'
 - 'Weight bytes $= N \cdot \mathrm{bytes}$'
 - 'Training state $\approx 16 N$ bytes'
+patterns: ["LLM efficiency and parallelism"]

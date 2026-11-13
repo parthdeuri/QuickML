@@ -94,3 +94,4 @@ math_tex:
 - 'Read: $\sum_{j=0}^{m-1} (c_0 + j\tau) = m c_0 + \tau \frac{m(m-1)}{2}$'
 - 'Written: $m\tau$'
 - 'Large $m$: read $\approx \frac{\tau N^2 R^2}{2}$'
+patterns: ["Agent building blocks"]

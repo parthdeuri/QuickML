@@ -92,3 +92,4 @@ math_tex:
 - 'Survivors $\sim \mathrm{Binomial}(c, s)$, mean $c \cdot s$'
 - 'Needed candidates $c = \lceil k / s \rceil$'
 - '$P(\mathrm{fewer\ than\ }k) = \sum_{j<k} \binom{c}{j} s^{j} (1-s)^{c-j}$'
+patterns: ["RAG pipeline stages"]

@@ -1,0 +1,62 @@
+id: llm-efficiency-and-parallelism
+name: LLM efficiency and parallelism
+order: 24
+summary: Fit and speed up large models by counting bytes and flops, shrinking
+  them, and splitting the work across devices.
+when_to_use:
+- A model does not fit in one accelerator's memory.
+- Generation is slow and you need to know whether memory or compute limits it.
+- You want to shrink a model or its cache at a small cost in quality.
+- You must split a model or a batch across several devices.
+key_idea: Large-model serving and training are resource budgeting. Memory is
+  weights plus the key-value cache, and both shrink when fewer bytes are stored
+  per number. Speed is bounded by the lower of peak compute and bandwidth times
+  arithmetic intensity, so decoding is usually bandwidth bound, and parallelism
+  buys capacity by spending communication.
+template: |
+  import numpy as np
+
+  def weight_bytes(params, bytes_per=2):
+      return params * bytes_per
+
+  def kv_bytes(layers, kv_heads, d_head, ctx, batch, bytes_per=2):
+      return 2 * layers * kv_heads * d_head * ctx * batch * bytes_per
+
+  def quantize(x):
+      s = np.abs(x).max() / 127
+      return np.round(x / s).astype(np.int8), s
+
+  def dequantize(q, s):
+      return q.astype(float) * s
+
+  def attainable(peak, bw, intensity):
+      return min(peak, bw * intensity)
+
+  def decode_tokens_per_s(w_bytes, bw, batch=1):
+      return batch * bw / w_bytes
+
+  def shard_bytes(total, devices):
+      return total / devices
+complexity: O(1) arithmetic for the estimates and O(n) to quantise n weights.
+pitfalls:
+- Estimates that omit the key-value cache, activations and framework overhead are too low.
+- Quantisation error is set by the largest value, so one outlier hurts every weight.
+- More devices cut memory per device but add communication that can erase the speedup.
+problems:
+- kv-cache
+- int8-quantization
+- qlora-nf4-quantization
+- magnitude-pruning
+- knowledge-distillation
+- continuous-batching
+- flash-attention-online-softmax
+- tensor-parallel-matmul
+- pipeline-parallel-schedule
+- gpu-memory-estimation
+- gpu-computing-roofline
+- parameter-count-flops
+- context-window-limits
+- scaling-laws
+aliases:
+- LLM efficiency and parallelism
+- Efficiency and parallelism

@@ -120,3 +120,4 @@ pitfalls:
   - 'Hashing a Python dict with str() or an unsorted dump, so equal configs give different hashes'
   - 'Treating one seed as the result; a gap smaller than the seed spread is noise'
 related: [experiment-tracking-runs, hyperparameter-search, pytorch-training-loop-anatomy]
+patterns: ["Programming and tooling"]

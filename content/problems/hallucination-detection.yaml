@@ -85,4 +85,4 @@ math_tex:
 - 'Entropy: $H = -\sum_a p_a \log p_a$'
 - 'With $p_a = n_a / k$: $H \leq \log k$'
 - 'Overlap: mean of $|C \cap S| / |C|$'
-patterns: ["Text evaluation and retrieval"]
+patterns: ["Text evaluation and retrieval", "LLM evaluation methods"]

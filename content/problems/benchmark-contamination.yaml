@@ -102,4 +102,4 @@ math_tex:
 - 'Rate: $\frac{1}{N}\sum_{b} \mathrm{flag}(b)$'
 - 'Ratio: $\rho = \frac{L(\mathrm{item})}{\overline{L}(\mathrm{perturbed})}$'
 - 'Gap: $\mathrm{acc}_{cont} - \mathrm{acc}_{clean}$'
-patterns: ["Text evaluation and retrieval"]
+patterns: ["Text evaluation and retrieval", "LLM evaluation methods"]

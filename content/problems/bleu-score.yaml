@@ -86,4 +86,4 @@ math_tex:
 - $p_n = \frac{\sum \mathrm{clipped\ counts}}{\sum \mathrm{hypothesis\ n\!-\!grams}}$ (summed over corpus)
 - '$\mathrm{BP} = 1$ if $c > r$, else $\exp(1 - r/c)$ ($c, r$: lengths)'
 - $\mathrm{BLEU} = \mathrm{BP}\cdot\exp\left(\frac{1}{N}\sum_n \log p_n\right),\;\; N = 4$
-patterns: ["Text evaluation and retrieval"]
+patterns: ["Text evaluation and retrieval", "LLM evaluation methods"]

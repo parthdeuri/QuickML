@@ -110,3 +110,4 @@ math_tex:
 - 'Cost $= 2mkn$ for $(m \times k)(k \times n)$'
 - 'Chain DP: $M_{ij} = \min_{s}\,(M_{is} + M_{s+1,j} + 2\,p_i p_{s+1} p_{j+1})$'
 - 'Skinny $x$: $(xW_1)W_2 = 4d^2$ vs $2d^3 + 2d^2$'
+patterns: ["Math foundations"]

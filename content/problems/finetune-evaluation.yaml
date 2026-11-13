@@ -109,3 +109,4 @@ math_tex:
 - 'Wilson centre: $\frac{\hat{p} + z^2/2n}{1 + z^2/n}$'
 - 'Sample size: $n \approx \frac{z^2\,p(1-p)}{m^2}$'
 - 'Forgetting: $\Delta = M_{after} - M_{before}$'
+patterns: ["LLM evaluation methods"]

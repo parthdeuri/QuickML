@@ -108,3 +108,4 @@ math_tex:
 - 'Bound: $\max(V_{greedy}, \max_i v_i) \geq \frac{V_{opt}}{2}$'
 - 'Docs: $B_{docs} = W - R - t_{sys} - t_{hist}$'
 - 'Slack: $W - R - t_{in} \geq 0$'
+patterns: ["Prompting and context"]

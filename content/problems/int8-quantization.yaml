@@ -97,3 +97,4 @@ pitfalls:
   - "This code uses float64 for clarity; real kernels use float16 scales and fused integer ops"
   - "Activation scales must come from calibration or be computed per batch, which costs extra"
 related: [feature-scaling, knowledge-distillation, parameter-count-flops]
+patterns: ["LLM efficiency and parallelism"]

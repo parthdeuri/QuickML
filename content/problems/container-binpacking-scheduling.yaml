@@ -134,3 +134,4 @@ pitfalls:
   - 'Best-fit is not always better than first-fit; both can be worse than first-fit-decreasing'
   - 'Setting memory limits below real peaks gets containers killed; CPU limits only slow them down'
 related: [gpu-memory-estimation, continuous-batching, gpu-computing-roofline]
+patterns: ["LLM production operations"]

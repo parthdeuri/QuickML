@@ -82,4 +82,4 @@ math_tex:
 - $z_0 = [x_{cls};\ z_1;\ \ldots;\ z_N] + E_{pos},\;\; E_{pos} \in \mathbb{R}^{(N+1) \times D}$
 - 'Equivalent: $\mathrm{Conv2d}(C, D, \mathrm{kernel} = P, \mathrm{stride} = P)$'
 - 'Head reads final CLS token: $\hat{y} = \mathrm{softmax}(W_h z_L^0)$'
-patterns: ["Convolution and vision"]
+patterns: ["Convolution and vision", "Multimodal and speech"]

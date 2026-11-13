@@ -124,3 +124,4 @@ pitfalls:
   - "Counting only hard errors; slow responses should count as failures too"
   - "Treating the budget as a target to spend rather than a limit that gates risky releases"
 related: [llm-api-retries-rate-limits, provider-fallback-router, tracing-and-logging]
+patterns: ["LLM production operations"]

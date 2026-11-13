@@ -1,0 +1,55 @@
+id: llm-evaluation-methods
+name: LLM evaluation methods
+order: 30
+summary: Score a language model with a metric you can trust, and say how uncertain
+  the score is before drawing a conclusion.
+when_to_use:
+- You must compare two models or two checkpoints and decide which is better.
+- Reference answers exist and an automatic overlap or likelihood metric is enough.
+- Outputs are open-ended and you need pairwise judgements with error bars.
+key_idea: Every evaluation method is a measuring instrument with its own bias, so
+  pick one that matches the question and attach uncertainty to it. Perplexity
+  summarises token log-probabilities, n-gram overlap compares text to a reference,
+  and pairwise judging yields a win rate whose exact sign test says whether the
+  gap beats chance, while Elo turns head-to-head results into a running rating.
+template: |
+  import numpy as np
+  from math import comb
+  from collections import Counter
+
+  def perplexity(logprobs):
+      return float(np.exp(-np.mean(logprobs)))
+
+  def ngram_precision(cand, ref, n):
+      grams = lambda t: Counter(zip(*[t[i:] for i in range(n)]))
+      c, r = grams(cand), grams(ref)
+      hit = sum(min(v, r[g]) for g, v in c.items())
+      return hit / max(sum(c.values()), 1)
+
+  def sign_test_p(wins, losses):
+      n, m = wins + losses, min(wins, losses)
+      tail = sum(comb(n, i) for i in range(m + 1))
+      return min(1.0, 2 * tail / 2 ** n)
+
+  def elo_update(ra, rb, score_a, k=32):
+      ea = 1 / (1 + 10 ** ((rb - ra) / 400))
+      d = k * (score_a - ea)
+      return ra + d, rb - d
+complexity: O(n) over tokens or judged pairs; the sign test is O(n) big-integer sums.
+pitfalls:
+- Perplexity is only comparable between models that share a tokenizer and test set.
+- Overlap metrics reward surface similarity and miss correct paraphrases.
+- A judge model has position and length bias, so swap answer order and test for significance.
+- Benchmark questions that leaked into training data inflate every score.
+problems:
+- llm-as-judge
+- elo-pairwise-ranking
+- benchmark-contamination
+- finetune-evaluation
+- hallucination-detection
+- perplexity
+- bleu-score
+- rouge-score
+aliases:
+- LLM evaluation methods
+- Language model evaluation

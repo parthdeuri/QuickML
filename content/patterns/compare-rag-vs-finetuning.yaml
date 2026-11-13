@@ -1,0 +1,44 @@
+id: compare-rag-vs-finetuning
+name: 'Compare: RAG vs Fine-Tuning'
+order: 114
+summary: RAG supplies knowledge at inference time with sources; fine-tuning changes
+  behaviour, style and skills but is a poor store for changing facts.
+when_to_use:
+- Pick RAG when facts change often, or when answers must cite a source or respect per-user access rules.
+- Pick fine-tuning when you need a consistent style, output format, tone or a skill the base model lacks.
+- 'Combine them when you need both: fine-tune for format and behaviour, retrieve for the facts.'
+- Try prompting first if neither updates nor format needs are strong, since it is cheapest.
+key_idea: Facts in model weights are spread across many parameters, cannot be edited one at a time, carry no source and go stale until you retrain, so each update costs a training run. Retrieval keeps facts in an external store, so an update is a document write and every answer can point to its passage. Fine-tuning shines where the target is a pattern in how to answer rather than a changing fact, because that pattern is stable and is learned from examples.
+template: |
+  store = {"price": "10 dollars"}
+  frozen = dict(store)            # facts baked in at training time
+
+  def rag_answer(key):
+      return store[key], "source:" + key    # fresh value plus citation
+
+  def finetuned_answer(key):
+      return frozen[key], None              # no citation, can go stale
+
+  def choose(facts_change, needs_citations, needs_format):
+      picks = []
+      if facts_change or needs_citations:
+          picks.append("rag")
+      if needs_format:
+          picks.append("finetune")
+      return picks or ["prompting"]
+
+  store["price"] = "12 dollars"             # the world changes
+  fresh = rag_answer("price")               # sees 12
+  stale = finetuned_answer("price")         # still says 10
+complexity: RAG adds a retrieval step and longer prompts per query; fine-tuning has
+  a one-off training cost but no per-query overhead.
+pitfalls:
+- Fine-tuning on facts can teach confident wrong answers when a fact changes.
+- RAG quality is capped by retrieval; if the right passage is not fetched, the model cannot use it.
+- Retrieved text is untrusted input and can carry instructions that hijack the model.
+problems:
+- rag-dense-retrieval
+- finetune-evaluation
+- transfer-learning-fine-tuning
+aliases:
+- 'Compare: RAG vs Fine-Tuning'

@@ -110,4 +110,4 @@ pitfalls:
   - "Optimising one criterion can worsen another, so report several"
   - "A counterfactual swap can change more than the group, such as names that carry other signals"
 related: [precision-recall-f1, roc-auc, probability-calibration]
-patterns: ["Classification metrics"]
+patterns: ["Classification metrics", "LLM safety and guardrails"]

@@ -92,3 +92,4 @@ math_tex:
 - 'KV bytes $= 2 L h_{kv} T d_{head} \cdot \mathrm{bytes}$'
 - 'Window $w$: scores $= T \cdot \min(T, w)$'
 - 'RoPE angle $= p'' \theta_i$, $p'' = p L_{train} / L_{new}$'
+patterns: ["LLM efficiency and parallelism"]

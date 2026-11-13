@@ -151,3 +151,4 @@ math_tex:
 - 'Exp: $\frac{\partial z}{\partial x} = z$'
 - 'ReLU: $\frac{\partial z}{\partial x} = [x > 0]$'
 - 'Rule: $g_{x_i} \leftarrow g_{x_i} + \frac{\partial z_j}{\partial x_i} g_{z_j}$'
+patterns: ["Network building blocks"]

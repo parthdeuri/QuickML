@@ -76,4 +76,4 @@ math_tex:
 - 'Soft loss: $\mathrm{KL}(p_T(z_{teacher}) \,\|\, p_T(z_{student}))$'
 - 'Hard loss: $\mathrm{CE}(\mathrm{softmax}(z_{student}), y)$'
 - $L = (1 - \alpha)\cdot\mathrm{hard} + \alpha\cdot T^2\cdot\mathrm{soft}$
-patterns: ["Transfer and adaptation"]
+patterns: ["Transfer and adaptation", "LLM efficiency and parallelism"]

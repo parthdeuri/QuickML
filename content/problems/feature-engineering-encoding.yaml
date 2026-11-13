@@ -120,3 +120,4 @@ math_tex:
 - 'Bin width $w = (x_{max}-x_{min})/k$'
 - 'Bin id = floor of $(x - x_{min})/w$, max in last bin'
 - 'Log transform: $z = \ln(1+x)$, $x \geq 0$'
+patterns: ["Validation hygiene"]

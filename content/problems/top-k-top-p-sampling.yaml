@@ -86,4 +86,4 @@ math_tex:
 - Sort $p_{(1)} \geq p_{(2)} \geq \ldots$; cumulative $C_j = \sum_{m \leq j} p_{(m)}$
 - 'Top-p: keep rank $j$ if $C_{j-1} < p$   ($C_0 = 0$)'
 - $p'_i = \frac{p_i\,\mathbf{1}[\mathrm{kept}]}{\sum_j p_j\,\mathbf{1}[\mathrm{kept}]}$
-patterns: ["Text processing"]
+patterns: ["Text processing", "Decoding and sampling"]

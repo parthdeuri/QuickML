@@ -103,4 +103,4 @@ math_tex:
 - 'Multi-query: rankings $R_1,\ldots,R_m$'
 - '$\mathrm{RRF}(d) = \sum_{j} \frac{1}{k + \mathrm{rank}_j(d)}$, rank starts at 1'
 - 'Typical $k = 60$; a document missing from $R_j$ adds 0'
-patterns: ["Text evaluation and retrieval"]
+patterns: ["Text evaluation and retrieval", "RAG pipeline stages"]

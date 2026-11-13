@@ -117,3 +117,4 @@ math_tex:
 - 'Bonferroni: reject if $p_i \leq \alpha/m$'
 - 'BH: $k = \max\{i : p_{(i)} \leq i\alpha/m\}$'
 - 'Bootstrap CI: $\alpha/2$ and $1-\alpha/2$ quantiles of $\hat{\theta}^*$'
+patterns: ["Math foundations"]

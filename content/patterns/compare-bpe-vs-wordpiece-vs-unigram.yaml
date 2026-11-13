@@ -1,0 +1,49 @@
+id: compare-bpe-vs-wordpiece-vs-unigram
+name: 'Compare: BPE vs WordPiece vs Unigram'
+order: 115
+summary: Three subword tokenisers choose their vocabulary differently - by pair frequency,
+  by a normalised pair score, or by pruning tokens with the least likelihood loss.
+when_to_use:
+- Pick BPE for a simple, fast, deterministic merge list; it is the common choice for byte-level generative models.
+- Pick WordPiece when you want merges that favour pairs which belong together rather than pairs of merely common parts.
+- Pick Unigram when you want a probabilistic vocabulary, several possible segmentations and subword sampling for regularisation.
+- For any of them, train the vocabulary on text that matches your deployment language and domain.
+key_idea: BPE greedily merges the most frequent adjacent pair, so two very common pieces get fused even if they are independent of each other. WordPiece divides the pair count by the product of the two part counts, which is high only when the parts occur together more than chance, so it prefers cohesive pairs. Unigram goes the other way, starting from a large vocabulary and repeatedly removing the tokens whose removal raises the corpus loss least, so it keeps tokens that the likelihood actually needs. On the same corpus the three rules can choose different pairs.
+template: |
+  import math
+  from collections import Counter
+  words = {"hug": 10, "pug": 5, "pun": 12, "bun": 4, "hugs": 5}
+  one, two = Counter(), Counter()
+  for w, f in words.items():
+      one.update({c: f for c in w})
+      for p in zip(w, w[1:]):
+          two[p] += f
+  bpe = max(two, key=two.get)                    # raw count
+  wp = max(two, key=lambda p: two[p] / (one[p[0]] * one[p[1]]))
+  def best(w, lp):                # Viterbi log-prob of one word
+      s = [0.0] + [-1e9] * len(w)
+      for j in range(1, len(w) + 1):
+          for i in range(j):
+              if w[i:j] in lp:
+                  s[j] = max(s[j], s[i] + lp[w[i:j]])
+      return s[-1]
+  loss = lambda lp: -sum(f * best(w, lp) for w, f in words.items())
+  cnt = Counter(one)
+  cnt.update({"".join(p): f for p, f in two.items()})
+  lp = {t: math.log(c / sum(cnt.values())) for t, c in cnt.items()}
+  cost = {t: loss({k: v for k, v in lp.items() if k != t}) - loss(lp)
+          for t in lp if len(t) > 1}   # loss rise if token is pruned
+  uni = max(cost, key=cost.get)        # the token Unigram keeps last
+complexity: BPE and WordPiece training costs about O(V·N) for V merges over a corpus
+  of N symbols; Unigram training runs EM and pruning rounds, each O(N·L) with
+  maximum token length L.
+pitfalls:
+- WordPiece training merges by score but encoding is greedy longest-match-first, so the two stages use different rules.
+- A pair-frequency score favours very common letters, so BPE can spend vocabulary on junk pairs like a letter followed by a space.
+- Unigram needs a good seed vocabulary and EM; a poor seed prunes useful tokens early.
+problems:
+- bpe-tokenization
+- wordpiece
+- sentencepiece-unigram
+aliases:
+- 'Compare: BPE vs WordPiece vs Unigram'

@@ -81,3 +81,4 @@ pitfalls:
   - "Batch normalisation statistics change when the batch is split into microbatches"
   - "Gradients from all microbatches must be accumulated before one optimiser step"
 related: [transformer-block, decoder-only-block, parameter-count-flops]
+patterns: ["LLM efficiency and parallelism"]

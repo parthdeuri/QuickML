@@ -122,3 +122,4 @@ math_tex:
 - 'Pads: $L_{\max} - L_i$ for prompt $i$'
 - 'Use: $\frac{\sum_i L_i}{B \cdot L_{\max}}$'
 - 'Length: $L_{\max} + T_{\mathrm{new}}$'
+patterns: ["Decoding and sampling"]

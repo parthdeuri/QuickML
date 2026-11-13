@@ -1,0 +1,51 @@
+id: llm-safety-and-guardrails
+name: LLM safety and guardrails
+order: 26
+summary: Treat every input and output of a language model as untrusted and stack
+  independent checks so that no single filter has to be perfect.
+when_to_use:
+- Text from users, documents or tools flows into a prompt.
+- Model output feeds a downstream system, a tool call or a customer.
+- You must report or limit harm, leakage or unfair outcomes.
+key_idea: Language models cannot reliably tell instructions from data, so safety
+  is built around them rather than inside them. Untrusted text is fenced and scanned
+  on the way in, model output is validated against a contract on the way out, and
+  each layer is an independent check with its own catch rate. If the layers fail
+  independently, the chance that a bad item passes all of them is the product of
+  one minus each catch rate.
+template: |
+  import re
+
+  def wrap_untrusted(text, nonce):
+      text = text.replace(nonce, "")
+      return f"<DATA-{nonce}>\n{text}\n</DATA-{nonce}>"
+
+  PATTERN = r"ignore\s+(all\s+)?(previous|prior)\s+instructions"
+
+  def detect(text):
+      return bool(re.search(PATTERN, text, re.I))
+
+  def validate(out, allowed):
+      return out.strip().lower() in allowed
+
+  def pass_through(catch_rates):
+      p = 1.0
+      for c in catch_rates:
+          p *= 1 - c           # assumes independent layers
+      return p
+complexity: O(length of text) per regex or validator pass; layers add linearly.
+pitfalls:
+- Layers that share a blind spot are not independent, so the product overstates the protection.
+- A fence or filter is mitigation, not proof; keep least-privilege tools behind it.
+- Pattern lists go stale as attackers rephrase, so retest them regularly.
+problems:
+- prompt-injection-defense
+- jailbreak-and-red-teaming
+- pii-redaction
+- output-validation-guardrails
+- content-safety-classifiers
+- fairness-metrics
+aliases:
+- LLM safety and guardrails
+- Guardrails
+- Layered defenses

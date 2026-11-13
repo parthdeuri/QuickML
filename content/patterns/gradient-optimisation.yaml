@@ -34,5 +34,6 @@ problems:
 - gradient-clipping
 - momentum-sgd
 - rmsprop-adagrad
+- adamw-decoupled-weight-decay
 aliases:
 - Gradient-based optimisation

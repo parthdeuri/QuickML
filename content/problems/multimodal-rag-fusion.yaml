@@ -104,3 +104,4 @@ math_tex:
 - 'Fusion: $\sum_{m} w_m \cdot \mathrm{norm}(s_m)(i)$'
 - 'RRF: $\sum_{m} \frac{1}{k + \mathrm{rank}_m(i)}$, $k \approx 60$'
 - 'Raw sum: larger-scale list sets the order'
+patterns: ["Multimodal and speech"]

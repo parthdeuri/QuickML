@@ -116,3 +116,4 @@ pitfalls:
   - "Whitespace tokens undercount for real tokenizers, so leave a safety margin below the true context limit"
   - "Truncating the middle or end of a variable may drop the part that matters; choose what to cut deliberately"
 related: [context-window-limits, autoregressive-decoding, structured-outputs-json-schema]
+patterns: ["Prompting and context"]

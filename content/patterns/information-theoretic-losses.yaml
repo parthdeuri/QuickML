@@ -33,5 +33,6 @@ problems:
 - label-smoothing
 - clip-contrastive-loss
 - next-token-prediction-loss
+- loss-functions-regression-classification
 aliases:
 - Information-theoretic losses

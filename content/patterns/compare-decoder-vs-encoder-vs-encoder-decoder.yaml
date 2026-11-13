@@ -1,0 +1,46 @@
+id: compare-decoder-vs-encoder-vs-encoder-decoder
+name: 'Compare: Decoder vs Encoder vs Encoder-Decoder'
+order: 112
+summary: The three transformer families differ in what each position may see and in
+  the training loss, which decides whether they generate, understand or translate.
+when_to_use:
+- Pick a decoder-only model (causal mask, next-token loss) for open-ended generation, chat and in-context learning.
+- Pick an encoder (bidirectional mask, masked-token loss) for classification, tagging, retrieval embeddings and other understanding tasks.
+- Pick an encoder-decoder (bidirectional encoder, causal decoder, cross-attention) for input-to-output tasks such as translation and summarisation.
+- If you must generate long free text, an encoder alone cannot do it, because it has no left-to-right factorisation.
+key_idea: A decoder uses a lower-triangular mask so position t sees only positions up to t, which makes next-token prediction a valid training loss on every position at once. An encoder lets every position see every other, so a next-token loss would leak the answer; instead it hides some tokens and predicts only those, which gives richer context per token but a weaker training signal per sequence. An encoder-decoder keeps both, and the decoder reads the encoded input through cross-attention, where every decoder query sees all encoder positions.
+template: |
+  import numpy as np
+
+  def causal_mask(n):           # decoder self-attention
+      return np.tril(np.ones((n, n), dtype=int))
+
+  def bidirectional_mask(n):    # encoder self-attention
+      return np.ones((n, n), dtype=int)
+
+  def cross_mask(n_dec, n_enc): # decoder queries see all encoder keys
+      return np.ones((n_dec, n_enc), dtype=int)
+
+  def decoder_loss_positions(n):
+      return list(range(n - 1)) # position t predicts token t+1
+
+  def encoder_loss_positions(masked):
+      return sorted(masked)     # only the hidden slots are scored
+
+  n = 4
+  seen_dec = causal_mask(n).sum(axis=1)         # [1 2 3 4]
+  seen_enc = bidirectional_mask(n).sum(axis=1)  # [4 4 4 4]
+  # encoder-decoder: encoder uses bidirectional_mask(src_len),
+  # decoder uses causal_mask(tgt_len) and cross_mask(tgt, src)
+complexity: All use O(n²·d) attention per layer; the causal mask halves the useful
+  entries, and cross-attention adds O(n_dec·n_enc·d).
+pitfalls:
+- A causal mask must also be applied during training, or the model sees the future and fails at generation time.
+- Masked-token models score only about 15 percent of positions, so they need more steps than a next-token model to see the same signal.
+- Encoder-decoder models pay for two stacks, so at equal parameter count each stack is smaller.
+problems:
+- gpt-decoder-only
+- bert-masked-lm
+- t5-span-corruption
+aliases:
+- 'Compare: Decoder vs Encoder vs Encoder-Decoder'

@@ -122,3 +122,4 @@ math_tex:
 - 'Critical path length: $\max_{t} f(t)$'
 - 'Time on $p$ workers: $T_p \geq \max(T_1 / p,\; T_\infty)$'
 - 'Dropped tasks: the failed task and all its descendants'
+patterns: ["Agent building blocks"]

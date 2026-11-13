@@ -80,4 +80,4 @@ math_tex:
 - $K_{1:t} = [K_{1:t-1} ;\, k_t],\;\; V_{1:t} = [V_{1:t-1} ;\, v_t]$
 - $o_t = \mathrm{softmax}\left(\frac{K_{1:t}\,q_t}{\sqrt{d}}\right)^{\top} V_{1:t}$
 - Cache size $= 2 \cdot \mathrm{layers} \cdot \mathrm{kv\_heads} \cdot t \cdot d_{head} \cdot \mathrm{bytes}$
-patterns: ["Attention and sequences"]
+patterns: ["Attention and sequences", "LLM efficiency and parallelism"]

@@ -1,0 +1,147 @@
+slug: project-local-llm-platform
+title: 'Project Blueprint: Self-Hosted LLM Platform'
+url: https://docs.vllm.ai/en/latest/design/paged_attention.html
+difficulty: Hard
+area: MLOps
+topics: [Project, Serving, Capacity Planning, Routing]
+summary: |
+  Build a small self-hosted model platform: a registry of models with
+  size, quantisation and quality tier, a memory fit check against a GPU
+  budget, a router that picks the smallest model meeting the tier and
+  fitting in memory, admission control with a bounded queue, and
+  fallback to the next model when one is unhealthy.
+intuition: |
+  A shared GPU is a fixed memory budget, so every decision reduces to
+  bytes. Weights are $P b / 8$ and the KV cache is a per-token constant
+  times context times concurrent sequences, so concurrency is the knob
+  that trades memory for throughput. Little's law ($L = \lambda W$)
+  turns the traffic you expect into the concurrency you must support,
+  and the fit check says which models can hold that concurrency. The
+  router then spends quality only where the request asks for it: the
+  smallest model that satisfies the tier is cheapest and fastest.
+  Admission control protects the GPU: a bounded queue converts overload
+  into a fast, explicit rejection instead of unbounded latency, and
+  fallback keeps requests flowing when a replica is down.
+  Flow: request → tier filter → memory fit → smallest healthy model → admission → run.
+approach:
+  - 'Register each model with $P$, bits, tier and KV bytes per token — the router needs only these numbers'
+  - 'Estimate the load with $L = \lambda W$ and set the concurrency limit from it — it fixes the KV cache you must reserve'
+  - 'Implement the fit check $(W_m + KV)(1 + \epsilon) \leq G$ — a model that does not fit must never be routed to'
+  - 'Route to the smallest model with tier at least the request tier that fits and is healthy — cheapest model that meets quality'
+  - 'Add admission control with $C$ running slots and a queue of $Q$ — reject with a reason when both are full'
+  - 'Fall back to the next candidate when the chosen model is unhealthy, and test every path on toy data — failures are the normal case'
+code: |
+  import math
+  from collections import deque
+
+  def weight_bytes(m):
+      return m["params"] * m["bits"] / 8
+
+  def fits(m, gpu_bytes, ctx, concurrency, overhead=0.1):
+      kv = m["kv_tok"] * ctx * concurrency
+      return (weight_bytes(m) + kv) * (1 + overhead) <= gpu_bytes
+
+  def max_concurrency(m, gpu_bytes, ctx, overhead=0.1):
+      free = gpu_bytes / (1 + overhead) - weight_bytes(m)
+      return max(0, int(free // (m["kv_tok"] * ctx)))
+
+  def littles_limit(qps, latency_s, headroom=1.0):
+      return math.ceil(qps * latency_s * headroom)
+
+  class Registry:
+      def __init__(self):
+          self.models = {}
+      def add(self, name, params, bits, tier, kv_tok):
+          self.models[name] = dict(name=name, params=params,
+              bits=bits, tier=tier, kv_tok=kv_tok, healthy=True)
+
+  class Router:
+      def __init__(self, registry, gpu_bytes, concurrency):
+          self.reg, self.gpu = registry, gpu_bytes
+          self.conc = concurrency
+      def candidates(self, req):
+          ok = [m for m in self.reg.models.values()
+                if m["tier"] >= req["tier"]
+                and fits(m, self.gpu, req["ctx"], self.conc)]
+          return sorted(ok, key=weight_bytes)   # smallest first
+      def route(self, req):
+          for m in self.candidates(req):
+              if m["healthy"]:                  # fall back to the next
+                  return m["name"]
+          return None
+
+  class AdmissionControl:
+      def __init__(self, max_active, max_queue):
+          self.max_active, self.max_queue = max_active, max_queue
+          self.active, self.queue = 0, deque()
+      def submit(self, req):
+          if self.active < self.max_active:
+              self.active += 1
+              return "run", None
+          if len(self.queue) < self.max_queue:
+              self.queue.append(req)
+              return "queued", None
+          return "rejected", "queue full"
+      def release(self):
+          self.active -= 1
+          if self.queue:
+              self.active += 1
+              return self.queue.popleft()
+key_lines: [9, 33, 36]
+time: "O(M log M) per route over M models; admission control is O(1) per request"
+space: "O(M) for the registry plus O(Q) for the queue"
+when_to_use: |
+  A team serving a few open-weight models from one or a few GPUs, who
+  need predictable memory use, a quality-aware choice of model, and
+  explicit overload behaviour before adding a full orchestration stack.
+when_not_to_use: |
+  A single model on a single GPU with light traffic, where a plain
+  server with a request limit is enough, or a large multi-node fleet
+  that needs a real scheduler, autoscaler and per-replica health
+  probes.
+why_it_works: |
+  Every large tensor has a known size, so the fit check is exact up to
+  the overhead term and a model that passes it will load. Choosing the
+  smallest eligible model minimises memory and latency while meeting the
+  quality floor. Little's law holds for any stable system, so
+  $\lambda W$ is a sound basis for the concurrency limit, and a bounded
+  queue caps the waiting time at about $Q / \mu$ for service rate
+  $\mu$ instead of letting it grow with the backlog.
+math:
+  - "Weights = P · b / 8 bytes"
+  - "KV = k · T · C,  k = 2 · L · h_kv · d_head · b_kv (bytes/token)"
+  - "Fit:  (weights + KV) · (1 + ε) ≤ GPU bytes"
+  - "Concurrency C = λ · W  (QPS × latency)"
+  - "Limit = ⌈ λ · W · headroom ⌉"
+  - "C_max = ⌊ (GPU / (1 + ε) − weights) / (kv_per_token · T) ⌋"
+  - "Queue wait ≤ Q / μ for a full queue of size Q"
+hyperparameters:
+  - 'Overhead fraction $\epsilon$ for activations and workspace'
+  - 'Concurrency limit $C$ and queue size $Q$'
+  - 'Headroom factor on the Little estimate'
+  - 'Quality tier assigned to each model'
+pitfalls:
+  - 'Sizing the cache for average concurrency; the fit check must use the limit you will actually admit'
+  - 'Treating the tier as exact; a tier label comes from an evaluation and goes stale when prompts change'
+  - 'An unbounded queue hides overload as latency, and clients time out and retry, which adds load'
+  - 'Failing over to a larger model without re-running the fit check, which can crash the server with out-of-memory'
+interview_qa:
+  - q: "How do you decide which models can share one GPU?"
+    a: 'Sum the weights $P b / 8$ and the KV cache for the concurrency each model must hold, add the overhead fraction, and compare with the budget. If the total exceeds it, lower the concurrency, quantise more, or move the model to another device.'
+  - q: "Why route to the smallest model that meets the tier?"
+    a: 'Smaller models cost less memory and time per token, so the cheapest model that still meets the quality floor leaves the most capacity for other requests. The router spends quality only where a request asks for it.'
+  - q: "How do you set the concurrency limit?"
+    a: 'Little''s law gives the typical number in flight, $L = \lambda W$, for example 5 requests per second at 2 seconds is 10. Add headroom for bursts, then check the result against the memory limit $C_{max}$ and take the smaller of the two.'
+  - q: "Why a bounded queue with rejection instead of queueing everything?"
+    a: 'Past capacity, extra requests only add waiting time, so latency grows with the backlog and clients retry. Rejecting with a reason when the queue is full keeps latency bounded and lets callers back off or try another endpoint.'
+  - q: "What happens when the chosen model is unhealthy?"
+    a: 'The router skips it and takes the next candidate that meets the tier and fits memory. A fallback that was never fit-checked is a risk, so candidates are filtered before health is considered.'
+related: [gpu-memory-estimation, continuous-batching, autoscaling-littles-law]
+math_tex:
+- 'Weights $= \frac{P b}{8}$ bytes'
+- 'KV $= k \cdot T \cdot C$, with $k = 2 L h_{kv} d_{head} b_{kv}$'
+- 'Fit $(W_m + KV)(1 + \epsilon) \leq G$'
+- 'Concurrency $C = \lambda \cdot W$'
+- 'Limit $= \lceil \lambda W \cdot h \rceil$'
+- '$C_{max} = \lfloor \frac{G/(1+\epsilon) - W_m}{k T} \rfloor$'
+- 'Queue wait $\leq \frac{Q}{\mu}$'

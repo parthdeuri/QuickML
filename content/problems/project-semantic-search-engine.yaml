@@ -1,0 +1,144 @@
+slug: project-semantic-search-engine
+title: "Project Blueprint: Semantic Search Engine"
+url: https://arxiv.org/abs/2104.08663
+difficulty: Medium
+area: LLM
+topics: [Project Blueprint, Search, Hybrid Retrieval, Evaluation]
+summary: |
+  Build a search engine over a small document set. It embeds documents
+  with a hashing embedder, answers queries by nearest neighbours with
+  optional metadata filters, adds a lexical term-overlap signal fused
+  by reciprocal rank fusion, supports adding and deleting documents,
+  and reports $\mathrm{recall}@k$ and MRR on a labelled query set.
+intuition: |
+  Dense vectors capture meaning but blur rare tokens such as error codes,
+  while term overlap nails exact tokens but misses paraphrases. Running
+  both and fusing by rank needs no score calibration, so the main
+  design trade-off is cost against coverage: a second index and extra
+  latency buy robustness on exact-match queries. Filters are applied
+  before ranking, so a filter can never be violated by a lucky hit, and
+  an evaluation set turns every design choice into a number.
+  Flow: query → filter documents → dense list + lexical list → rank fusion → top-k → recall and MRR.
+why_it_works: |
+  Each retriever fails on different queries, so the right document is
+  often ranked high by at least one of them. The fused score
+  $\frac{1}{k + \mathrm{rank}}$ sums votes from both lists, so a
+  document that both like beats one that only a single list favours,
+  and the rescued exact-match document rises into the top results.
+  Because fusion uses only ranks, the scales of cosine and term scores
+  never need tuning.
+when_to_use: |
+  Product, document or help-centre search where queries mix natural
+  language with exact identifiers, and where you want a measurable
+  baseline before adding learned rerankers or approximate indexes.
+when_not_to_use: |
+  Corpora so small that a keyword grep suffices, or so large that the
+  exhaustive scan used here must be replaced by an approximate index
+  and an inverted index. Not a substitute for a relevance model when you
+  have plenty of click or label data.
+math:
+  - "recall@k = |top-k ∩ relevant| / |relevant|"
+  - "MRR = (1/|Q|) Σ_q 1/rank_q (rank of first hit, 0 if none)"
+  - "RRF(d) = Σ_lists 1 / (k + rank(d)),  k = 60"
+  - "Rank 1 in both lists: 2/61 ≈ 0.0328; in one list: 1/61 ≈ 0.0164"
+  - "Hashing embedder: bucket(t) = crc32(t) mod dim"
+  - "P(two terms collide) = 1/dim, so use a large dim in practice"
+  - "Index memory ≈ N · dim · 4 bytes: 1M × 384 × 4 B ≈ 1.5 GB"
+approach:
+  - "Tokenise and embed each document into a normalised hashing bag-of-words vector — a deterministic stand-in for a learned encoder"
+  - "Store text tokens, metadata and vector per document id — add and delete become dictionary updates, so the index never goes stale"
+  - "Apply the metadata filter first, then rank only the permitted documents — hard pre-filter, so no result can violate it"
+  - "Build a dense list by cosine and a lexical list by IDF-weighted term overlap — two views that fail on different queries"
+  - 'Fuse the lists with $\frac{1}{k + \mathrm{rank}}$ votes and sort with an id tie-break — a stable, calibration-free ranking'
+  - 'Evaluate on labelled queries with $\mathrm{recall}@k$ and MRR, comparing dense, lexical and hybrid modes — shows what each part earns'
+code: |
+  import re, zlib
+  import numpy as np
+
+  def toks(s):
+      return re.findall(r"[a-z0-9]+", s.lower())
+
+  def embed(text, dim=32):
+      v = np.zeros(dim)
+      for t in toks(text):
+          v[zlib.crc32(t.encode()) % dim] += 1.0
+      n = np.linalg.norm(v)
+      return v / n if n else v
+
+  class SearchEngine:
+      def __init__(self, dim=32, rrf_k=60):
+          self.dim, self.rrf_k, self.docs = dim, rrf_k, {}
+
+      def add(self, id, text, meta=None):
+          self.docs[id] = (toks(text), meta or {},
+                           embed(text, self.dim))
+
+      def delete(self, id):
+          self.docs.pop(id, None)
+
+      def _lexical(self, q, ids):
+          N, out = len(self.docs), {i: 0.0 for i in ids}
+          for t in set(toks(q)):
+              n = sum(t in d[0] for d in self.docs.values())
+              idf = np.log(1 + (N - n + 0.5) / (n + 0.5))
+              for i in ids:
+                  out[i] += idf * (t in self.docs[i][0])
+          return [i for i in sorted(ids, key=lambda i: (-out[i], i))
+                  if out[i] > 0]
+
+      def search(self, q, k=3, filters=None, mode="hybrid"):
+          f = filters or {}
+          ids = [i for i, d in self.docs.items()
+                 if all(d[1].get(a) == b for a, b in f.items())]
+          qv = embed(q, self.dim)
+          dense = sorted(ids, key=lambda i:
+                         (-float(self.docs[i][2] @ qv), i))
+          lists = {"dense": [dense], "lex": [self._lexical(q, ids)],
+                   "hybrid": [dense, self._lexical(q, ids)]}[mode]
+          fused = {}
+          for lst in lists:
+              for r, i in enumerate(lst, 1):
+                  fused[i] = fused.get(i, 0.0) + 1 / (self.rrf_k + r)
+          ranked = sorted(fused, key=lambda i: (-fused[i], i))
+          return ranked[:k]
+
+      def evaluate(self, queries, k=3, mode="hybrid"):
+          rec, rr = [], []
+          for q, rel in queries:
+              got = self.search(q, k, mode=mode)
+              rec.append(len(set(got) & rel) / len(rel))
+              ranks = [r for r, i in enumerate(got, 1) if i in rel]
+              rr.append(1 / ranks[0] if ranks else 0.0)
+          return {"recall@k": float(np.mean(rec)),
+                  "mrr": float(np.mean(rr))}
+key_lines: [31, 38, 47]
+time: "O(N·d) per query for the exhaustive dense scan plus O(|q|·N) for term overlap; an ANN index and an inverted index make both sublinear"
+space: "O(N·d) for vectors plus the stored tokens and metadata"
+hyperparameters:
+  - "Embedding dimension $d$ (hash collisions fall as $1/d$)"
+  - "RRF constant $k$, about 60, and the depth of each list fed into fusion"
+  - "Result count $k$ and which metadata fields are filterable"
+  - "Fusion mode: dense only, lexical only or hybrid, chosen by the evaluation set"
+pitfalls:
+  - "Evaluating on queries you tuned on; keep a held-out labelled set and grow it from real queries"
+  - "Filtering after ranking can return fewer than $k$ results or leak documents; filter first"
+  - "Letting the index drift from the source: deletes and edits must reach every structure, and an ANN index may need a rebuild"
+  - "Reading MRR over only the top $k$; a relevant document ranked below $k$ counts as a miss, so quote $k$ with every metric"
+interview_qa:
+  - q: "How do you decide whether hybrid search is worth its cost?"
+    a: "Build a labelled query set that reflects real traffic, including exact-identifier queries, and compare dense, lexical and hybrid on recall@k and MRR. If hybrid gains on a meaningful share of queries without hurting the rest, the extra index and latency are justified."
+  - q: "Why filter before ranking instead of after?"
+    a: "Post-filtering a top-k list can leave fewer than k results and, for access control, risks leaking documents when a bug or shortfall occurs. Pre-filtering searches only the permitted set, so the guarantee holds by construction at the price of a less efficient approximate search."
+  - q: "How would this scale from thousands to millions of documents?"
+    a: 'Replace the exhaustive scan with an approximate nearest-neighbour index tuned to a recall target such as 0.95 against exact search, and the term loop with an inverted index. Memory is about $N \cdot d \cdot 4$ bytes for float vectors, so quantisation or sharding enters when that exceeds one machine.'
+  - q: "How do you handle updates and deletes?"
+    a: "Treat the document store as the source of truth and apply each change to every index. Deletes need tombstones or removal in the vector index, and periodic rebuilds restore ANN quality. A test that a deleted document never appears in any mode guards the behaviour."
+related: [hybrid-search-rrf, ann-vector-index, metadata-filtering]
+math_tex:
+- '$\mathrm{recall}@k = \frac{|\mathrm{top}_k \cap \mathrm{rel}|}{|\mathrm{rel}|}$'
+- '$\mathrm{MRR} = \frac{1}{|Q|}\sum_{q} \frac{1}{\mathrm{rank}_q}$'
+- '$\mathrm{RRF}(d) = \sum \frac{1}{k + \mathrm{rank}(d)}$, $k = 60$'
+- 'Both lists rank 1: $\frac{2}{61} \approx 0.0328$; one list: $\frac{1}{61}$'
+- 'Bucket: $\mathrm{crc32}(t) \;\mathrm{mod}\; d$'
+- 'Collision chance for two terms: $\frac{1}{d}$'
+- 'Memory $\approx N \cdot d \cdot 4$ bytes, 1.5 GB for 1M x 384'

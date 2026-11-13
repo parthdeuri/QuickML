@@ -1,0 +1,170 @@
+slug: project-support-agent
+title: "Project Blueprint: Customer Support Agent"
+url: https://www.anthropic.com/engineering/building-effective-agents
+difficulty: Hard
+area: LLM
+topics: [LLM, Agents, Project, Tool Use, Safety]
+summary: |
+  Build a support agent that classifies intent with a confidence score,
+  answers FAQs from a knowledge base with a cited source, looks up
+  orders, requests refunds only after explicit confirmation, escalates
+  to a human when unsure or when the customer is upset, and writes logs
+  with personal data redacted.
+intuition: |
+  The model is the cheap, fallible part, so the design puts hard rules
+  around it. Retrieval grounds answers in the knowledge base, a
+  permission gate makes the one risky tool (refund) a two-turn
+  handshake, and an escalation path catches anything the classifier is
+  unsure about. The main trade-off is the confidence threshold $\tau$:
+  a high $\tau$ is safe but sends more tickets to humans, a low $\tau$
+  automates more but lets wrong answers through. Redaction sits at the
+  logging boundary so no code path can forget it.
+  Flow: message → intent → answer, tool or escalate.
+approach:
+  - "Write the knowledge base and a hashing embedder — retrieval returns the best entry with its id, so every answer carries a source"
+  - "Build the classifier with a confidence $c = \\frac{\\text{best}}{\\text{total}}$ — an ambiguous or empty match gives low $c$ and routes to escalation"
+  - "Register tools with a confirm-required set — the gate denies unknown tools and holds a refund until the customer says yes"
+  - "Keep per-session state (pending action, transcript) — confirmation is a second turn that must refer to the first"
+  - "Add escalation rules for low $c$, weak retrieval or an upset customer — the human gets the whole transcript"
+  - "Redact emails and order ids in the logger and replay scripted dialogs — the tests lock the behaviour before any real model is used"
+code: |
+  import re, zlib
+  import numpy as np
+
+  KB = {"returns": "Returns are accepted within 30 days of delivery.",
+        "shipping": "Standard shipping takes 3 to 5 business days."}
+  ORDERS = {"A100": "shipped", "B200": "processing"}
+  KEYS = {"faq": ("return", "ship", "polic"), "order": ("order",
+          "status", "track"), "refund": ("refund",)}
+  UPSET = {"furious", "angry", "unacceptable", "terrible"}
+  PII = [(re.compile(r"[\w.+-]+@[\w-]+\.\w+"), "<EMAIL>"),
+         (re.compile(r"\b[A-Z]\d{3}\b"), "<ORDER>")]
+
+  def embed(t, d=64):
+      v = np.zeros(d)
+      for w in re.findall(r"[a-z]+", t.lower()):
+          v[zlib.crc32(w[:5].encode()) % d] += 1
+      return v / (np.linalg.norm(v) or 1)
+
+  def retrieve(q):
+      s = {k: float(embed(q) @ embed(v)) for k, v in KB.items()}
+      k = max(s, key=s.get)
+      return k, s[k]
+
+  def classify(msg):
+      w = re.findall(r"[a-z]+", msg.lower())
+      n = {i: sum(x.startswith(p) for x in w for p in ps)
+           for i, ps in KEYS.items()}
+      tot = sum(n.values())
+      best = max(n, key=n.get)
+      return best, (n[best] / tot if tot else 0.0)
+
+  class SupportAgent:
+      TOOLS = {"lookup_order": lambda a: ORDERS[a["id"]],
+               "request_refund": lambda a: "refund " + a["id"]}
+      CONFIRM = {"request_refund"}
+
+      def __init__(self, tau=0.6):
+          self.tau, self.logs, self.refunds = tau, [], []
+
+      def log(self, s):
+          for pat, tag in PII:
+              s = pat.sub(tag, s)
+          self.logs.append(s)
+
+      def call(self, name, args, ok=False):
+          if name not in self.TOOLS:
+              return "denied: unknown tool"
+          if name in self.CONFIRM and not ok:
+              return "needs_confirmation"
+          out = self.TOOLS[name](args)
+          if name == "request_refund":
+              self.refunds.append(args["id"])
+          return out
+
+      def escalate(self, s, why):
+          self.log("escalate: " + why)
+          return {"action": "escalate", "why": why,
+                  "transcript": list(s["turns"])}
+
+      def handle(self, s, msg):
+          s.setdefault("turns", []).append(msg)
+          self.log("user: " + msg)
+          if s.get("pending"):
+              order, s["pending"] = s["pending"], None
+              if msg.lower().strip() in ("yes", "confirm"):
+                  out = self.call("request_refund", order, ok=True)
+                  return {"action": "tool", "text": out}
+              return {"action": "answer", "text": "Cancelled."}
+          if UPSET & set(re.findall(r"[a-z]+", msg.lower())):
+              return self.escalate(s, "upset customer")
+          intent, c = classify(msg)
+          m = re.search(r"\b[A-Z]\d{3}\b", msg)
+          if c < self.tau or intent == "faq" and retrieve(msg)[1] < 0.1:
+              return self.escalate(s, "low confidence")
+          if intent == "faq":
+              k, _ = retrieve(msg)
+              return {"action": "answer", "text": KB[k], "source": k}
+          if m is None or m.group() not in ORDERS:
+              return self.escalate(s, "no valid order id")
+          args = {"id": m.group()}
+          if intent == "order":
+              return {"action": "tool",
+                      "text": self.call("lookup_order", args)}
+          s["pending"] = args
+          return {"action": "confirm",
+                  "text": "Refund " + args["id"] + "? Say yes."}
+key_lines: [38, 43, 63]
+time: "O(K·d) per message for $K$ knowledge-base entries and embedding size $d$, plus one tool call"
+space: "O(K·d + T) for the embedded knowledge base and the $T$-turn transcript per session"
+when_to_use: |
+  High-volume support with repetitive questions and a few well-defined
+  actions, where a wrong answer is cheap to fix but a wrong refund is
+  not. The structure also fits any agent with one risky tool.
+when_not_to_use: |
+  Open-ended or legally sensitive cases (disputes, medical or financial
+  advice) where a human should lead, and flows with many interacting
+  tools that need real planning rather than three fixed intents.
+why_it_works: |
+  Each failure mode gets its own control. Wrong answers are limited by
+  grounding in retrieved text and by escalating when confidence is
+  below $\tau$. Wrong actions are limited by the gate, which executes
+  a refund only on a confirmed second turn, so a single model mistake
+  cannot move money. Privacy is enforced where logs are written, which
+  makes it independent of how the model behaves.
+math:
+  - "Intent confidence c = (hits of best intent) / (hits of all intents)"
+  - "Escalate when c < τ, or retrieval cosine < 0.1, or customer upset"
+  - "Escalation rate e = P(c < τ) + P(upset) + P(weak retrieval)"
+  - "Cost per ticket = (1 − e) · c_bot + e · c_human"
+  - "Example: e = 0.25, c_bot = 0.02, c_human = 4 → 1.015 per ticket"
+  - "Human load = e · tickets per day; capacity must exceed it"
+  - "Refund executions per confirmed request = exactly 1"
+interview_qa:
+  - q: "Why must a refund need confirmation if the classifier is confident?"
+    a: "Confidence measures how well the message matches an intent, not whether the customer meant it or whether the action is safe. A refund is hard to undo, so the gate is a rule that does not depend on the model. A confirm turn also gives the customer a chance to catch a wrong order id."
+  - q: "How do you pick the confidence threshold?"
+    a: "Label a sample of tickets, then sweep the threshold and plot the share automated against the error rate of those automated answers. Pick the point where the error rate is acceptable for the cost of a wrong answer, and re-check it as traffic changes. Risky intents can use a higher threshold than FAQs."
+  - q: "What should the human receive on escalation?"
+    a: "The full transcript, the detected intent and confidence, the reason for escalating and any pending action, so the customer does not repeat themselves. Redaction still applies to stored copies."
+  - q: "How do you test an agent whose model is non-deterministic?"
+    a: "Replace the model with scripted stubs and test the surrounding logic with fixed dialogs: gate, state, escalation and logging. Then evaluate the real model separately on a labelled set for intent accuracy and task success."
+hyperparameters:
+  - "Confidence threshold $\\tau$ for escalation, possibly per intent"
+  - "Retrieval cutoff and the number of knowledge-base entries returned"
+  - "Set of tools that need confirmation, and the allowed confirmation phrases"
+  - "Upset-customer trigger (keyword list or sentiment score)"
+pitfalls:
+  - "Treating any message after a refund request as confirmation; only an explicit yes should execute, and the pending action must expire"
+  - "Redacting only the final reply while raw text leaks into logs, traces or error messages"
+  - "A keyword classifier is crude: negations and typos produce confident wrong intents, so measure it on real tickets"
+  - "Executing a retried or duplicated confirmation twice; refunds need an idempotency key, not just a UI check"
+related: [function-calling-dispatch, agent-evaluation-safety, pii-redaction]
+math_tex:
+- 'Confidence: $c = \frac{\mathrm{hits}_{best}}{\mathrm{hits}_{all}}$'
+- 'Escalate if $c < \tau$, $\cos < 0.1$ or upset'
+- 'Rate: $e = P(c < \tau) + P(\mathrm{upset}) + P(\mathrm{weak})$'
+- 'Cost: $(1 - e)\, c_{bot} + e\, c_{human}$'
+- 'Example: $0.75 \cdot 0.02 + 0.25 \cdot 4 = 1.015$'
+- 'Human load $= e \cdot N_{tickets}$ per day'
+- 'Refund runs once: $|\mathrm{refunds}| = 1$ per confirm'

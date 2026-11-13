@@ -1,0 +1,151 @@
+slug: project-research-assistant
+title: "Project Blueprint: Cited Research Assistant"
+url: https://arxiv.org/abs/2210.03629
+difficulty: Hard
+area: LLM
+topics: [LLM, Project, Agents, RAG, Citations]
+summary: |
+  Build a research assistant that turns a question into a cited
+  report. It plans sub-questions, searches a local corpus for each,
+  keeps notes with source ids, writes claims that all carry citations,
+  then verifies each claim against its source and flags the rest.
+intuition: |
+  A report is only as trustworthy as the link from each claim back to
+  text the system actually retrieved. Making the citation part of the
+  data (claim plus source id) rather than part of the prose lets code
+  enforce it: uncited claims are dropped and cited ones are checked
+  against the source. The design trade-off is breadth against cost:
+  every sub-question costs a search and tokens, so a step and token
+  budget bound the run and the stop reason tells the user whether the
+  report is complete or truncated.
+  Flow: question → sub-questions → gather notes → cited claims → verify → report with flags.
+approach:
+  - "Deduplicate the corpus by normalised text — copies of one source must not look like independent evidence"
+  - "Plan sub-questions with a planner (scripted stub here) — one search per narrow question retrieves better than one broad query"
+  - "Gather per sub-question: rank documents and keep the best sentence with its source id — notes stay traceable"
+  - "Synthesise claims as (text, source id) pairs and drop any claim citing an unretrieved source — citations are enforced by code"
+  - "Verify each claim against its cited source with a support score, flagging low scores — a stand-in for an entailment model"
+  - "Charge steps and tokens as the run proceeds and stop with a reason when a budget is hit — cost stays bounded and truncation is visible"
+code: |
+  import re
+
+  STOP = {"the", "a", "an", "of", "is", "are", "to", "in", "and",
+          "for", "it", "by", "on", "what", "how", "does"}
+
+  def toks(s):
+      return set(re.findall(r"[a-z0-9]+", s.lower())) - STOP
+
+  class Researcher:
+      def __init__(self, corpus, planner, writer=None,
+                   max_steps=6, max_tokens=60, thr=0.6):
+          self.docs, self.alias, seen = {}, {}, {}
+          for sid, text in corpus.items():
+              key = " ".join(re.findall(r"[a-z0-9]+", text.lower()))
+              if key in seen:
+                  self.alias[sid] = seen[key]      # merge duplicate
+              else:
+                  seen[key] = sid
+                  self.docs[sid] = text
+          self.planner, self.thr = planner, thr
+          self.writer = writer or (lambda notes: [
+              (n["text"], n["src"]) for n in notes])
+          self.max_steps, self.max_tokens = max_steps, max_tokens
+
+      def plan(self, question):
+          return self.planner(question)
+
+      def gather(self, subq):
+          q = toks(subq)
+          ranked = sorted(self.docs, key=lambda s: -len(q & toks(
+              self.docs[s])))
+          notes = []
+          for sid in ranked[:2]:
+              sents = re.split(r"(?<=\.)\s+", self.docs[sid])
+              best = max(sents, key=lambda t: len(q & toks(t)))
+              if q & toks(best):
+                  notes.append({"src": sid, "text": best})
+          return notes
+
+      def synthesise(self, notes):
+          have = {n["src"] for n in notes}
+          claims = self.writer(notes)
+          return [{"text": t, "src": s} for t, s in claims
+                  if s in have]                 # every claim cites
+
+      def verify(self, report):
+          out = []
+          for c in report:
+              ct = toks(c["text"])
+              sup = len(ct & toks(self.docs[c["src"]])) / len(ct)
+              out.append({**c, "support": round(sup, 2),
+                          "ok": sup >= self.thr})
+          return out
+
+      def run(self, question):
+          notes, steps, used, stop = [], 0, 0, "done"
+          for sq in self.plan(question):
+              if steps >= self.max_steps:
+                  stop = "step_budget"; break
+              steps += 1
+              got = self.gather(sq)
+              used += sum(len(n["text"].split()) for n in got)
+              notes += got
+              if used > self.max_tokens:
+                  stop = "token_budget"; break
+          rep = self.verify(self.synthesise(notes))
+          return {"report": rep, "stop": stop, "steps": steps,
+                  "tokens": used}
+key_lines: [16, 44, 50]
+time: "O(s·n·w) for $s$ sub-questions, $n$ documents and $w$ words per document; verification is O(c·w) for $c$ claims"
+space: "O(n·w) for the corpus plus O(s) notes"
+when_to_use: |
+  Questions that need several facts from a known document set, where
+  readers must be able to check each statement against its source and
+  the cost of a run has to be bounded.
+when_not_to_use: |
+  Single-fact lookups, where one retrieval and answer is enough, or
+  open-web research where sources conflict and need credibility
+  judgement. Token overlap cannot detect paraphrased contradictions.
+why_it_works: |
+  Decomposition makes each retrieval narrow, so the best document for a
+  sub-question is easier to find than for the whole question. Carrying
+  the source id with every note and claim makes provenance a data
+  field instead of a promise, so unsupported or unretrievable claims
+  can be filtered or flagged mechanically. Budgets turn an open-ended
+  loop into a bounded one with an explicit stop reason.
+math:
+  - "Support(c, s) = |tokens(c) ∩ tokens(s)| / |tokens(c)|"
+  - "Claim is supported when Support(c, s) ≥ θ"
+  - "Citation coverage = cited claims / all claims, must equal 1"
+  - "Verified fraction = supported claims / cited claims"
+  - "Search calls = number of sub-questions, capped at max steps"
+  - "Run cost = Σ note tokens over steps, stop when it exceeds budget"
+interview_qa:
+  - q: "Why attach citations as data instead of asking the model to cite in prose?"
+    a: "Prose citations can be invented or point at sources that were never retrieved, and code cannot reliably check free text. A claim record with a source id lets the system reject any claim whose id was not in the retrieved set and run a per-claim support check. It turns citation from a style request into an enforced invariant."
+  - q: "What does the verification step add if the model already cited a source?"
+    a: "A citation shows where the model claims the support is, not that the source says it. Verification compares each claim with its cited text and flags those that do not follow. Token overlap is a crude proxy, so production systems use an entailment model or a judge, and sample the results against human labels."
+  - q: "Why deduplicate sources?"
+    a: "Mirrors and copies make one source look like several, inflating apparent agreement and wasting the context budget and citations. Merging by normalised text or a hash is cheap; near-duplicates need fuzzy matching such as shingling."
+  - q: "How do you choose the step and token budgets?"
+    a: "Work back from the latency and cost you can afford: each sub-question costs one search plus the tokens of its notes, and the writer pays for all notes in its context. Set the cap, report the stop reason so users know when a report is partial, and prioritise sub-questions so the most important run first."
+  - q: "What are the main failure modes of this design?"
+    a: "A bad plan misses part of the question, retrieval finds a related but wrong source, and a claim can overlap its source in words yet contradict it. Evaluate the planner, retrieval and verifier separately so you know which stage to fix."
+hyperparameters:
+  - "Number of sub-questions and the step budget"
+  - "Documents kept per sub-question and the token budget"
+  - "Support threshold $\\theta$ for flagging a claim"
+  - "Deduplication rule (exact hash or near-duplicate similarity)"
+pitfalls:
+  - "Token overlap passes a claim that reuses a source's words but reverses its meaning; use an entailment model for anything important"
+  - "Dropping uncited claims silently hides writer errors; log how many were dropped"
+  - "Stopping on a budget leaves some sub-questions unanswered, so always surface the stop reason in the report"
+  - "Near-duplicate sources survive exact-hash merging and still inflate agreement"
+related: [planning-decomposition, rag-evaluation-faithfulness, hallucination-detection]
+math_tex:
+- 'Support: $\frac{|T_c \cap T_s|}{|T_c|}$ over word sets'
+- 'Supported when $\mathrm{Support}(c, s) \geq \theta$'
+- 'Citation coverage: $\frac{\mathrm{cited}}{\mathrm{claims}} = 1$'
+- 'Verified: $\frac{\mathrm{supported}}{\mathrm{cited}}$'
+- 'Search calls $= \min(s, \mathrm{max\_steps})$'
+- 'Cost: $\sum_t n_t \leq B$ note tokens'

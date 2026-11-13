@@ -1,5 +1,5 @@
 {
- "contentVersion": 15,
+ "contentVersion": 16,
  "problems": [
   {
    "slug": "ab-test-significance",
@@ -797,6 +797,97 @@
     "chain-of-thought-self-consistency",
     "context-engineering",
     "llm-as-judge"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "ai-system-design-capacity-estimation",
+   "title": "AI System Design - Capacity and Cost Estimation",
+   "platform": "MLOps",
+   "url": "https://sre.google/sre-book/embracing-risk/",
+   "difficulty": "Medium",
+   "topics": [
+    "System Design",
+    "Capacity Planning",
+    "LLM Serving",
+    "Cost"
+   ],
+   "patterns": [],
+   "summary": "Size an LLM feature on paper: users and requests give peak QPS, tokens per request give tokens per second, that gives GPUs, memory per replica, monthly cost, a latency budget and availability.",
+   "bruteForce": "As a final sizing. Real throughput depends on batching, sequence lengths, the serving stack and traffic burstiness, so treat the answer as an order of magnitude and confirm with a load test.",
+   "intuition": "An AI system-design answer is a chain of multiplications with units that cancel. Daily users times requests per user, divided by 86400 seconds, is the average rate; a peak factor turns it into the rate you must survive. Multiply by tokens per request to get tokens per second, divide by what one GPU really delivers (throughput times utilisation, never 100 percent) and round up. Little''s law then ties rate and latency to concurrency, $L = \\lambda W$, which sets how many KV caches sit in memory next to the weights. Every hardware number is an assumption you state aloud and can change. Flow: users → peak QPS → tokens per second → GPUs → memory, cost, latency, availability.",
+   "whyItWorks": "Each step is a conservation law: requests per second times tokens per request is tokens per second, and a fleet must supply at least that many. Little''s law holds for any stable queue, so $L = \\lambda W$ gives concurrency from rate and latency without assuming a distribution. With independent failures a service is down only if all $N$ replicas are, which has probability $p^N$.",
+   "approach": [
+    "Average rate $\\lambda_{avg} = \\frac{\\mathrm{DAU} \\cdot r}{86400}$, peak $\\lambda = f \\lambda_{avg}$ — you size for the peak, not the mean",
+    "Token rate $T = \\lambda (t_{in} + t_{out})$ — GPUs are limited by tokens, not by requests",
+    "GPUs $= \\lceil \\frac{T}{\\tau u} \\rceil$ with per-GPU throughput $\\tau$ and utilisation $u$ — the ceiling means a partial GPU is a whole one",
+    "Latency $W = W_q + \\frac{t_{in}}{\\tau_{pre}} + \\frac{t_{out}}{\\tau_{dec}}$ and concurrency $L = \\lambda W$ — Little's law gives the sequences in flight",
+    "Memory per replica $=$ weights $+$ sequences per replica $\\cdot$ KV bytes per sequence — check it fits the GPU before trusting the GPU count",
+    "Cost $=$ GPUs $\\cdot$ price $\\cdot$ hours, and availability $1 - p^N$ — price the fleet and show redundancy buys nines"
+   ],
+   "time": "O(1) arithmetic; no model is run",
+   "space": "O(1)",
+   "solution": "import math\n\ndef replica_availability(p, n):\n    # p = chance one replica is down, independent failures\n    return 1 - p ** n\n\ndef size_system(dau, req_per_user, peak, tok_in, tok_out,\n                gpu_tokens_per_s, util, queue_s=0.2,\n                prefill_tps=5000.0, decode_tps=50.0,\n                params=8e9, w_bytes=2, kv_per_token=131072,\n                price_hr=2.0, hours=730, p_down=0.01):\n    avg_qps = dau * req_per_user / 86400\n    peak_qps = avg_qps * peak\n    tok_per_s = peak_qps * (tok_in + tok_out)\n    eff = gpu_tokens_per_s * util\n    gpus = math.ceil(round(tok_per_s / eff, 9))\n    latency = queue_s + tok_in / prefill_tps + tok_out / decode_tps\n    conc = peak_qps * latency\n    per_rep = math.ceil(round(conc / gpus, 9))\n    kv_seq = kv_per_token * (tok_in + tok_out)\n    mem = params * w_bytes + per_rep * kv_seq\n    return {\"avg_qps\": avg_qps, \"peak_qps\": peak_qps,\n            \"tok_per_s\": tok_per_s, \"gpus\": gpus,\n            \"latency_s\": latency, \"concurrency\": conc,\n            \"seqs_per_replica\": per_rep, \"mem_bytes\": mem,\n            \"monthly_cost\": gpus * price_hr * hours,\n            \"availability\": replica_availability(p_down, gpus)}",
+   "keyLines": [
+    16,
+    17,
+    18
+   ],
+   "dryRun": [
+    "$\\lambda_{avg} = \\frac{\\mathrm{DAU} \\cdot r}{86400}, \\;\\; \\lambda = f \\lambda_{avg}$",
+    "$T = \\lambda (t_{in} + t_{out})$ tokens per second",
+    "$\\mathrm{GPUs} = \\lceil \\frac{T}{\\tau u} \\rceil$",
+    "$W = W_q + \\frac{t_{in}}{\\tau_{pre}} + \\frac{t_{out}}{\\tau_{dec}}$",
+    "Little: $L = \\lambda W$",
+    "Memory $= P b_w + \\frac{L}{\\mathrm{GPUs}}\\, t\\, c_{kv}$",
+    "Cost $= \\mathrm{GPUs} \\cdot \\mathrm{price} \\cdot \\mathrm{hours}$",
+    "Availability $= 1 - p^N$"
+   ],
+   "description": "System-design interviews and early planning for an LLM feature: to show how users, token counts and hardware turn into a GPU count, a memory check, a bill and a latency budget before any load test.",
+   "examples": [
+    {
+     "input": "Walk me through sizing an LLM chatbot.",
+     "output": "Daily users times requests per user over 86400 gives average QPS, times a peak factor gives peak QPS. Multiply by tokens per request for tokens per second, divide by per-GPU throughput times utilisation, and round up. Then check memory, latency and cost.",
+     "explanation": ""
+    },
+    {
+     "input": "How many requests are in flight?",
+     "output": "Little's law,$L = \\lambda W$: peak QPS times mean latency. At 300 QPS and 5.3 s that is 1590 concurrent sequences, each holding a KV cache.",
+     "explanation": ""
+    },
+    {
+     "input": "Why divide by utilisation?",
+     "output": "A GPU cannot run at its peak throughput all the time: queues need slack, traffic is bursty and batches are uneven. Planning at $u = 0.5$ doubles the fleet relative to $u = 1$ but keeps latency stable.",
+     "explanation": ""
+    },
+    {
+     "input": "What does a second replica buy?",
+     "output": "With independent failures the chance both are down is $p^2$, so availability goes from $1 - p$ to $1 - p^2$. Real failures are correlated (same zone, same bad deploy), so the true figure is lower.",
+     "explanation": ""
+    },
+    {
+     "input": "Where do the weights and the KV cache fit in?",
+     "output": "Weights are a fixed cost per replica, $P b_w$ bytes. The cache grows with the sequences on that replica and their length, so memory limits concurrency per GPU.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Peak factor $f$ (peak over average traffic)",
+    "Per-GPU throughput $\\tau$ and target utilisation $u$",
+    "Tokens in and out per request",
+    "Weight precision and KV bytes per token",
+    "Per-replica failure probability $p$"
+   ],
+   "edgeCases": [
+    "Sizing for average QPS; the peak, not the mean, decides the fleet",
+    "Using a vendor's peak tokens per second as $\\tau$ with no utilisation margin",
+    "Counting only weights and forgetting that the KV cache for in-flight sequences can fill the rest of the GPU",
+    "Treating replica failures as independent when they share a zone, a rollout or a dependency"
+   ],
+   "related": [
+    "gpu-memory-estimation",
+    "autoscaling-littles-law",
+    "llm-cost-latency-optimisation"
    ],
    "diagram": []
   },
@@ -2393,6 +2484,35 @@
    "diagram": []
   },
   {
+   "slug": "build-llm-portfolio",
+   "title": "Build an LLM Engineering Portfolio",
+   "platform": "Programming",
+   "url": "https://madewithml.com/",
+   "difficulty": "Medium",
+   "topics": [
+    "Career",
+    "Portfolio",
+    "Projects"
+   ],
+   "patterns": [],
+   "summary": null,
+   "bruteForce": null,
+   "intuition": null,
+   "whyItWorks": null,
+   "approach": null,
+   "time": null,
+   "space": null,
+   "solution": null,
+   "keyLines": [],
+   "dryRun": [],
+   "description": null,
+   "examples": [],
+   "constraints": [],
+   "edgeCases": [],
+   "related": [],
+   "diagram": []
+  },
+  {
    "slug": "causal-masking",
    "title": "Causal Masking in Attention",
    "platform": "NLP",
@@ -3359,6 +3479,34 @@
     "autoregressive-decoding",
     "context-window-limits"
    ],
+   "diagram": []
+  },
+  {
+   "slug": "contribute-to-open-source",
+   "title": "Contribute to Open Source",
+   "platform": "Programming",
+   "url": "https://opensource.guide/how-to-contribute/",
+   "difficulty": "Medium",
+   "topics": [
+    "Career",
+    "Open Source"
+   ],
+   "patterns": [],
+   "summary": null,
+   "bruteForce": null,
+   "intuition": null,
+   "whyItWorks": null,
+   "approach": null,
+   "time": null,
+   "space": null,
+   "solution": null,
+   "keyLines": [],
+   "dryRun": [],
+   "description": null,
+   "examples": [],
+   "constraints": [],
+   "edgeCases": [],
+   "related": [],
    "diagram": []
   },
   {
@@ -8411,6 +8559,34 @@
    "diagram": []
   },
   {
+   "slug": "join-ai-communities",
+   "title": "Participate in AI Communities",
+   "platform": "Programming",
+   "url": "https://discuss.huggingface.co/",
+   "difficulty": "Easy",
+   "topics": [
+    "Career",
+    "Community"
+   ],
+   "patterns": [],
+   "summary": null,
+   "bruteForce": null,
+   "intuition": null,
+   "whyItWorks": null,
+   "approach": null,
+   "time": null,
+   "space": null,
+   "solution": null,
+   "keyLines": [],
+   "dryRun": [],
+   "description": null,
+   "examples": [],
+   "constraints": [],
+   "edgeCases": [],
+   "related": [],
+   "diagram": []
+  },
+  {
    "slug": "json-api-requests-retries",
    "title": "JSON APIs, Retries and Backoff",
    "platform": "Programming",
@@ -9611,6 +9787,35 @@
     "gpu-memory-estimation",
     "continuous-batching"
    ],
+   "diagram": []
+  },
+  {
+   "slug": "llm-engineer-interview-prep",
+   "title": "Prepare for LLM Engineer Interviews",
+   "platform": "Programming",
+   "url": "https://huyenchip.com/ml-interviews-book/",
+   "difficulty": "Hard",
+   "topics": [
+    "Career",
+    "Interviews",
+    "System Design"
+   ],
+   "patterns": [],
+   "summary": null,
+   "bruteForce": null,
+   "intuition": null,
+   "whyItWorks": null,
+   "approach": null,
+   "time": null,
+   "space": null,
+   "solution": null,
+   "keyLines": [],
+   "dryRun": [],
+   "description": null,
+   "examples": [],
+   "constraints": [],
+   "edgeCases": [],
+   "related": [],
    "diagram": []
   },
   {
@@ -12974,6 +13179,1042 @@
    "diagram": []
   },
   {
+   "slug": "project-chatbot-with-memory",
+   "title": "Project Blueprint: Chatbot with Memory",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2310.08560",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Project",
+    "Chatbot",
+    "Memory",
+    "Context Window"
+   ],
+   "patterns": [],
+   "summary": "Build a chatbot that keeps its system prompt first, holds a short recent window under a token budget $B$, folds dropped turns into a running summary, and recalls stated facts later by similarity search. The outcome is a bot that still answers a question about turn 1 after the window has overflowed, with a prompt that never exceeds $B$.",
+   "bruteForce": "Short chats that fit in context, where retrieval only adds latency and a chance of surfacing a wrong fact, or cases needing verbatim history such as legal transcripts, where lossy summaries are unacceptable.",
+   "intuition": "Two stores solve two different problems. The recent window keeps the conversation coherent but is bounded, so old turns must leave it. A summary keeps the gist at a few tokens, but it is lossy and exact details vanish, so durable facts are written to a vector store when they are said and retrieved by similarity when a later question needs them. Each turn assembles the prompt in a fixed order: system prompt, retrieved facts, summary, then recent turns. The main trade-off is the split of $B$: more window gives fluent recent context, more facts and summary give longer reach. Flow: user turn → retrieve facts → trim window to budget → prompt → reply → store facts.",
+   "whyItWorks": "The prompt size is bounded by construction, because turns are dropped until the total is at most $B$, so cost per turn is constant instead of growing with the conversation. Facts survive trimming because they are copied to the store when stated, and cosine similarity on unit vectors brings back the ones that share content with the new question. The summary adds a small, capped amount of context about what was dropped.",
+   "approach": [
+    "Fix the prompt layout and token counter first — system prompt always first, and one counting rule makes the budget checkable",
+    "Write a deterministic embedder and a scripted stub model — tests then run offline and repeat exactly",
+    "Store facts from user turns as vectors — short-term trimming cannot lose what is already in the store",
+    "On each turn retrieve the top-$k$ facts by cosine similarity above a threshold — only relevant facts spend budget",
+    "Drop the oldest turns until the prompt fits $B$ and fold them into a capped summary — bounds cost and keeps the gist",
+    "Test with a fact at turn 1 asked at turn 8, a budget assertion on every prompt and a summary check — proves memory, not just the window"
+   ],
+   "time": "O(F·d) per turn to score $F$ stored facts of dimension $d$, plus O(T) to trim $T$ turns",
+   "space": "O(F·d) for the fact store; the live prompt holds at most $B$ tokens",
+   "solution": "import re\nimport zlib\nimport numpy as np\n\nSTOP = {\"what\", \"is\", \"my\", \"the\", \"a\", \"of\", \"do\", \"you\"}\nFACT = re.compile(r\"\\bmy [a-z ]+ is [a-z0-9 ]+\", re.I)\n\ndef toks(text):\n    return re.findall(r\"[a-z0-9]+\", text.lower())\n\ndef embed(text, dim=64):\n    v = np.zeros(dim)\n    for w in toks(text):\n        h = zlib.crc32(w.encode())\n        v[h % dim] += 1 if (h >> 16) & 1 else -1\n    n = np.linalg.norm(v)\n    return v / n if n else v\n\ndef count(text):\n    return len(text.split())\n\ndef stub_model(msgs):\n    q = set(toks(msgs[-1][\"content\"])) - STOP\n    best, top = \"I do not know.\", 0\n    for m in msgs[:-1]:\n        for line in m[\"content\"].split(\" | \"):\n            f = FACT.search(line)\n            s = len(q & (set(toks(line)) - STOP)) if f else 0\n            if s > top:\n                best, top = f.group(0), s\n    return best\n\nclass Chatbot:\n    def __init__(self, system, budget=40, k=2, thr=0.2):\n        self.system, self.budget, self.k, self.thr = (\n            system, budget, k, thr)\n        self.turns, self.summary = [], \"\"\n        self.facts, self.vecs = [], []\n\n    def recall(self, text):\n        if not self.facts:\n            return []\n        sims = np.stack(self.vecs) @ embed(text)\n        top = np.argsort(-sims, kind=\"stable\")[:self.k]\n        return [self.facts[i] for i in top if sims[i] > self.thr]\n\n    def build(self, user_msg):\n        head = [{\"role\": \"system\", \"content\": self.system}]\n        mem = self.recall(user_msg)\n        if mem:\n            head.append({\"role\": \"system\",\n                         \"content\": \"Facts: \" + \" | \".join(mem)})\n        while True:\n            s = self.summary\n            mid = [{\"role\": \"system\", \"content\": \"Summary: \" + s}]\n            msgs = head + (mid if s else []) + self.turns\n            used = sum(count(m[\"content\"]) for m in msgs)\n            if used <= self.budget:\n                return msgs\n            if len(self.turns) <= 1:\n                if not s:\n                    return msgs\n                self.summary = \" \".join(s.split()[2:])\n                continue\n            old = self.turns.pop(0)[\"content\"].split()[:4]\n            s = (s + \" \" + \" \".join(old)).split()[-20:]\n            self.summary = \" \".join(s)\n\n    def respond(self, user_msg):\n        self.turns.append({\"role\": \"user\", \"content\": user_msg})\n        self.last_prompt = self.build(user_msg)\n        reply = stub_model(self.last_prompt)\n        self.turns.append({\"role\": \"assistant\", \"content\": reply})\n        if FACT.search(user_msg):\n            self.facts.append(user_msg)\n            self.vecs.append(embed(user_msg))\n        return reply",
+   "keyLines": [
+    45,
+    57,
+    75
+   ],
+   "dryRun": [
+    "$t_{sys} + t_{facts} + t_{sum} + \\sum t_{recent} \\leq B$",
+    "$t_{facts} \\leq k \\cdot t_{fact}$, $t_{sum} \\leq S$",
+    "Full history: $\\mathrm{cost} \\approx u \\cdot \\frac{n(n+1)}{2}$",
+    "Capped: $\\mathrm{cost} \\leq n B$ (200k vs 60k tokens)",
+    "Recall: $e(q) \\cdot e(f) > \\theta$, keep top-$k$",
+    "Turns kept $\\approx \\frac{B - t_{sys} - t_{facts} - t_{sum}}{u}$"
+   ],
+   "description": "Assistants whose conversations outgrow the context window, or that must remember user preferences and stated facts across many turns or sessions, at a cost per turn bounded by $B$.",
+   "examples": [
+    {
+     "input": "How do you split the token budget between window, summary and facts?",
+     "output": "Reserve the system prompt and output first, give facts a small fixed share of $k$ short items, cap the summary, and give the remainder to recent turns. Tune the split on conversations where the answer lies far back, and watch both recall of old facts and coherence of recent replies.",
+     "explanation": ""
+    },
+    {
+     "input": "Why keep a fact store when there is already a summary?",
+     "output": "A summary is lossy and gets worse when it is re-summarised, so specific values such as names, numbers and preferences disappear. A store keeps the exact text, and retrieval spends tokens on it only when the question is related.",
+     "explanation": ""
+    },
+    {
+     "input": "How would you test that memory works and not just the window?",
+     "output": "State a fact, push enough filler turns that it leaves the window, assert it is absent from the recent turns, then ask. A correct answer can then only come from retrieval. Also assert the prompt size bound on every turn.",
+     "explanation": ""
+    },
+    {
+     "input": "What are the privacy implications of long-term memory?",
+     "output": "Stored facts persist and may be personal, so store only what the user stated, scope memory per user, show and delete it on request, and avoid saving secrets.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Token budget $B$ and its split between facts, summary and window",
+    "Retrieval size $k$ and similarity threshold $\\theta$",
+    "Summary cap $S$ and the summarisation method",
+    "Which turns count as a durable fact (extraction rule)"
+   ],
+   "edgeCases": [
+    "Counting words undercounts model tokens, so the real prompt can exceed the budget; use the model's own tokenizer in production",
+    "If the newest turn alone exceeds $B$ this code keeps it anyway, so the bound needs a hard truncation for that case",
+    "Hashing embeddings match only shared words and know nothing of paraphrase, so a trained embedding model is needed for real recall",
+    "Stored facts can go stale or conflict (a changed preference); keep timestamps and prefer or replace the newest"
+   ],
+   "related": [
+    "agent-memory",
+    "context-engineering",
+    "cosine-similarity-embeddings"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "project-code-assistant",
+   "title": "Project Blueprint: Code Question-Answering Assistant",
+   "platform": "LLM",
+   "url": "https://docs.python.org/3/library/ast.html",
+   "difficulty": "Hard",
+   "topics": [
+    "LLM",
+    "Project",
+    "Code Search",
+    "RAG",
+    "Guardrails"
+   ],
+   "patterns": [],
+   "summary": "Build an assistant that answers questions about a small Python repository and suggests code. It parses sources with the standard library, indexes whole functions and classes, packs the best chunks into a token budget, and checks every suggestion before showing it.",
+   "bruteForce": "Cross-file reasoning that needs a call graph or type information, or repositories in languages the parser does not handle. Static checks do not prove a suggestion is correct or safe; they only catch syntax errors and obvious dangerous calls.",
+   "intuition": "Code has structure that fixed windows destroy: a window can cut a function in half and splits a signature from its docstring. Chunking at function and class boundaries keeps each unit self-contained and gives it a name, a path and a line span to cite. The main trade-off is precision against coverage: exact identifier matches find the right symbol cheaply, embeddings rescue vague questions, and the budget decides whether you show many signatures or a few full bodies. The model's output is untrusted, so it is parsed and scanned but never executed by the assistant. Flow: source files → function chunks → retrieve → packed context → checked suggestion.",
+   "whyItWorks": "A syntax tree gives exact node boundaries, so each chunk is a complete unit and its line span is the node's own span rather than a guess. Identifier overlap is a high-precision signal for code questions because users name the symbols they care about, while embeddings add recall when they do not. Spending the budget on signatures first maximises the number of symbols the model sees before it spends tokens on bodies.",
+   "approach": [
+    "Parse each file with the ast module — syntax errors surface early and nodes carry exact line spans",
+    "Chunk per top-level function and class with name, docstring, path and span — units stay whole and citable",
+    "Index names and docstrings with a hashing embedding — gives a symbol lookup plus a fuzzy fallback",
+    "Retrieve by identifier overlap plus cosine similarity — exact names should outrank vague similarity",
+    "Pack signatures and first docstring lines first, then bodies while the $B$ token budget allows — breadth before depth",
+    "Check each suggestion with ast.parse and a call allow-list scan before display — generated code is never executed here"
+   ],
+   "time": "Indexing is O(n) in source size; retrieval is O(m·d) for $m$ chunks and embedding size $d$; packing is O(m)",
+   "space": "O(m·d) for the chunk embeddings plus the chunk texts",
+   "solution": "import ast, re, zlib\nimport numpy as np\n\nDANGER = {\"eval\", \"exec\", \"compile\", \"__import__\", \"os.system\",\n          \"subprocess.run\", \"subprocess.Popen\"}\n\ndef toks(s):\n    return re.findall(r\"[a-z0-9]+\", s.lower().replace(\"_\", \" \"))\n\ndef embed(s, d=64):\n    v = np.zeros(d)\n    for t in toks(s):\n        v[zlib.crc32(t.encode()) % d] += 1\n    return v / (np.linalg.norm(v) or 1)\n\ndef chunk_source(path, text):\n    lines, out = text.splitlines(), []\n    for n in ast.parse(text).body:\n        if isinstance(n, (ast.FunctionDef, ast.ClassDef)):\n            a, b = n.lineno, n.end_lineno\n            out.append({\"name\": n.name, \"path\": path, \"start\": a,\n                        \"end\": b, \"sig\": lines[a - 1].strip(),\n                        \"doc\": ast.get_docstring(n) or \"\",\n                        \"body\": \"\\n\".join(lines[a - 1:b])})\n    return out\n\ndef index(chunks):\n    vecs = [embed(c[\"name\"] + \" \" + c[\"doc\"]) for c in chunks]\n    return {\"chunks\": chunks, \"vecs\": np.stack(vecs)}\n\ndef retrieve(idx, question, k):\n    q, sims = set(toks(question)), idx[\"vecs\"] @ embed(question)\n    score = [3 * len(q & set(toks(c[\"name\"])))\n             + len(q & set(toks(c[\"doc\"]))) + s\n             for c, s in zip(idx[\"chunks\"], sims)]\n    top = np.argsort(score)[::-1][:k]\n    return [idx[\"chunks\"][i] for i in top]\n\ndef cost(s):\n    return len(s.split())\n\ndef pack(chunks, budget):\n    heads = [c[\"sig\"] + \" \" + c[\"doc\"].split(\"\\n\")[0]\n             for c in chunks]\n    used, keep = 0, [None] * len(chunks)\n    for i, h in enumerate(heads):          # signatures first\n        if used + cost(h) <= budget:\n            used += cost(h); keep[i] = h\n    for i, c in enumerate(chunks):         # bodies if room\n        extra = cost(c[\"body\"]) - cost(heads[i])\n        if keep[i] and extra > 0 and used + extra <= budget:\n            used += extra; keep[i] = c[\"body\"]\n    return [k for k in keep if k], used\n\ndef check_suggestion(code):\n    try:\n        tree = ast.parse(code)\n    except SyntaxError as e:\n        return False, [\"syntax error on line %d\" % e.lineno]\n    bad = []\n    for n in ast.walk(tree):\n        if isinstance(n, ast.Call):\n            f, parts = n.func, []\n            while isinstance(f, ast.Attribute):\n                parts.append(f.attr); f = f.value\n            if isinstance(f, ast.Name):\n                name = \".\".join([f.id] + parts[::-1])\n                if name in DANGER:\n                    bad.append(\"%s on line %d\" % (name, n.lineno))\n    return not bad, bad",
+   "keyLines": [
+    33,
+    51,
+    62
+   ],
+   "dryRun": [
+    "Budget: $B = W - s - q - r$ (window, system, question, reserve)",
+    "Score: $3\\,|N \\cap q| + |D \\cap q| + \\cos(e_c, e_q)$",
+    "Packing: $\\sum_{i \\in S} \\mathrm{cost}(t_i) \\leq B$",
+    "Chunks per file $=$ top-level defs and classes",
+    "Recall: $\\frac{|\\mathrm{relevant} \\cap \\mathrm{top}_k|}{|\\mathrm{relevant}|}$",
+    "Collision chance per word pair $= \\frac{1}{d}$"
+   ],
+   "description": "Answering questions about a codebase small enough to index whole, such as one service or library, where answers should point at a file and line range and suggestions must be screened before use.",
+   "examples": [
+    {
+     "input": "Why chunk by function rather than by fixed token windows?",
+     "output": "A fixed window cuts through functions, separating a signature from its body and mixing unrelated code. A function or class is the natural unit of meaning, carries its own name, docstring and line span for citation, and keeps embeddings coherent. The cost is uneven chunk sizes, so very long functions may still need to be split and short ones merged.",
+     "explanation": ""
+    },
+    {
+     "input": "Why combine identifier overlap with embeddings?",
+     "output": "Code questions often contain the exact symbol name, and lexical matching finds it precisely and cheaply, where embeddings of short names are noisy. Embeddings help when the question describes behaviour in other words. Weighting names above docstring words above similarity lets exact hits win while keeping a fuzzy fallback.",
+     "explanation": ""
+    },
+    {
+     "input": "The model suggests code. Why not just run it to test it?",
+     "output": "Generated code is untrusted input, and executing it inside the assistant would hand it your process, files and credentials. The assistant only parses it and scans for dangerous calls. Real execution belongs in a separate sandbox with no network, resource limits and a disposable filesystem.",
+     "explanation": ""
+    },
+    {
+     "input": "What are the limits of an allow-list or deny-list scan?",
+     "output": "It is a cheap first filter, not a security boundary. Code can reach the same functions through aliases, getattr, string building or imports the scan does not model. Treat it as a way to flag the obvious cases, and enforce real safety with sandboxing and review.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you evaluate this assistant?",
+     "output": "Build questions with known answer symbols and measure recall at k for retrieval, then measure answer faithfulness to the packed context and the fraction of suggestions that pass the checks and the repository tests. Separating retrieval from generation shows which half to fix.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Chunk granularity (functions and classes only, or also methods and module headers)",
+    "Retrieval weights for names, docstrings and embedding similarity, and the number of chunks $k$",
+    "Token budget $B$ and the rule for choosing signatures versus bodies",
+    "Allow-list or deny-list contents for the suggestion check"
+   ],
+   "edgeCases": [
+    "Chunking only top-level definitions hides methods and module-level constants, so questions about them find nothing",
+    "Line spans go stale after edits; re-index changed files and store a content hash so citations stay correct",
+    "Whitespace word counts stand in for tokens; use the real tokenizer or leave a safety margin under $B$",
+    "A syntax and call scan passes code that is wrong or unsafe in subtler ways; never execute suggestions outside a sandbox"
+   ],
+   "related": [
+    "document-chunking",
+    "context-engineering",
+    "output-validation-guardrails"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "project-domain-finetune",
+   "title": "Project Blueprint: Domain Fine-Tune Plan and Release Gate",
+   "platform": "LLM",
+   "url": "https://huggingface.co/docs/trl/sft_trainer",
+   "difficulty": "Hard",
+   "topics": [
+    "Project Blueprint",
+    "Fine-Tuning",
+    "Evaluation",
+    "Release Gate"
+   ],
+   "patterns": [],
+   "summary": "Plan a domain fine-tune as code before spending GPU time. Curate and split the data, format chat examples with a response-only loss mask, check the step count and memory fit, and end with a release gate that returns ship or hold together with the reasons.",
+   "bruteForce": "When prompting or retrieval already meets the target, since a fine-tune adds a model to maintain. The gate also needs a held-out set and a comparison baseline, so it does not apply without them.",
+   "intuition": "Most fine-tuning failures are decided before training starts: leaked validation data, loss on the prompt, a run that does not fit in memory, or a win that is noise. Each of these is checkable with a few lines of arithmetic, so the blueprint turns them into functions that fail loudly. The design trade-off is gating strictness: a tight gate blocks bad releases but costs reruns, and the gate has three checks because a model can improve on the domain, win by chance or forget general skills independently. Flow: raw data → curated set → trained model → gate → release.",
+   "whyItWorks": "Group splitting makes the validation set a proxy for new sources, the mask makes the loss measure response quality only, and the byte arithmetic is exact bookkeeping, so config errors surface before the run. The sign test uses only non-tied wins and losses, so under no difference each is a fair coin and the p-value is a binomial tail.",
+   "approach": [
+    "Curate: dedup on normalised text, drop short responses, then split by source group — near-copies from one source must not sit on both sides",
+    "Format each example with a chat template and a mask that is 1 only on response tokens — the model should learn to answer, not to echo the prompt",
+    "Compute steps as $E \\cdot \\lceil N/B \\rceil$ and warmup as a fraction of steps — a wrong step count breaks the learning-rate schedule",
+    "Estimate memory in bytes per parameter for full or adapter training — reject a config that exceeds the GPU before launching it",
+    "Define the evaluation protocol: held-out loss, pairwise win rate with a sign test, and a general-set check — three independent ways to fail",
+    "Gate the release on all checks and return the reasons — ship only when loss improves, the win is significant and forgetting is within tolerance"
+   ],
+   "time": "O(N) for curation and formatting; the gate is O(1) given the evaluation counts",
+   "space": "O(N) to hold the records; training memory is about $16$ bytes per parameter for full Adam fine-tuning",
+   "solution": "import hashlib, math, re, zlib\nfrom scipy.stats import binomtest\n\ndef prepare(records, val_mod=4):\n    seen, kept = set(), []\n    for r in records:\n        txt = (r[\"prompt\"] + r[\"response\"]).lower()\n        txt = re.sub(r\"\\W+\", \" \", txt).strip()\n        key = hashlib.md5(txt.encode()).hexdigest()\n        if key in seen or len(r[\"response\"].split()) < 3:\n            continue\n        seen.add(key)\n        kept.append(r)\n    val = lambda g: zlib.crc32(g.encode()) % val_mod == 0\n    return ([r for r in kept if not val(r[\"group\"])],\n            [r for r in kept if val(r[\"group\"])])\n\ndef format_example(prompt, response):\n    head = [\"<user>\"] + prompt.split() + [\"<assistant>\"]\n    body = response.split() + [\"<end>\"]\n    return head + body, [0] * len(head) + [1] * len(body)\n\ndef check_config(cfg):\n    steps = cfg[\"epochs\"] * math.ceil(cfg[\"n\"] / cfg[\"batch_size\"])\n    warm = math.ceil(cfg[\"warmup_frac\"] * steps)\n    p = cfg[\"params\"]\n    if cfg[\"method\"] == \"full\":\n        gb = p * (2 + 2 + 12) / 1e9      # bf16 w + g, fp32 master+m+v\n    else:                             # frozen base + adapters\n        gb = (p * 2 + p * cfg[\"lora_frac\"] * 16) / 1e9\n    gb += cfg[\"act_gb\"]\n    out = {\"steps\": steps, \"warmup\": warm, \"mem_gb\": round(gb, 1)}\n    out[\"fits\"] = gb <= cfg[\"gpu_gb\"]\n    if not out[\"fits\"]:\n        out[\"reason\"] = f\"needs {gb:.1f} GB > {cfg['gpu_gb']} GB GPU\"\n    return out\n\ndef release_gate(r, alpha=0.05, tol=0.02):\n    why = []\n    if r[\"ft_loss\"] >= r[\"base_loss\"]:\n        why.append(\"held-out loss did not improve\")\n    n = r[\"wins\"] + r[\"losses\"]            # ties carry no sign\n    p = binomtest(r[\"wins\"], n, 0.5, alternative=\"greater\").pvalue\n    if p > alpha:\n        why.append(f\"sign test p={p:.3f} > {alpha}\")\n    drop = r[\"gen_base\"] - r[\"gen_ft\"]\n    if drop > tol:\n        why.append(f\"forgetting {drop:.3f} > {tol}\")\n    dec = \"hold\" if why else \"ship\"\n    return {\"decision\": dec, \"p\": p, \"reasons\": why}",
+   "keyLines": [
+    21,
+    24,
+    43
+   ],
+   "dryRun": [
+    "Steps: $E\\,\\lceil N/B\\rceil = 3 \\cdot 32 = 96$",
+    "Warmup: $\\lceil 0.03 \\cdot 96\\rceil = 3$",
+    "Full Adam: $2+2+4+4+4 = 16$ bytes per parameter",
+    "Full, $7\\times 10^{9}$ params: $7\\times 10^{9}\\cdot 16 = 112$ GB",
+    "Adapter: $2p + 16\\,f\\,p = 14 + 1.12$ GB, $f=0.01$",
+    "Sign test: $p = \\frac{1}{2^n}\\sum_{i \\geq w}\\binom{n}{i}$",
+    "Example: $w=30$, $n=40$ gives $p \\approx 0.0011$",
+    "Forgetting: $g_{base} - g_{ft} \\leq \\tau$"
+   ],
+   "description": "Before any domain or style fine-tune, to catch leakage, masking and memory mistakes cheaply, and as the standing definition of when a checkpoint is good enough to release.",
+   "examples": [
+    {
+     "input": "Why split by source group instead of randomly?",
+     "output": "Records from one source share phrasing and facts, so a random split leaks near-copies into validation and flatters the model. Splitting by group measures how it handles a source it has not seen.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does the sign test ignore ties?",
+     "output": "A tie carries no preference. Among decisive pairs, no real difference means each side wins with probability one half, so the one-sided binomial tail on wins gives the p-value. Report the tie count alongside it.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you estimate whether a fine-tune fits a GPU?",
+     "output": "Add bytes per parameter for weights, gradients and optimizer state, plus activations. Full Adam is about 16 bytes per parameter in mixed precision, while adapters pay 2 bytes for a frozen base plus 16 for the small trainable fraction.",
+     "explanation": ""
+    },
+    {
+     "input": "Why gate on forgetting as well as the domain win?",
+     "output": "Fine-tuning can raise domain scores while degrading general skills, and win rates on domain prompts do not show it. A general held-out set with a tolerance catches that regression before release.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Epochs $E$, batch size $B$ and warmup fraction (steps and schedule)",
+    "Adapter or full tuning, and trainable fraction (memory)",
+    "Gate thresholds: significance level $\\alpha$ and forgetting tolerance",
+    "Validation fraction and the grouping key"
+   ],
+   "edgeCases": [
+    "Exact-hash dedup misses near-duplicates, so paraphrased copies still leak across the split",
+    "Memory estimates omit activations, fragmentation and long sequences, so keep headroom beyond the byte arithmetic",
+    "Counting ties as wins or dropping them silently inflates or hides the win rate; report wins, losses and ties",
+    "A small evaluation set gives a weak sign test: with few decisive pairs even a real gain may not pass, so size it in advance"
+   ],
+   "related": [
+    "sft-loss-masking",
+    "finetune-dataset-prep",
+    "finetune-evaluation"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "project-llm-saas",
+   "title": "Project Blueprint: Multi-Tenant LLM SaaS Backend",
+   "platform": "MLOps",
+   "url": "https://stripe.com/blog/idempotency",
+   "difficulty": "Hard",
+   "topics": [
+    "Project",
+    "Multi-Tenancy",
+    "Metering",
+    "Rate Limiting"
+   ],
+   "patterns": [],
+   "summary": "Build the backend of a multi-tenant LLM product: API keys that map to tenants and plans, a token bucket per tenant, usage metering that turns each request into an idempotent billing event, tenant-isolated caching, a margin report per tenant and a hard daily cap against abuse.",
+   "bruteForce": "An internal tool with one trusted team, where a single shared limit is enough, or real billing, which needs a durable ledger, invoicing rules and tax handling beyond this skeleton.",
+   "intuition": "The model call is the easy part; the product is the layer around it. Three properties matter. Fairness: one bucket per tenant means a tenant that exhausts its quota hurts only itself. Correctness of money: clients and gateways retry, so every billing event carries an id and the meter ignores an id it has already seen, which makes recording idempotent. Isolation: anything stored or cached is keyed by tenant, because a cache shared by prompt alone would hand one customer another's answer. Revenue per tenant is price times tokens and cost is unit cost times tokens, so margin shows which plan loses money, and the daily cap bounds the worst case. Flow: request → tenant → quota check → model → usage event → invoice.",
+   "whyItWorks": "A token bucket bounds a tenant to at most $C + r t$ units in any window of length $t$, and each tenant has its own state, so one tenant's usage cannot consume another's allowance. Recording keyed by event id is idempotent: applying it twice leaves the same state as applying it once, so total tokens equal the sum over unique ids no matter how often a request is retried. Prefixing the tenant to every cache key makes the key spaces disjoint.",
+   "approach": [
+    "Map each API key to a tenant and plan, and reject unknown keys with 401 — nothing else runs unauthenticated",
+    "Give each tenant its own token bucket with capacity $C$ and rate $r$ from its plan — quotas are per tenant, so neighbours are isolated",
+    "Namespace every cache key and stored record by tenant — identical prompts never share answers across customers",
+    "Record one usage event per request with an idempotency id, ignoring ids already seen — a retry must not bill twice",
+    "Invoice as unique tokens times the price, and margin as invoice minus cost — plans that lose money become visible",
+    "Enforce a hard daily cap per tenant and return the reason — abuse and runaway loops stop at a known cost"
+   ],
+   "time": "O(1) per request plus O(E) to total a tenant's events when invoicing E events",
+   "space": "O(T) buckets, O(U) cache entries and O(E) stored billing events",
+   "solution": "import hashlib\n\nclass TokenBucket:\n    def __init__(self, cap, rate, now):\n        self.cap, self.rate = cap, rate\n        self.tokens, self.t = cap, now\n    def take(self, n, now):\n        refill = (now - self.t) * self.rate\n        self.tokens = min(self.cap, self.tokens + refill)\n        self.t = now\n        if n <= self.tokens:\n            self.tokens -= n\n            return True\n        return False\n\nclass Meter:\n    def __init__(self, price_1k, cost_1k):\n        self.price, self.cost = price_1k, cost_1k\n        self.events = {}\n    def record(self, event_id, tenant, tokens):\n        if event_id in self.events:    # a retry: already billed\n            return False\n        self.events[event_id] = (tenant, tokens)\n        return True\n    def tokens(self, tenant):\n        return sum(n for t, n in self.events.values() if t == tenant)\n    def invoice(self, tenant):\n        return self.tokens(tenant) / 1000 * self.price\n    def margin(self, tenant):\n        spend = self.tokens(tenant) / 1000 * self.cost\n        return self.invoice(tenant) - spend\n\ndef cache_key(tenant, prompt):\n    return tenant + \":\" + hashlib.sha256(prompt.encode()).hexdigest()\n\nclass Gateway:\n    def __init__(self, keys, plans, meter, clock):\n        self.keys, self.plans = keys, plans\n        self.meter, self.clock = meter, clock\n        self.buckets, self.daily, self.cache = {}, {}, {}\n        self.model_calls = 0\n    def authenticate(self, api_key):\n        return self.keys.get(api_key)     # (tenant, plan) or None\n    def handle(self, api_key, req):\n        who = self.authenticate(api_key)\n        if who is None:\n            return dict(status=401, reason=\"invalid key\")\n        tenant, plan = who\n        p, now = self.plans[plan], self.clock()\n        day = (tenant, int(now // 86400))\n        if self.daily.get(day, 0) >= p[\"daily\"]:\n            return dict(status=429, reason=\"daily cap\")\n        b = self.buckets.setdefault(\n            tenant, TokenBucket(p[\"cap\"], p[\"rate\"], now))\n        if not b.take(req[\"max_tokens\"], now):\n            return dict(status=429, reason=\"rate limited\")\n        ck = cache_key(tenant, req[\"prompt\"])\n        if ck not in self.cache:          # stub model, scripted\n            self.model_calls += 1\n            n = len(req[\"prompt\"].split()) + 5\n            self.cache[ck] = (\"ans:\" + req[\"prompt\"], n)\n        answer, tokens = self.cache[ck]\n        if self.meter.record(req[\"id\"], tenant, tokens):\n            self.daily[day] = self.daily.get(day, 0) + tokens\n        return dict(status=200, answer=answer, tokens=tokens)",
+   "keyLines": [
+    21,
+    51,
+    57
+   ],
+   "dryRun": [
+    "Bucket bound: tokens in window $t$ $\\leq C + r t$",
+    "Invoice $= \\frac{\\sum n_{unique}}{1000} \\cdot p$",
+    "Cost $= \\frac{\\sum n_{unique}}{1000} \\cdot c$",
+    "Margin $= \\frac{n}{1000} (p - c)$",
+    "Margin fraction $= \\frac{p - c}{p}$",
+    "Daily cap: spend $\\leq \\frac{D}{1000} \\cdot c$"
+   ],
+   "description": "Putting a model behind an API for several paying customers, where each needs its own quota, bill and data boundary, and where retries are routine so billing must be safe to repeat.",
+   "examples": [
+    {
+     "input": "How do you make usage billing safe against retries?",
+     "output": "Each request carries a unique id, and the meter stores events by that id and ignores one it has seen. Recording is then idempotent, so a retry after a timeout leaves the invoice unchanged. The id must come from the client or be fixed before the first attempt.",
+     "explanation": ""
+    },
+    {
+     "input": "Why a token bucket per tenant instead of one global limit?",
+     "output": "A global limit lets one heavy tenant starve the rest. A bucket per tenant with capacity $C$ and refill rate $r$ allows bursts up to $C$ and a long-run rate of $r$, and an exhausted bucket only rejects that tenant's requests.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you isolate tenants in a shared cache?",
+     "output": "Put the tenant id in every key, here by prefixing the hash of the prompt, so the key spaces never overlap. The same applies to stored data, logs and any vector index, where a missing filter is the usual leak.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the margin per tenant tell you?",
+     "output": "It is revenue minus cost, tokens times the difference between price and unit cost per 1,000 tokens. A plan with a flat fee and unlimited use can go negative for heavy users, so the daily cap and per-plan quotas bound the loss.",
+     "explanation": ""
+    },
+    {
+     "input": "When should the daily cap trigger, and what should the client see?",
+     "output": "It triggers when the day's recorded tokens reach the plan cap, before any model call, so the cost stops at a known bound. The client gets 429 with a reason such as daily cap, which differs from a transient rate limit that clears in seconds.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Bucket capacity $C$ and refill rate $r$ per plan",
+    "Daily token cap $D$ per plan",
+    "Price and unit cost per 1,000 tokens",
+    "Idempotency id scope and retention time"
+   ],
+   "edgeCases": [
+    "Deriving the event id from a timestamp or counter on the server, which makes every retry look new; the client or request must supply it",
+    "A cache key built from the prompt alone, which leaks one tenant's answer to another",
+    "Checking the quota and then updating usage in separate steps without a lock, so concurrent requests overspend",
+    "Pricing from average usage; a few heavy tenants can make a plan negative, so look at margin per tenant"
+   ],
+   "related": [
+    "llm-api-retries-rate-limits",
+    "semantic-cache",
+    "llm-cost-latency-optimisation"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "project-local-llm-platform",
+   "title": "Project Blueprint: Self-Hosted LLM Platform",
+   "platform": "MLOps",
+   "url": "https://docs.vllm.ai/en/latest/design/paged_attention.html",
+   "difficulty": "Hard",
+   "topics": [
+    "Project",
+    "Serving",
+    "Capacity Planning",
+    "Routing"
+   ],
+   "patterns": [],
+   "summary": "Build a small self-hosted model platform: a registry of models with size, quantisation and quality tier, a memory fit check against a GPU budget, a router that picks the smallest model meeting the tier and fitting in memory, admission control with a bounded queue, and fallback to the next model when one is unhealthy.",
+   "bruteForce": "A single model on a single GPU with light traffic, where a plain server with a request limit is enough, or a large multi-node fleet that needs a real scheduler, autoscaler and per-replica health probes.",
+   "intuition": "A shared GPU is a fixed memory budget, so every decision reduces to bytes. Weights are $P b / 8$ and the KV cache is a per-token constant times context times concurrent sequences, so concurrency is the knob that trades memory for throughput. Little's law ($L = \\lambda W$) turns the traffic you expect into the concurrency you must support, and the fit check says which models can hold that concurrency. The router then spends quality only where the request asks for it: the smallest model that satisfies the tier is cheapest and fastest. Admission control protects the GPU: a bounded queue converts overload into a fast, explicit rejection instead of unbounded latency, and fallback keeps requests flowing when a replica is down. Flow: request → tier filter → memory fit → smallest healthy model → admission → run.",
+   "whyItWorks": "Every large tensor has a known size, so the fit check is exact up to the overhead term and a model that passes it will load. Choosing the smallest eligible model minimises memory and latency while meeting the quality floor. Little's law holds for any stable system, so $\\lambda W$ is a sound basis for the concurrency limit, and a bounded queue caps the waiting time at about $Q / \\mu$ for service rate $\\mu$ instead of letting it grow with the backlog.",
+   "approach": [
+    "Register each model with $P$, bits, tier and KV bytes per token — the router needs only these numbers",
+    "Estimate the load with $L = \\lambda W$ and set the concurrency limit from it — it fixes the KV cache you must reserve",
+    "Implement the fit check $(W_m + KV)(1 + \\epsilon) \\leq G$ — a model that does not fit must never be routed to",
+    "Route to the smallest model with tier at least the request tier that fits and is healthy — cheapest model that meets quality",
+    "Add admission control with $C$ running slots and a queue of $Q$ — reject with a reason when both are full",
+    "Fall back to the next candidate when the chosen model is unhealthy, and test every path on toy data — failures are the normal case"
+   ],
+   "time": "O(M log M) per route over M models; admission control is O(1) per request",
+   "space": "O(M) for the registry plus O(Q) for the queue",
+   "solution": "import math\nfrom collections import deque\n\ndef weight_bytes(m):\n    return m[\"params\"] * m[\"bits\"] / 8\n\ndef fits(m, gpu_bytes, ctx, concurrency, overhead=0.1):\n    kv = m[\"kv_tok\"] * ctx * concurrency\n    return (weight_bytes(m) + kv) * (1 + overhead) <= gpu_bytes\n\ndef max_concurrency(m, gpu_bytes, ctx, overhead=0.1):\n    free = gpu_bytes / (1 + overhead) - weight_bytes(m)\n    return max(0, int(free // (m[\"kv_tok\"] * ctx)))\n\ndef littles_limit(qps, latency_s, headroom=1.0):\n    return math.ceil(qps * latency_s * headroom)\n\nclass Registry:\n    def __init__(self):\n        self.models = {}\n    def add(self, name, params, bits, tier, kv_tok):\n        self.models[name] = dict(name=name, params=params,\n            bits=bits, tier=tier, kv_tok=kv_tok, healthy=True)\n\nclass Router:\n    def __init__(self, registry, gpu_bytes, concurrency):\n        self.reg, self.gpu = registry, gpu_bytes\n        self.conc = concurrency\n    def candidates(self, req):\n        ok = [m for m in self.reg.models.values()\n              if m[\"tier\"] >= req[\"tier\"]\n              and fits(m, self.gpu, req[\"ctx\"], self.conc)]\n        return sorted(ok, key=weight_bytes)   # smallest first\n    def route(self, req):\n        for m in self.candidates(req):\n            if m[\"healthy\"]:                  # fall back to the next\n                return m[\"name\"]\n        return None\n\nclass AdmissionControl:\n    def __init__(self, max_active, max_queue):\n        self.max_active, self.max_queue = max_active, max_queue\n        self.active, self.queue = 0, deque()\n    def submit(self, req):\n        if self.active < self.max_active:\n            self.active += 1\n            return \"run\", None\n        if len(self.queue) < self.max_queue:\n            self.queue.append(req)\n            return \"queued\", None\n        return \"rejected\", \"queue full\"\n    def release(self):\n        self.active -= 1\n        if self.queue:\n            self.active += 1\n            return self.queue.popleft()",
+   "keyLines": [
+    9,
+    33,
+    36
+   ],
+   "dryRun": [
+    "Weights $= \\frac{P b}{8}$ bytes",
+    "KV $= k \\cdot T \\cdot C$, with $k = 2 L h_{kv} d_{head} b_{kv}$",
+    "Fit $(W_m + KV)(1 + \\epsilon) \\leq G$",
+    "Concurrency $C = \\lambda \\cdot W$",
+    "Limit $= \\lceil \\lambda W \\cdot h \\rceil$",
+    "$C_{max} = \\lfloor \\frac{G/(1+\\epsilon) - W_m}{k T} \\rfloor$",
+    "Queue wait $\\leq \\frac{Q}{\\mu}$"
+   ],
+   "description": "A team serving a few open-weight models from one or a few GPUs, who need predictable memory use, a quality-aware choice of model, and explicit overload behaviour before adding a full orchestration stack.",
+   "examples": [
+    {
+     "input": "How do you decide which models can share one GPU?",
+     "output": "Sum the weights $P b / 8$ and the KV cache for the concurrency each model must hold, add the overhead fraction, and compare with the budget. If the total exceeds it, lower the concurrency, quantise more, or move the model to another device.",
+     "explanation": ""
+    },
+    {
+     "input": "Why route to the smallest model that meets the tier?",
+     "output": "Smaller models cost less memory and time per token, so the cheapest model that still meets the quality floor leaves the most capacity for other requests. The router spends quality only where a request asks for it.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you set the concurrency limit?",
+     "output": "Little's law gives the typical number in flight, $L = \\lambda W$, for example 5 requests per second at 2 seconds is 10. Add headroom for bursts, then check the result against the memory limit $C_{max}$ and take the smaller of the two.",
+     "explanation": ""
+    },
+    {
+     "input": "Why a bounded queue with rejection instead of queueing everything?",
+     "output": "Past capacity, extra requests only add waiting time, so latency grows with the backlog and clients retry. Rejecting with a reason when the queue is full keeps latency bounded and lets callers back off or try another endpoint.",
+     "explanation": ""
+    },
+    {
+     "input": "What happens when the chosen model is unhealthy?",
+     "output": "The router skips it and takes the next candidate that meets the tier and fits memory. A fallback that was never fit-checked is a risk, so candidates are filtered before health is considered.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Overhead fraction $\\epsilon$ for activations and workspace",
+    "Concurrency limit $C$ and queue size $Q$",
+    "Headroom factor on the Little estimate",
+    "Quality tier assigned to each model"
+   ],
+   "edgeCases": [
+    "Sizing the cache for average concurrency; the fit check must use the limit you will actually admit",
+    "Treating the tier as exact; a tier label comes from an evaluation and goes stale when prompts change",
+    "An unbounded queue hides overload as latency, and clients time out and retry, which adds load",
+    "Failing over to a larger model without re-running the fit check, which can crash the server with out-of-memory"
+   ],
+   "related": [
+    "gpu-memory-estimation",
+    "continuous-batching",
+    "autoscaling-littles-law"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "project-multi-agent-research",
+   "title": "Project Blueprint: Multi-Agent Research Report",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2308.00352",
+   "difficulty": "Hard",
+   "topics": [
+    "LLM",
+    "Agents",
+    "Multi-Agent",
+    "Project",
+    "Evaluation"
+   ],
+   "patterns": [],
+   "summary": "Build a planner, researcher, critic and writer that produce a cited report on a topic from a small corpus. The planner splits the topic into sections, researchers draft them, the critic rejects uncited drafts once, the writer assembles the report, and a score measures how many sections carry a valid citation.",
+   "bruteForce": "Short or tightly coupled tasks where one prompt suffices, and tasks with no verifiable rule for the critic. Extra roles then add cost and failure modes without raising quality.",
+   "intuition": "Roles pay off when each one has a narrow job that can be checked. The critic enforces one concrete rule (a section must cite a document that exists), so quality becomes a loop with a measurable exit rather than a hope. The roles do not talk to each other; they read and write a shared blackboard, which keeps hand-offs inspectable and makes cost easy to count. The trade-off is cost: every extra role call adds tokens, so a revision cap and a turn limit bound the spend, and the finished report is scored on its own instead of trusting the loop. Flow: topic → plan → research → critique → revise once → write → score.",
+   "whyItWorks": "The critic turns a vague goal (a well sourced report) into a rule that can be checked on each section, and the revision cap makes the loop terminate. Because roles communicate only through the blackboard, each hand-off can be logged, replayed and costed, and the coverage score checks the final artifact independently of the loop's own opinion of it.",
+   "approach": [
+    "Define the blackboard and a single call wrapper — every role call is logged with its prompt, output and token count, so cost and turns come from one place",
+    "Write the planner to return the section list — fixed sections make the later citation check well defined",
+    "Write the researcher to pick the best corpus document and cite its id — grounding in retrieved text is what the critic can verify",
+    "Write the critic to reject a draft with no valid citation — allow exactly one revision per section so the loop always ends",
+    "Write the writer to assemble accepted sections in plan order — assembly is a separate role so it can fail or be limited on its own",
+    "Add the turn limit and $\\mathrm{coverage}$ score, then replay the run — the limit returns a reason instead of a partial report passed off as complete"
+   ],
+   "time": "O(S) role calls for $S$ sections, at most $2 + 4S$ turns, each costing one model call",
+   "space": "O(T) for the blackboard holding $T$ logged turns and the drafts",
+   "solution": "import re\n\ndef count(x):\n    if isinstance(x, str):\n        return len(x.split())\n    xs = x.values() if isinstance(x, dict) else x\n    return sum(count(i) for i in xs)\n\ndef call(board, role, prompt, fn):\n    if len(board[\"calls\"]) >= board[\"max_turns\"]:\n        board[\"stop\"] = \"max_turns\"\n        return None\n    out = fn()\n    board[\"calls\"].append((role, prompt, out))\n    board[\"tokens\"] += count(prompt) + count(out)\n    return out\n\ndef planner(topic):\n    return [topic + \" \" + k for k in (\"definition\", \"benefits\",\n                                      \"risks\")]\n\ndef researcher(section, corpus, attempt):\n    w = set(section.lower().split())\n    ids = sorted(corpus)\n    best = max(ids, key=lambda i: len(w & set(corpus[i].split())))\n    flaky = section.endswith(\"risks\") and attempt == 0\n    return corpus[best] + (\"\" if flaky else \" [\" + best + \"]\")\n\ndef critic(draft, corpus):\n    cites = re.findall(r\"\\[(\\w+)\\]\", draft)\n    ok = bool(cites) and all(c in corpus for c in cites)\n    return \"accept\" if ok else \"reject: add a valid citation\"\n\ndef run_project(topic, corpus, max_turns):\n    b = {\"calls\": [], \"tokens\": 0, \"stop\": None,\n         \"max_turns\": max_turns, \"drafts\": {}}\n    plan = call(b, \"planner\", \"plan \" + topic, lambda: planner(topic))\n    for sec in plan or []:\n        for attempt in (0, 1):\n            p = \"research %s try %d\" % (sec, attempt)\n            d = call(b, \"researcher\", p,\n                     lambda: researcher(sec, corpus, attempt))\n            if d is None:\n                break\n            b[\"drafts\"][sec] = d\n            v = call(b, \"critic\", d, lambda: critic(d, corpus))\n            if v is None or v == \"accept\":\n                break\n        if b[\"stop\"]:\n            break\n    if b[\"stop\"]:\n        return {\"report\": None, \"reason\": b[\"stop\"], \"board\": b}\n    body = [{\"title\": s, \"body\": b[\"drafts\"][s]} for s in plan]\n    rep = call(b, \"writer\", \"write \" + topic, lambda: body)\n    return {\"report\": rep, \"reason\": b[\"stop\"] or \"done\", \"board\": b}\n\ndef report_score(report, corpus):\n    cite = lambda s: re.findall(r\"\\[(\\w+)\\]\", s[\"body\"])\n    ok = [any(c in corpus for c in cite(s)) for s in report]\n    return sum(ok) / len(ok)",
+   "keyLines": [
+    11,
+    15,
+    31
+   ],
+   "dryRun": [
+    "$T = 2 + 2S + 2R$ for $S$ sections, $R$ revisions",
+    "$R \\leq S$: one revision per section at most",
+    "Expected turns: $2 + 2S(1 + p)$",
+    "Example: $2 + 6 \\cdot \\frac{4}{3} = 10$ turns",
+    "Cost: $\\sum_{calls} (\\mathrm{in} + \\mathrm{out})$ tokens",
+    "Coverage: $\\frac{\\mathrm{cited\\ sections}}{S}$",
+    "Stop when $T = \\mathrm{max\\_turns}$ and report why"
+   ],
+   "description": "Report-style tasks that split into independent parts with a checkable quality rule, such as cited summaries, comparison tables or audits, where a bounded review loop is cheaper than a human edit pass.",
+   "examples": [
+    {
+     "input": "Why a blackboard instead of agents messaging each other?",
+     "output": "A shared store gives one place to inspect, replay and cost every hand-off, and roles stay decoupled so one can be swapped or limited without touching the rest. Direct messaging can be faster for tightly coupled work but is harder to audit.",
+     "explanation": ""
+    },
+    {
+     "input": "Why allow only one revision per section?",
+     "output": "Each revision costs a researcher call and a critic call, and an unbounded loop can chase a rule the corpus cannot satisfy. One revision catches the common fixable failure, and sections that still fail show up in the coverage score for a human to look at.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you evaluate the finished report?",
+     "output": "Score it separately from the loop. Citation coverage is cheap and checks the critic's rule, but it does not show that claims are supported, so add a faithfulness check and a human-labelled sample for quality.",
+     "explanation": ""
+    },
+    {
+     "input": "When does adding agents hurt?",
+     "output": "When roles repeat context in every prompt, token cost grows with each added role and turn, and errors can compound across hand-offs. Add a role only when it has a checkable job that a single prompt does not do reliably.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Turn limit $\\mathrm{max\\_turns}$ and per-section revision cap",
+    "Number and granularity of planned sections $S$",
+    "Critic rule strictness (any valid citation versus every claim cited)",
+    "Number of retrieved documents given to each researcher"
+   ],
+   "edgeCases": [
+    "A critic that only checks that a citation exists accepts irrelevant or fabricated support; verify the cited text actually backs the claim",
+    "Stopping at the turn limit and still publishing the partial draft hides the failure; return the reason and no report",
+    "Counting tokens from outputs only undercounts: prompts, which repeat shared context, usually dominate cost",
+    "Letting roles read the whole blackboard each turn grows prompts with every turn; pass only the fields a role needs"
+   ],
+   "related": [
+    "multi-agent-orchestration",
+    "planning-decomposition",
+    "reflection-self-correction"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "project-multimodal-assistant",
+   "title": "Project Blueprint: Multimodal Assistant",
+   "platform": "Vision",
+   "url": "https://arxiv.org/abs/2103.00020",
+   "difficulty": "Hard",
+   "topics": [
+    "Project Blueprint",
+    "Multimodal",
+    "Retrieval",
+    "Token Budget"
+   ],
+   "patterns": [],
+   "summary": "Build an assistant that accepts text, an image or both. A router picks the path, a shared embedding space retrieves the matching image or note, and a prompt builder counts image tokens as well as text tokens so every request fits the context budget.",
+   "bruteForce": "Text-only products, where a vision path adds cost and failure modes, and cases where one image embedding already solves the task, such as plain image search with no generated answer.",
+   "intuition": "The system is easy to get wrong because two different spaces matter. Retrieval needs images and text in one embedding space, which is what contrastive image-text training provides, so a text query can find an image directly. Generation needs images as tokens, and an image costs $N = (H/P)(W/P)$ patches, so a large image can eat the whole budget. The main trade-off is spatial detail against context: pooling $k \\times k$ patches divides the cost by $k^2$, and the router keeps text-only requests from paying for vision at all. Flow: request → route → embed → retrieve → budgeted prompt → answer with citations.",
+   "whyItWorks": "Retrieval and generation are decoupled. A shared space lets one nearest-neighbour index serve every modality, and the prompt builder turns an image into a known number of tokens, so the budget is a checked arithmetic constraint rather than a hope. Pooling by $k$ cuts the image cost by exactly $k^2$, giving a graceful way to fit.",
+   "approach": [
+    "Write a stub image encoder and a text embedder into one hashed space — retrieval then works across modalities without a trained model",
+    "Route each request as text, image or both — text-only requests skip the image path and its token cost",
+    "Embed the query and rank the mixed gallery by cosine — one index serves images and notes",
+    "Count image tokens as $N/k^2$ after pooling — the prompt length is text tokens plus image tokens",
+    "Pool the image harder, or reject it with a reason, when the total exceeds the budget — an oversize image must never silently truncate",
+    "Answer from the retrieved items and cite their ids — a grounded answer can be checked against its sources"
+   ],
+   "time": "O(G·D) to score a query against $G$ gallery items; the model then pays O((L + N/k²)²) in the total length",
+   "space": "O(G·D) for the index plus O((L + N/k²)·d) of KV cache per request",
+   "solution": "import zlib\nimport numpy as np\n\nD, P = 64, 4\nNAMES = [\"tl\", \"tr\", \"bl\", \"br\"]\nALIAS = {\"sky\": \"tl_bright tr_bright\", \"sea\": \"bl_dark br_dark\",\n         \"night\": \"tl_dark tr_dark bl_dark br_dark\",\n         \"lamp\": \"tl_bright bl_bright tr_dark br_dark\"}\n\ndef hvec(words):\n    v = np.zeros(D)\n    for w in words:\n        v[zlib.crc32(w.encode()) % D] += 1\n    n = np.linalg.norm(v)\n    return v / n if n else v\n\ndef n_patches(arr):\n    return (arr.shape[0] // P) * (arr.shape[1] // P)\n\nclass Assistant:\n    def __init__(self, items, budget=64):\n        self.items, self.budget = items, budget  # (id, kind, vec)\n\n    def embed_image(self, arr):\n        h, w = arr.shape\n        m = arr.reshape(2, h // 2, 2, w // 2).mean(axis=(1, 3))\n        lv = [\"bright\" if x > 0.5 else \"dark\" for x in m.ravel()]\n        return hvec([f\"{n}_{l}\" for n, l in zip(NAMES, lv)])\n\n    def embed_text(self, s):\n        ws = [ALIAS.get(w, w) for w in s.lower().split()]\n        return hvec(\" \".join(ws).split())\n\n    def route(self, req):\n        t, i = bool(req.get(\"text\")), req.get(\"image\") is not None\n        return {(1, 0): \"text\", (0, 1): \"image\", (1, 1): \"both\"}.get(\n            (t, i), \"empty\")\n\n    def retrieve(self, req, k=1):\n        mode, q = self.route(req), 0\n        if mode in (\"text\", \"both\"):\n            q = q + self.embed_text(req[\"text\"])\n        if mode in (\"image\", \"both\"):\n            q = q + self.embed_image(req[\"image\"])\n        sc = [(float(v @ q), id_) for id_, _, v in self.items]\n        return [i for _, i in sorted(sc, reverse=True)[:k]]\n\n    def build_prompt(self, req):\n        nt = len((req.get(\"text\") or \"\").split())\n        ni, pool, img = 0, 1, req.get(\"image\")\n        if img is not None:\n            n, g = n_patches(img), img.shape[0] // P\n            for pool in (1, 2, 4):\n                if g % pool == 0 and nt + n // pool**2 <= self.budget:\n                    ni = n // pool**2\n                    break\n            else:\n                why = f\"{n} patches need > {self.budget - nt} tokens\"\n                return {\"ok\": False, \"reason\": why}\n        return {\"ok\": True, \"text_tokens\": nt, \"image_tokens\": ni,\n                \"pool\": pool, \"total\": nt + ni}\n\n    def answer(self, req):\n        p = self.build_prompt(req)\n        if not p[\"ok\"]:\n            return p[\"reason\"]\n        return \"used \" + \",\".join(self.retrieve(req, 1))",
+   "keyLines": [
+    26,
+    45,
+    53
+   ],
+   "dryRun": [
+    "$N = \\frac{H}{P}\\cdot\\frac{W}{P}$, 64 for 32 by 32, $P=4$",
+    "Pooled: $N^{\\prime} = \\frac{N}{k^2}$, so 256 gives 16 at $k=4$",
+    "Prompt: $L_{text} + N^{\\prime} \\leq B$",
+    "Reject if $L_{text} + \\frac{N}{k_{max}^2} > B$: $1 + 64 > 64$",
+    "Score: $\\langle q, v\\rangle$, $q = e_{text} + e_{img}$",
+    "KV bytes per token: $2 \\cdot \\mathrm{layers} \\cdot \\mathrm{kv\\_heads} \\cdot d_{head} \\cdot \\mathrm{bytes}$",
+    "Example: $2\\cdot 32\\cdot 8\\cdot 128\\cdot 2 = 131072$ B",
+    "Recall: $\\frac{\\mathrm{queries\\ hit\\ in\\ top\\ k}}{\\mathrm{queries}}$"
+   ],
+   "description": "A product that mixes text and images, such as asking about a photo, a screenshot or a diagram, with a fixed context window and a gallery or notes store to ground the answers.",
+   "examples": [
+    {
+     "input": "Why must text and images share an embedding space for retrieval?",
+     "output": "A text query can only be compared to an image vector if both live in one space. Contrastive training pulls matching pairs together there. Without it you need captions for every image and fall back to text search.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you stop images from blowing the context budget?",
+     "output": "Compute the token count before calling the model: $N/k^2$ for pooled patches. Pool harder, downscale or tile selectively, and if even the strongest pooling does not fit, reject with the numbers instead of truncating, since truncation can cut image tokens and break the request.",
+     "explanation": ""
+    },
+    {
+     "input": "When does routing save money, and what can go wrong?",
+     "output": "Text-only requests skip the image encoder and its tokens, so they cost what they always did. The risk is a router that misclassifies, for example ignoring an attached image the question depends on, so log the route and test each branch.",
+     "explanation": ""
+    },
+    {
+     "input": "How would you evaluate the system end to end?",
+     "output": "Evaluate in parts. Measure retrieval with recall at $k$ on labelled text-to-image and image-to-note queries, answer faithfulness against the cited items, and the token and latency distribution. A single answer-quality score cannot tell a retrieval fault from a generation fault.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Patch size $P$ and pooling factor $k$ (tokens per image)",
+    "Context budget for text plus image tokens",
+    "Embedding dimension and top-$k$ retrieved items",
+    "Router rules, and whether mixed queries sum or weight the two embeddings"
+   ],
+   "edgeCases": [
+    "Counting only text tokens in the budget, so a single image overflows the context at serving time",
+    "A hashing embedder collides: unrelated words can share a bucket, so retrieval tests need a margin, and real systems use a trained encoder",
+    "Text and image embeddings from separately trained encoders do not share a space, so cross-modal scores are meaningless",
+    "Pooling that does not divide the patch grid evenly silently drops edge patches, so check divisibility"
+   ],
+   "related": [
+    "vlm-projector-image-tokens",
+    "multimodal-rag-fusion",
+    "clip-contrastive-loss"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "project-pdf-question-answering",
+   "title": "Project Blueprint: Question Answering over a PDF",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2005.11401",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Project",
+    "RAG",
+    "Question Answering",
+    "Citations"
+   ],
+   "patterns": [],
+   "summary": "Build a question-answering system over a document: clean each page, chunk it with page metadata, embed and index the chunks, retrieve the top-$k$ for a question, and answer with citations such as [p3]. The outcome is an answerer that cites only chunks it retrieved and says that it cannot answer when nothing in the document is similar enough.",
+   "bruteForce": "Short documents that fit in the prompt, scanned files without OCR, or questions that need aggregation across the whole document (totals, summaries), which top-$k$ retrieval of a few chunks cannot supply.",
+   "intuition": "Grounding is the point: the model should answer from retrieved text, and the reader should be able to check the page. That needs metadata carried from ingestion to the answer, so every chunk keeps its page and a stable id, and the prompt numbers its context with those ids. Citations are then verified mechanically against the retrieved set, so a made-up page is caught. Retrieval is also the gate: when even the best chunk scores below a threshold $\\theta$ the system abstains, trading some missed answers for fewer confident wrong ones. The threshold must sit between the best score of in-scope questions and of out-of-scope ones. Real PDFs add a stage before all this, a parser for text PDFs or OCR for scanned ones, because the text layer may be missing or in the wrong reading order. Flow: pages → clean → chunk with metadata → embed → top-k → numbered prompt → cited answer.",
+   "whyItWorks": "With unit-length vectors the dot product equals cosine similarity, so the nearest chunks to the question are the ones sharing the most content with it. Page and id travel with each chunk, so the prompt labels each piece of context and the answer can only cite labels that were shown. Abstention works because in-scope questions have a best-chunk score well above out-of-scope ones, so a threshold between the two separates them.",
+   "approach": [
+    "Take pages as strings and clean them (rejoin hyphenated line breaks, collapse whitespace) — a parser or OCR would produce this input for a real PDF",
+    "Chunk each page with overlap and keep page and id on every chunk — metadata is what makes citations possible",
+    "Embed chunks once with a normalised hashing embedder — query and chunks share one space and search is a dot product",
+    "Retrieve the top-$k$ and abstain if the best similarity is below $\\theta$ — the cheapest guard against answering out of scope",
+    "Build a numbered-context prompt and call a stub model that answers from the best chunk and cites its page — the answer is tied to a source",
+    "Verify every citation is among the retrieved chunks and measure recall@$k$ on a labelled set — the first is a guard, the second a regression test for retrieval"
+   ],
+   "time": "O(N·d) per question to score $N$ chunks of dimension $d$ by brute force; ingestion is O(n) over $n$ words",
+   "space": "O(N·d) for the chunk embeddings plus the chunk text and metadata",
+   "solution": "import re\nimport zlib\nimport numpy as np\n\nSTOP = {\"the\", \"a\", \"an\", \"of\", \"is\", \"in\", \"to\", \"and\", \"what\",\n        \"who\", \"how\", \"does\", \"did\", \"was\", \"are\", \"for\", \"on\",\n        \"where\", \"will\", \"long\", \"do\"}\n\ndef clean(text):\n    text = re.sub(r\"-\\s*\\n\\s*\", \"\", text)\n    return re.sub(r\"\\s+\", \" \", text).strip()\n\ndef embed(text, dim=256):\n    v = np.zeros(dim)\n    for w in re.findall(r\"[a-z0-9]+\", text.lower()):\n        w = w[:-1] if len(w) > 3 and w.endswith(\"s\") else w\n        if w not in STOP:\n            h = zlib.crc32(w.encode())\n            v[h % dim] += 1 if (h >> 16) & 1 else -1\n    n = np.linalg.norm(v)\n    return v / n if n else v\n\ndef ingest(pages, size=12, overlap=3):\n    index, step = [], size - overlap\n    for p, raw in enumerate(pages, 1):\n        words = clean(raw).split()\n        for i in range(0, max(len(words) - overlap, 1), step):\n            text = \" \".join(words[i:i + size])\n            index.append({\"id\": len(index), \"page\": p, \"text\": text,\n                          \"vec\": embed(text)})\n    return index\n\ndef stub_model(prompt):\n    for line in prompt.splitlines():\n        m = re.match(r\"\\[(p\\d+)\\] (.*)\", line)\n        if m:\n            return f\"{m[2]} [{m[1]}]\"\n    return \"No context.\"\n\ndef answer(question, index, k=3, thr=0.25):\n    sims = np.array([c[\"vec\"] @ embed(question) for c in index])\n    top = np.argsort(-sims, kind=\"stable\")[:k]\n    got = [index[i] for i in top]\n    if sims[top[0]] < thr:\n        return {\"answer\": \"Not found in the document.\",\n                \"citations\": [], \"retrieved\": [c[\"id\"] for c in got],\n                \"abstained\": True}\n    ctx = \"\\n\".join(f\"[p{c['page']}] {c['text']}\" for c in got)\n    head = \"Answer from the context only.\\n\"\n    prompt = f\"{head}{ctx}\\nQuestion: {question}\"\n    ans = stub_model(prompt)\n    cites = re.findall(r\"\\[(p\\d+)\\]\", ans)\n    ok = {f\"p{c['page']}\" for c in got}\n    assert set(cites) <= ok, \"citation not in retrieved chunks\"\n    return {\"answer\": ans, \"citations\": cites,\n            \"retrieved\": [c[\"id\"] for c in got], \"abstained\": False}",
+   "keyLines": [
+    41,
+    44,
+    54
+   ],
+   "dryRun": [
+    "Chunks per page: $\\lceil \\frac{n - \\mathrm{overlap}}{\\mathrm{size} - \\mathrm{overlap}} \\rceil$",
+    "Blow-up $\\approx \\frac{\\mathrm{size}}{\\mathrm{size} - \\mathrm{overlap}} = 1.33$",
+    "$\\cos(q,c) = e(q) \\cdot e(c)$; abstain if $\\max < \\theta$",
+    "Recall@$k$: $\\frac{1}{|Q|}\\sum_q \\mathbb{1}[\\mathrm{gold} \\in \\mathrm{top}\\,k]$",
+    "$\\theta$ between $0.18$ (out-of-scope) and $0.37$ (in-scope)",
+    "Prompt: $k \\cdot \\mathrm{size} + t_q + t_{inst}$ tokens"
+   ],
+   "description": "Question answering over reports, manuals or papers that are too long for the prompt or change often, where answers must point to a page so a reader can check them.",
+   "examples": [
+    {
+     "input": "How do you stop the model citing something that was not retrieved?",
+     "output": "Number the context with chunk or page ids, then verify the cited ids against the retrieved set after generation and reject or regenerate on a mismatch. This checks the source exists, not that it supports the claim, so a faithfulness check is still needed.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you choose the abstention threshold?",
+     "output": "Score a labelled set of in-scope and out-of-scope questions, plot the best-chunk similarity for each, and place $\\theta$ in the gap, leaning toward the side whose error costs more. Re-tune it when the embedder or chunking changes, since similarity scales differ.",
+     "explanation": ""
+    },
+    {
+     "input": "What changes for real PDFs?",
+     "output": "Text must be extracted first: a parser for digital PDFs, OCR for scans. Layout matters, since columns, headers, footers, tables and hyphenation corrupt the text, so clean it and chunk tables by their own units.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you evaluate the pipeline?",
+     "output": "Separate retrieval from generation: recall@$k$ on labelled question and page pairs for the retriever, then faithfulness and answer relevance for the generated answer, as in a RAG evaluation.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Chunk size and overlap",
+    "Retrieval size $k$",
+    "Abstention threshold $\\theta$",
+    "Embedding model and dimension (a hashing stand-in here)"
+   ],
+   "edgeCases": [
+    "Real PDFs need a parser or OCR first; this code starts from page strings, so extraction errors are not covered",
+    "The hashing embedder matches shared words only (with crude plural stripping), so paraphrased questions can fall below the threshold and abstain wrongly",
+    "A citation check proves the page was retrieved, not that the text supports the answer",
+    "Chunks that cross a page break lose their page label; this code chunks per page, so facts spanning two pages can be cut"
+   ],
+   "related": [
+    "document-chunking",
+    "rag-dense-retrieval",
+    "rag-evaluation-faithfulness"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "project-rag-knowledge-assistant",
+   "title": "Project Blueprint: RAG Knowledge Assistant",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2005.11401",
+   "difficulty": "Hard",
+   "topics": [
+    "Project Blueprint",
+    "RAG",
+    "Access Control",
+    "Citations"
+   ],
+   "patterns": [],
+   "summary": "Build a company-knowledge assistant. Documents are ingested with owner and permission metadata, retrieval is hybrid, access control is a hard pre-filter, answers are grounded and cited, the assistant abstains on weak evidence, and the index stays fresh when documents change or are deleted.",
+   "bruteForce": "Single-user or static corpora, where plain retrieval is simpler. Also when permissions cannot be expressed as metadata on chunks, or when you need reasoning across many documents that retrieval of a few chunks cannot supply.",
+   "intuition": "A plain PDF question-answering pipeline has one reader and a frozen corpus. A company assistant has many readers with different rights and a corpus that keeps changing, and those two facts drive the design. Permissions must be enforced at retrieval, before ranking and before the prompt is built, because anything that reaches the model can leak into the answer. Freshness needs a stable document id so a re-ingest replaces old chunks instead of adding to them. The model is the least trusted part: it only quotes what it is given, cites it, and abstains when the evidence is weak. Flow: user + question → permitted chunks → hybrid retrieval → evidence check → grounded answer with citations.",
+   "whyItWorks": "A hard pre-filter makes the ACL guarantee structural: a chunk the user may not read is never a candidate, so it cannot be ranked, quoted or cited, however well it matches. The evidence check turns retrieval quality into a decision, since low coverage of the question terms means answering would require the model to invent. Citations and a faithfulness check keep every claim traceable to retrieved text.",
+   "approach": [
+    "Ingest each document with a stable id, text and an ACL, split into chunks that inherit the ACL — one fact per chunk keeps citations precise",
+    "On re-ingest delete the old chunks of that id first, and expose a remove call — updated facts replace stale ones and deleted documents vanish",
+    "At query time keep only chunks whose ACL intersects the user groups — a hard pre-filter, not a post-hoc clean-up",
+    "Rank the permitted chunks with dense and lexical lists fused by $\\frac{1}{k + \\mathrm{rank}}$ — hybrid retrieval over only what the user may see",
+    "Compute evidence as the share of question terms covered by the best chunk and abstain below $\\tau$ — an honest I-do-not-know beats an invented answer",
+    "Build the prompt from the retrieved chunks, answer through the model, return citations and score faithfulness — traceability and a regression metric"
+   ],
+   "time": "O(P·d) per question over the P permitted chunks for the dense scan and O(|q|·P) for term overlap, plus one model call; ANN and inverted indexes make retrieval sublinear",
+   "space": "O(C·d) for C chunk vectors plus text, tokens and an ACL set per chunk",
+   "solution": "import re, zlib\nimport numpy as np\n\nSTOP = {\"the\", \"a\", \"is\", \"of\", \"to\", \"what\", \"how\", \"do\", \"does\",\n        \"for\", \"in\", \"and\", \"are\", \"i\", \"my\", \"our\", \"we\", \"can\"}\nIDK = \"I don't know from the documents you can access.\"\n\ndef toks(s):\n    return re.findall(r\"[a-z0-9]+\", s.lower())\n\ndef embed(s, dim=64):\n    v = np.zeros(dim)\n    for t in toks(s):\n        v[zlib.crc32(t.encode()) % dim] += 1.0\n    return v / (np.linalg.norm(v) or 1.0)\n\ndef stub_llm(prompt, question):  # quotes the best context line\n    ctx = [l for l in prompt.split(\"\\n\") if l.startswith(\"[\")]\n    q = set(toks(question)) - STOP\n    return max(ctx, key=lambda l: len(q & set(toks(l))))\n\nclass Assistant:\n    def __init__(self, k=2, min_evidence=0.5):\n        self.k, self.min_ev, self.chunks = k, min_evidence, {}\n\n    def ingest(self, doc_id, text, acl):\n        self.remove(doc_id)  # re-ingest replaces old chunks\n        parts = re.split(r\"(?<=[.!?])\\s+\", text.strip())\n        for i, s in enumerate(parts):\n            self.chunks[(doc_id, i)] = dict(text=s, acl=set(acl),\n                vec=embed(s), toks=set(toks(s)))\n\n    def remove(self, doc_id):\n        for key in [c for c in self.chunks if c[0] == doc_id]:\n            del self.chunks[key]\n\n    def ask(self, user, question):\n        C = self.chunks\n        ok = [c for c in C if C[c][\"acl\"] & set(user[\"groups\"])]\n        q, qv = set(toks(question)) - STOP, embed(question)\n        dense = sorted(ok, key=lambda c: -float(C[c][\"vec\"] @ qv))\n        lex = sorted(ok, key=lambda c: -len(q & C[c][\"toks\"]))\n        fused = {}\n        for lst in (dense, lex):\n            for r, c in enumerate(lst, 1):\n                fused[c] = fused.get(c, 0.0) + 1 / (60 + r)\n        top = sorted(fused, key=lambda c: (-fused[c], c))[:self.k]\n        cover = max((len(q & C[c][\"toks\"]) / len(q) for c in top),\n                    default=0.0)\n        if cover < self.min_ev:\n            return dict(answer=IDK, cites=[], abstained=True, ctx=\"\")\n        ctx = \"\\n\".join(f\"[{d}#{i}] {C[(d, i)]['text']}\"\n                        for d, i in top)\n        ans = stub_llm(f\"{ctx}\\nQ: {question}\", question)\n        cites = sorted(set(re.findall(r\"\\[([^\\]]+)\\]\", ans)))\n        return dict(answer=ans, cites=cites, abstained=False, ctx=ctx)\n\ndef faithfulness(answer, ctx):\n    body = re.sub(r\"\\[[^\\]]*\\]\", \"\", answer)\n    claims = [c for c in re.split(r\"(?<=[.!?])\\s+\", body) if toks(c)]\n    have = set(toks(ctx))\n    return sum(set(toks(c)) <= have for c in claims) / len(claims)",
+   "keyLines": [
+    39,
+    46,
+    50
+   ],
+   "dryRun": [
+    "$\\mathrm{Visible}(u,c) = 1$ if $\\mathrm{groups}(u) \\cap \\mathrm{ACL}(c) \\neq \\emptyset$",
+    "Candidates $= \\{c : \\mathrm{Visible}(u,c) = 1\\}$, before ranking",
+    "$\\mathrm{RRF}(c) = \\sum \\frac{1}{60 + \\mathrm{rank}(c)}$",
+    "Evidence $= \\max \\frac{|Q \\cap \\mathrm{chunk}|}{|Q|}$; abstain if $< \\tau$",
+    "Faithfulness: $\\frac{\\mathrm{supported\\ claims}}{\\mathrm{claims}}$",
+    "Chunks per doc: $\\lceil \\frac{\\mathrm{doc\\ tokens}}{\\mathrm{chunk\\ tokens}} \\rceil$",
+    "Prompt $\\approx$ system $+ k \\cdot$ chunk tokens $+$ question"
+   ],
+   "description": "Internal assistants over wikis, policies and tickets where users have different rights, documents change, and each answer must show its source and admit when it does not know.",
+   "examples": [
+    {
+     "input": "Why enforce permissions at retrieval and not in the model prompt?",
+     "output": "A model cannot be trusted to withhold text it has seen, and instructions can be bypassed. If a forbidden chunk is never retrieved it cannot appear in the prompt, the answer or the citations. The filter must be a hard pre-filter, because oversampling and post-filtering are only probabilistic.",
+     "explanation": ""
+    },
+    {
+     "input": "How does this differ from a PDF question-answering pipeline?",
+     "output": "It is multi-user, so every chunk carries an ACL and queries carry an identity. It is updatable, so documents have stable ids and re-ingest replaces chunks. It also abstains and cites, since users act on the answers and need to verify them.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you decide when to abstain?",
+     "output": "Use an evidence signal such as coverage of the question terms by the best chunk, or a retriever or reranker score, and set the threshold on a labelled set to trade wrong answers against needless refusals. Abstaining on no permitted evidence also avoids hinting that a hidden document exists.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you keep the index fresh at scale?",
+     "output": "Process change events: on an edit delete the chunks of that document id and insert the new ones, on a delete remove them, on a permission change update the ACL metadata. Run periodic reconciliation against the source of truth and rebuild approximate indexes as deletions accumulate.",
+     "explanation": ""
+    },
+    {
+     "input": "What would you monitor in production?",
+     "output": "Retrieval recall on a labelled set, faithfulness and citation validity of sampled answers, abstention rate, index lag after edits, and a canary test that restricted documents never appear for unauthorised test users.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Chunk size and overlap (here one sentence per chunk)",
+    "Retrieved chunks $k$ and the RRF constant, about 60",
+    "Abstention threshold $\\tau$ on evidence coverage",
+    "ACL model: groups, roles or per-user lists, and where it is stored"
+   ],
+   "edgeCases": [
+    "Post-filtering by permission, or filtering only the citations, lets forbidden text reach the prompt; restrict candidates before ranking",
+    "Stale ACLs: a permission change must update chunk metadata, or revoked users keep access and new users are locked out",
+    "Re-ingesting under a new id instead of the same id leaves old chunks answering with outdated facts",
+    "A model that paraphrases can still add unsupported claims; the quoting stub gets faithfulness 1 only because it cannot generate, so real systems need a claim-level check"
+   ],
+   "related": [
+    "rag-dense-retrieval",
+    "metadata-filtering",
+    "rag-evaluation-faithfulness"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "project-research-assistant",
+   "title": "Project Blueprint: Cited Research Assistant",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2210.03629",
+   "difficulty": "Hard",
+   "topics": [
+    "LLM",
+    "Project",
+    "Agents",
+    "RAG",
+    "Citations"
+   ],
+   "patterns": [],
+   "summary": "Build a research assistant that turns a question into a cited report. It plans sub-questions, searches a local corpus for each, keeps notes with source ids, writes claims that all carry citations, then verifies each claim against its source and flags the rest.",
+   "bruteForce": "Single-fact lookups, where one retrieval and answer is enough, or open-web research where sources conflict and need credibility judgement. Token overlap cannot detect paraphrased contradictions.",
+   "intuition": "A report is only as trustworthy as the link from each claim back to text the system actually retrieved. Making the citation part of the data (claim plus source id) rather than part of the prose lets code enforce it: uncited claims are dropped and cited ones are checked against the source. The design trade-off is breadth against cost: every sub-question costs a search and tokens, so a step and token budget bound the run and the stop reason tells the user whether the report is complete or truncated. Flow: question → sub-questions → gather notes → cited claims → verify → report with flags.",
+   "whyItWorks": "Decomposition makes each retrieval narrow, so the best document for a sub-question is easier to find than for the whole question. Carrying the source id with every note and claim makes provenance a data field instead of a promise, so unsupported or unretrievable claims can be filtered or flagged mechanically. Budgets turn an open-ended loop into a bounded one with an explicit stop reason.",
+   "approach": [
+    "Deduplicate the corpus by normalised text — copies of one source must not look like independent evidence",
+    "Plan sub-questions with a planner (scripted stub here) — one search per narrow question retrieves better than one broad query",
+    "Gather per sub-question: rank documents and keep the best sentence with its source id — notes stay traceable",
+    "Synthesise claims as (text, source id) pairs and drop any claim citing an unretrieved source — citations are enforced by code",
+    "Verify each claim against its cited source with a support score, flagging low scores — a stand-in for an entailment model",
+    "Charge steps and tokens as the run proceeds and stop with a reason when a budget is hit — cost stays bounded and truncation is visible"
+   ],
+   "time": "O(s·n·w) for $s$ sub-questions, $n$ documents and $w$ words per document; verification is O(c·w) for $c$ claims",
+   "space": "O(n·w) for the corpus plus O(s) notes",
+   "solution": "import re\n\nSTOP = {\"the\", \"a\", \"an\", \"of\", \"is\", \"are\", \"to\", \"in\", \"and\",\n        \"for\", \"it\", \"by\", \"on\", \"what\", \"how\", \"does\"}\n\ndef toks(s):\n    return set(re.findall(r\"[a-z0-9]+\", s.lower())) - STOP\n\nclass Researcher:\n    def __init__(self, corpus, planner, writer=None,\n                 max_steps=6, max_tokens=60, thr=0.6):\n        self.docs, self.alias, seen = {}, {}, {}\n        for sid, text in corpus.items():\n            key = \" \".join(re.findall(r\"[a-z0-9]+\", text.lower()))\n            if key in seen:\n                self.alias[sid] = seen[key]      # merge duplicate\n            else:\n                seen[key] = sid\n                self.docs[sid] = text\n        self.planner, self.thr = planner, thr\n        self.writer = writer or (lambda notes: [\n            (n[\"text\"], n[\"src\"]) for n in notes])\n        self.max_steps, self.max_tokens = max_steps, max_tokens\n\n    def plan(self, question):\n        return self.planner(question)\n\n    def gather(self, subq):\n        q = toks(subq)\n        ranked = sorted(self.docs, key=lambda s: -len(q & toks(\n            self.docs[s])))\n        notes = []\n        for sid in ranked[:2]:\n            sents = re.split(r\"(?<=\\.)\\s+\", self.docs[sid])\n            best = max(sents, key=lambda t: len(q & toks(t)))\n            if q & toks(best):\n                notes.append({\"src\": sid, \"text\": best})\n        return notes\n\n    def synthesise(self, notes):\n        have = {n[\"src\"] for n in notes}\n        claims = self.writer(notes)\n        return [{\"text\": t, \"src\": s} for t, s in claims\n                if s in have]                 # every claim cites\n\n    def verify(self, report):\n        out = []\n        for c in report:\n            ct = toks(c[\"text\"])\n            sup = len(ct & toks(self.docs[c[\"src\"]])) / len(ct)\n            out.append({**c, \"support\": round(sup, 2),\n                        \"ok\": sup >= self.thr})\n        return out\n\n    def run(self, question):\n        notes, steps, used, stop = [], 0, 0, \"done\"\n        for sq in self.plan(question):\n            if steps >= self.max_steps:\n                stop = \"step_budget\"; break\n            steps += 1\n            got = self.gather(sq)\n            used += sum(len(n[\"text\"].split()) for n in got)\n            notes += got\n            if used > self.max_tokens:\n                stop = \"token_budget\"; break\n        rep = self.verify(self.synthesise(notes))\n        return {\"report\": rep, \"stop\": stop, \"steps\": steps,\n                \"tokens\": used}",
+   "keyLines": [
+    16,
+    44,
+    50
+   ],
+   "dryRun": [
+    "Support: $\\frac{|T_c \\cap T_s|}{|T_c|}$ over word sets",
+    "Supported when $\\mathrm{Support}(c, s) \\geq \\theta$",
+    "Citation coverage: $\\frac{\\mathrm{cited}}{\\mathrm{claims}} = 1$",
+    "Verified: $\\frac{\\mathrm{supported}}{\\mathrm{cited}}$",
+    "Search calls $= \\min(s, \\mathrm{max\\_steps})$",
+    "Cost: $\\sum_t n_t \\leq B$ note tokens"
+   ],
+   "description": "Questions that need several facts from a known document set, where readers must be able to check each statement against its source and the cost of a run has to be bounded.",
+   "examples": [
+    {
+     "input": "Why attach citations as data instead of asking the model to cite in prose?",
+     "output": "Prose citations can be invented or point at sources that were never retrieved, and code cannot reliably check free text. A claim record with a source id lets the system reject any claim whose id was not in the retrieved set and run a per-claim support check. It turns citation from a style request into an enforced invariant.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the verification step add if the model already cited a source?",
+     "output": "A citation shows where the model claims the support is, not that the source says it. Verification compares each claim with its cited text and flags those that do not follow. Token overlap is a crude proxy, so production systems use an entailment model or a judge, and sample the results against human labels.",
+     "explanation": ""
+    },
+    {
+     "input": "Why deduplicate sources?",
+     "output": "Mirrors and copies make one source look like several, inflating apparent agreement and wasting the context budget and citations. Merging by normalised text or a hash is cheap; near-duplicates need fuzzy matching such as shingling.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you choose the step and token budgets?",
+     "output": "Work back from the latency and cost you can afford: each sub-question costs one search plus the tokens of its notes, and the writer pays for all notes in its context. Set the cap, report the stop reason so users know when a report is partial, and prioritise sub-questions so the most important run first.",
+     "explanation": ""
+    },
+    {
+     "input": "What are the main failure modes of this design?",
+     "output": "A bad plan misses part of the question, retrieval finds a related but wrong source, and a claim can overlap its source in words yet contradict it. Evaluate the planner, retrieval and verifier separately so you know which stage to fix.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of sub-questions and the step budget",
+    "Documents kept per sub-question and the token budget",
+    "Support threshold $\\theta$ for flagging a claim",
+    "Deduplication rule (exact hash or near-duplicate similarity)"
+   ],
+   "edgeCases": [
+    "Token overlap passes a claim that reuses a source's words but reverses its meaning; use an entailment model for anything important",
+    "Dropping uncited claims silently hides writer errors; log how many were dropped",
+    "Stopping on a budget leaves some sub-questions unanswered, so always surface the stop reason in the report",
+    "Near-duplicate sources survive exact-hash merging and still inflate agreement"
+   ],
+   "related": [
+    "planning-decomposition",
+    "rag-evaluation-faithfulness",
+    "hallucination-detection"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "project-semantic-search-engine",
+   "title": "Project Blueprint: Semantic Search Engine",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2104.08663",
+   "difficulty": "Medium",
+   "topics": [
+    "Project Blueprint",
+    "Search",
+    "Hybrid Retrieval",
+    "Evaluation"
+   ],
+   "patterns": [],
+   "summary": "Build a search engine over a small document set. It embeds documents with a hashing embedder, answers queries by nearest neighbours with optional metadata filters, adds a lexical term-overlap signal fused by reciprocal rank fusion, supports adding and deleting documents, and reports $\\mathrm{recall}@k$ and MRR on a labelled query set.",
+   "bruteForce": "Corpora so small that a keyword grep suffices, or so large that the exhaustive scan used here must be replaced by an approximate index and an inverted index. Not a substitute for a relevance model when you have plenty of click or label data.",
+   "intuition": "Dense vectors capture meaning but blur rare tokens such as error codes, while term overlap nails exact tokens but misses paraphrases. Running both and fusing by rank needs no score calibration, so the main design trade-off is cost against coverage: a second index and extra latency buy robustness on exact-match queries. Filters are applied before ranking, so a filter can never be violated by a lucky hit, and an evaluation set turns every design choice into a number. Flow: query → filter documents → dense list + lexical list → rank fusion → top-k → recall and MRR.",
+   "whyItWorks": "Each retriever fails on different queries, so the right document is often ranked high by at least one of them. The fused score $\\frac{1}{k + \\mathrm{rank}}$ sums votes from both lists, so a document that both like beats one that only a single list favours, and the rescued exact-match document rises into the top results. Because fusion uses only ranks, the scales of cosine and term scores never need tuning.",
+   "approach": [
+    "Tokenise and embed each document into a normalised hashing bag-of-words vector — a deterministic stand-in for a learned encoder",
+    "Store text tokens, metadata and vector per document id — add and delete become dictionary updates, so the index never goes stale",
+    "Apply the metadata filter first, then rank only the permitted documents — hard pre-filter, so no result can violate it",
+    "Build a dense list by cosine and a lexical list by IDF-weighted term overlap — two views that fail on different queries",
+    "Fuse the lists with $\\frac{1}{k + \\mathrm{rank}}$ votes and sort with an id tie-break — a stable, calibration-free ranking",
+    "Evaluate on labelled queries with $\\mathrm{recall}@k$ and MRR, comparing dense, lexical and hybrid modes — shows what each part earns"
+   ],
+   "time": "O(N·d) per query for the exhaustive dense scan plus O(|q|·N) for term overlap; an ANN index and an inverted index make both sublinear",
+   "space": "O(N·d) for vectors plus the stored tokens and metadata",
+   "solution": "import re, zlib\nimport numpy as np\n\ndef toks(s):\n    return re.findall(r\"[a-z0-9]+\", s.lower())\n\ndef embed(text, dim=32):\n    v = np.zeros(dim)\n    for t in toks(text):\n        v[zlib.crc32(t.encode()) % dim] += 1.0\n    n = np.linalg.norm(v)\n    return v / n if n else v\n\nclass SearchEngine:\n    def __init__(self, dim=32, rrf_k=60):\n        self.dim, self.rrf_k, self.docs = dim, rrf_k, {}\n\n    def add(self, id, text, meta=None):\n        self.docs[id] = (toks(text), meta or {},\n                         embed(text, self.dim))\n\n    def delete(self, id):\n        self.docs.pop(id, None)\n\n    def _lexical(self, q, ids):\n        N, out = len(self.docs), {i: 0.0 for i in ids}\n        for t in set(toks(q)):\n            n = sum(t in d[0] for d in self.docs.values())\n            idf = np.log(1 + (N - n + 0.5) / (n + 0.5))\n            for i in ids:\n                out[i] += idf * (t in self.docs[i][0])\n        return [i for i in sorted(ids, key=lambda i: (-out[i], i))\n                if out[i] > 0]\n\n    def search(self, q, k=3, filters=None, mode=\"hybrid\"):\n        f = filters or {}\n        ids = [i for i, d in self.docs.items()\n               if all(d[1].get(a) == b for a, b in f.items())]\n        qv = embed(q, self.dim)\n        dense = sorted(ids, key=lambda i:\n                       (-float(self.docs[i][2] @ qv), i))\n        lists = {\"dense\": [dense], \"lex\": [self._lexical(q, ids)],\n                 \"hybrid\": [dense, self._lexical(q, ids)]}[mode]\n        fused = {}\n        for lst in lists:\n            for r, i in enumerate(lst, 1):\n                fused[i] = fused.get(i, 0.0) + 1 / (self.rrf_k + r)\n        ranked = sorted(fused, key=lambda i: (-fused[i], i))\n        return ranked[:k]\n\n    def evaluate(self, queries, k=3, mode=\"hybrid\"):\n        rec, rr = [], []\n        for q, rel in queries:\n            got = self.search(q, k, mode=mode)\n            rec.append(len(set(got) & rel) / len(rel))\n            ranks = [r for r, i in enumerate(got, 1) if i in rel]\n            rr.append(1 / ranks[0] if ranks else 0.0)\n        return {\"recall@k\": float(np.mean(rec)),\n                \"mrr\": float(np.mean(rr))}",
+   "keyLines": [
+    31,
+    38,
+    47
+   ],
+   "dryRun": [
+    "$\\mathrm{recall}@k = \\frac{|\\mathrm{top}_k \\cap \\mathrm{rel}|}{|\\mathrm{rel}|}$",
+    "$\\mathrm{MRR} = \\frac{1}{|Q|}\\sum_{q} \\frac{1}{\\mathrm{rank}_q}$",
+    "$\\mathrm{RRF}(d) = \\sum \\frac{1}{k + \\mathrm{rank}(d)}$, $k = 60$",
+    "Both lists rank 1: $\\frac{2}{61} \\approx 0.0328$; one list: $\\frac{1}{61}$",
+    "Bucket: $\\mathrm{crc32}(t) \\;\\mathrm{mod}\\; d$",
+    "Collision chance for two terms: $\\frac{1}{d}$",
+    "Memory $\\approx N \\cdot d \\cdot 4$ bytes, 1.5 GB for 1M x 384"
+   ],
+   "description": "Product, document or help-centre search where queries mix natural language with exact identifiers, and where you want a measurable baseline before adding learned rerankers or approximate indexes.",
+   "examples": [
+    {
+     "input": "How do you decide whether hybrid search is worth its cost?",
+     "output": "Build a labelled query set that reflects real traffic, including exact-identifier queries, and compare dense, lexical and hybrid on recall@k and MRR. If hybrid gains on a meaningful share of queries without hurting the rest, the extra index and latency are justified.",
+     "explanation": ""
+    },
+    {
+     "input": "Why filter before ranking instead of after?",
+     "output": "Post-filtering a top-k list can leave fewer than k results and, for access control, risks leaking documents when a bug or shortfall occurs. Pre-filtering searches only the permitted set, so the guarantee holds by construction at the price of a less efficient approximate search.",
+     "explanation": ""
+    },
+    {
+     "input": "How would this scale from thousands to millions of documents?",
+     "output": "Replace the exhaustive scan with an approximate nearest-neighbour index tuned to a recall target such as 0.95 against exact search, and the term loop with an inverted index. Memory is about $N \\cdot d \\cdot 4$ bytes for float vectors, so quantisation or sharding enters when that exceeds one machine.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you handle updates and deletes?",
+     "output": "Treat the document store as the source of truth and apply each change to every index. Deletes need tombstones or removal in the vector index, and periodic rebuilds restore ANN quality. A test that a deleted document never appears in any mode guards the behaviour.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Embedding dimension $d$ (hash collisions fall as $1/d$)",
+    "RRF constant $k$, about 60, and the depth of each list fed into fusion",
+    "Result count $k$ and which metadata fields are filterable",
+    "Fusion mode: dense only, lexical only or hybrid, chosen by the evaluation set"
+   ],
+   "edgeCases": [
+    "Evaluating on queries you tuned on; keep a held-out labelled set and grow it from real queries",
+    "Filtering after ranking can return fewer than $k$ results or leak documents; filter first",
+    "Letting the index drift from the source: deletes and edits must reach every structure, and an ANN index may need a rebuild",
+    "Reading MRR over only the top $k$; a relevant document ranked below $k$ counts as a miss, so quote $k$ with every metric"
+   ],
+   "related": [
+    "hybrid-search-rrf",
+    "ann-vector-index",
+    "metadata-filtering"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "project-support-agent",
+   "title": "Project Blueprint: Customer Support Agent",
+   "platform": "LLM",
+   "url": "https://www.anthropic.com/engineering/building-effective-agents",
+   "difficulty": "Hard",
+   "topics": [
+    "LLM",
+    "Agents",
+    "Project",
+    "Tool Use",
+    "Safety"
+   ],
+   "patterns": [],
+   "summary": "Build a support agent that classifies intent with a confidence score, answers FAQs from a knowledge base with a cited source, looks up orders, requests refunds only after explicit confirmation, escalates to a human when unsure or when the customer is upset, and writes logs with personal data redacted.",
+   "bruteForce": "Open-ended or legally sensitive cases (disputes, medical or financial advice) where a human should lead, and flows with many interacting tools that need real planning rather than three fixed intents.",
+   "intuition": "The model is the cheap, fallible part, so the design puts hard rules around it. Retrieval grounds answers in the knowledge base, a permission gate makes the one risky tool (refund) a two-turn handshake, and an escalation path catches anything the classifier is unsure about. The main trade-off is the confidence threshold $\\tau$: a high $\\tau$ is safe but sends more tickets to humans, a low $\\tau$ automates more but lets wrong answers through. Redaction sits at the logging boundary so no code path can forget it. Flow: message → intent → answer, tool or escalate.",
+   "whyItWorks": "Each failure mode gets its own control. Wrong answers are limited by grounding in retrieved text and by escalating when confidence is below $\\tau$. Wrong actions are limited by the gate, which executes a refund only on a confirmed second turn, so a single model mistake cannot move money. Privacy is enforced where logs are written, which makes it independent of how the model behaves.",
+   "approach": [
+    "Write the knowledge base and a hashing embedder — retrieval returns the best entry with its id, so every answer carries a source",
+    "Build the classifier with a confidence $c = \\frac{\\text{best}}{\\text{total}}$ — an ambiguous or empty match gives low $c$ and routes to escalation",
+    "Register tools with a confirm-required set — the gate denies unknown tools and holds a refund until the customer says yes",
+    "Keep per-session state (pending action, transcript) — confirmation is a second turn that must refer to the first",
+    "Add escalation rules for low $c$, weak retrieval or an upset customer — the human gets the whole transcript",
+    "Redact emails and order ids in the logger and replay scripted dialogs — the tests lock the behaviour before any real model is used"
+   ],
+   "time": "O(K·d) per message for $K$ knowledge-base entries and embedding size $d$, plus one tool call",
+   "space": "O(K·d + T) for the embedded knowledge base and the $T$-turn transcript per session",
+   "solution": "import re, zlib\nimport numpy as np\n\nKB = {\"returns\": \"Returns are accepted within 30 days of delivery.\",\n      \"shipping\": \"Standard shipping takes 3 to 5 business days.\"}\nORDERS = {\"A100\": \"shipped\", \"B200\": \"processing\"}\nKEYS = {\"faq\": (\"return\", \"ship\", \"polic\"), \"order\": (\"order\",\n        \"status\", \"track\"), \"refund\": (\"refund\",)}\nUPSET = {\"furious\", \"angry\", \"unacceptable\", \"terrible\"}\nPII = [(re.compile(r\"[\\w.+-]+@[\\w-]+\\.\\w+\"), \"<EMAIL>\"),\n       (re.compile(r\"\\b[A-Z]\\d{3}\\b\"), \"<ORDER>\")]\n\ndef embed(t, d=64):\n    v = np.zeros(d)\n    for w in re.findall(r\"[a-z]+\", t.lower()):\n        v[zlib.crc32(w[:5].encode()) % d] += 1\n    return v / (np.linalg.norm(v) or 1)\n\ndef retrieve(q):\n    s = {k: float(embed(q) @ embed(v)) for k, v in KB.items()}\n    k = max(s, key=s.get)\n    return k, s[k]\n\ndef classify(msg):\n    w = re.findall(r\"[a-z]+\", msg.lower())\n    n = {i: sum(x.startswith(p) for x in w for p in ps)\n         for i, ps in KEYS.items()}\n    tot = sum(n.values())\n    best = max(n, key=n.get)\n    return best, (n[best] / tot if tot else 0.0)\n\nclass SupportAgent:\n    TOOLS = {\"lookup_order\": lambda a: ORDERS[a[\"id\"]],\n             \"request_refund\": lambda a: \"refund \" + a[\"id\"]}\n    CONFIRM = {\"request_refund\"}\n\n    def __init__(self, tau=0.6):\n        self.tau, self.logs, self.refunds = tau, [], []\n\n    def log(self, s):\n        for pat, tag in PII:\n            s = pat.sub(tag, s)\n        self.logs.append(s)\n\n    def call(self, name, args, ok=False):\n        if name not in self.TOOLS:\n            return \"denied: unknown tool\"\n        if name in self.CONFIRM and not ok:\n            return \"needs_confirmation\"\n        out = self.TOOLS[name](args)\n        if name == \"request_refund\":\n            self.refunds.append(args[\"id\"])\n        return out\n\n    def escalate(self, s, why):\n        self.log(\"escalate: \" + why)\n        return {\"action\": \"escalate\", \"why\": why,\n                \"transcript\": list(s[\"turns\"])}\n\n    def handle(self, s, msg):\n        s.setdefault(\"turns\", []).append(msg)\n        self.log(\"user: \" + msg)\n        if s.get(\"pending\"):\n            order, s[\"pending\"] = s[\"pending\"], None\n            if msg.lower().strip() in (\"yes\", \"confirm\"):\n                out = self.call(\"request_refund\", order, ok=True)\n                return {\"action\": \"tool\", \"text\": out}\n            return {\"action\": \"answer\", \"text\": \"Cancelled.\"}\n        if UPSET & set(re.findall(r\"[a-z]+\", msg.lower())):\n            return self.escalate(s, \"upset customer\")\n        intent, c = classify(msg)\n        m = re.search(r\"\\b[A-Z]\\d{3}\\b\", msg)\n        if c < self.tau or intent == \"faq\" and retrieve(msg)[1] < 0.1:\n            return self.escalate(s, \"low confidence\")\n        if intent == \"faq\":\n            k, _ = retrieve(msg)\n            return {\"action\": \"answer\", \"text\": KB[k], \"source\": k}\n        if m is None or m.group() not in ORDERS:\n            return self.escalate(s, \"no valid order id\")\n        args = {\"id\": m.group()}\n        if intent == \"order\":\n            return {\"action\": \"tool\",\n                    \"text\": self.call(\"lookup_order\", args)}\n        s[\"pending\"] = args\n        return {\"action\": \"confirm\",\n                \"text\": \"Refund \" + args[\"id\"] + \"? Say yes.\"}",
+   "keyLines": [
+    38,
+    43,
+    63
+   ],
+   "dryRun": [
+    "Confidence: $c = \\frac{\\mathrm{hits}_{best}}{\\mathrm{hits}_{all}}$",
+    "Escalate if $c < \\tau$, $\\cos < 0.1$ or upset",
+    "Rate: $e = P(c < \\tau) + P(\\mathrm{upset}) + P(\\mathrm{weak})$",
+    "Cost: $(1 - e)\\, c_{bot} + e\\, c_{human}$",
+    "Example: $0.75 \\cdot 0.02 + 0.25 \\cdot 4 = 1.015$",
+    "Human load $= e \\cdot N_{tickets}$ per day",
+    "Refund runs once: $|\\mathrm{refunds}| = 1$ per confirm"
+   ],
+   "description": "High-volume support with repetitive questions and a few well-defined actions, where a wrong answer is cheap to fix but a wrong refund is not. The structure also fits any agent with one risky tool.",
+   "examples": [
+    {
+     "input": "Why must a refund need confirmation if the classifier is confident?",
+     "output": "Confidence measures how well the message matches an intent, not whether the customer meant it or whether the action is safe. A refund is hard to undo, so the gate is a rule that does not depend on the model. A confirm turn also gives the customer a chance to catch a wrong order id.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you pick the confidence threshold?",
+     "output": "Label a sample of tickets, then sweep the threshold and plot the share automated against the error rate of those automated answers. Pick the point where the error rate is acceptable for the cost of a wrong answer, and re-check it as traffic changes. Risky intents can use a higher threshold than FAQs.",
+     "explanation": ""
+    },
+    {
+     "input": "What should the human receive on escalation?",
+     "output": "The full transcript, the detected intent and confidence, the reason for escalating and any pending action, so the customer does not repeat themselves. Redaction still applies to stored copies.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you test an agent whose model is non-deterministic?",
+     "output": "Replace the model with scripted stubs and test the surrounding logic with fixed dialogs: gate, state, escalation and logging. Then evaluate the real model separately on a labelled set for intent accuracy and task success.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Confidence threshold $\\tau$ for escalation, possibly per intent",
+    "Retrieval cutoff and the number of knowledge-base entries returned",
+    "Set of tools that need confirmation, and the allowed confirmation phrases",
+    "Upset-customer trigger (keyword list or sentiment score)"
+   ],
+   "edgeCases": [
+    "Treating any message after a refund request as confirmation; only an explicit yes should execute, and the pending action must expire",
+    "Redacting only the final reply while raw text leaks into logs, traces or error messages",
+    "A keyword classifier is crude: negations and typos produce confident wrong intents, so measure it on real tickets",
+    "Executing a retried or duplicated confirmation twice; refunds need an idempotency key, not just a UI check"
+   ],
+   "related": [
+    "function-calling-dispatch",
+    "agent-evaluation-safety",
+    "pii-redaction"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "prompt-injection-defense",
    "title": "Prompt Injection Defence in Depth",
    "platform": "LLM",
@@ -13360,6 +14601,35 @@
    "diagram": []
   },
   {
+   "slug": "publish-projects-on-github",
+   "title": "Publish Projects on GitHub",
+   "platform": "Programming",
+   "url": "https://docs.github.com/en/repositories/creating-and-managing-repositories/quickstart-for-repositories",
+   "difficulty": "Easy",
+   "topics": [
+    "Career",
+    "GitHub",
+    "Tooling"
+   ],
+   "patterns": [],
+   "summary": null,
+   "bruteForce": null,
+   "intuition": null,
+   "whyItWorks": null,
+   "approach": null,
+   "time": null,
+   "space": null,
+   "solution": null,
+   "keyLines": [],
+   "dryRun": [],
+   "description": null,
+   "examples": [],
+   "constraints": [],
+   "edgeCases": [],
+   "related": [],
+   "diagram": []
+  },
+  {
    "slug": "python-generators-functional",
    "title": "Generators and Functional Python for Data Pipelines",
    "platform": "Programming",
@@ -13436,6 +14706,35 @@
     "hyperparameter-search",
     "text-preprocessing-stemming"
    ],
+   "diagram": []
+  },
+  {
+   "slug": "python-interview-prep",
+   "title": "Master Python Interviews",
+   "platform": "Programming",
+   "url": "https://docs.python.org/3/tutorial/index.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Career",
+    "Python",
+    "Interviews"
+   ],
+   "patterns": [],
+   "summary": null,
+   "bruteForce": null,
+   "intuition": null,
+   "whyItWorks": null,
+   "approach": null,
+   "time": null,
+   "space": null,
+   "solution": null,
+   "keyLines": [],
+   "dryRun": [],
+   "description": null,
+   "examples": [],
+   "constraints": [],
+   "edgeCases": [],
+   "related": [],
    "diagram": []
   },
   {
@@ -14388,6 +15687,93 @@
     "llm-api-retries-rate-limits",
     "provider-fallback-router",
     "tracing-and-logging"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "reproducibility-seeds-determinism",
+   "title": "Reproducibility - Seeds, Determinism and Fingerprints",
+   "platform": "MLOps",
+   "url": "https://docs.pytorch.org/docs/2.15/notes/randomness.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Reproducibility",
+    "Random Seeds",
+    "Determinism",
+    "Experiment Hygiene"
+   ],
+   "patterns": [],
+   "summary": "Seed every random source, request deterministic kernels, and hash the config and data so a result is tied to its inputs; know why bitwise equality can still break and why robust is stronger than reproducible.",
+   "bruteForce": "Do not treat one fixed seed as evidence. Deterministic mode can slow kernels, and chasing bitwise equality across different GPUs or library versions is usually futile; compare metrics within a tolerance and across several seeds instead.",
+   "intuition": "A run is a function of code, data, config and every random draw. Fix all four and the same machine gives the same numbers, which is reproducible. The traps are hidden random sources (Python, NumPy, torch, each DataLoader worker) and floating point: addition is not associative, so a different reduction order, a GPU atomic add or another library version changes the last bits, and training can amplify that into a visibly different loss. Reproducible only says you can re-get one number; robust says the conclusion holds across seeds, and that needs several runs. Flow: seed all sources → deterministic kernels → hash config and data → rerun and compare.",
+   "whyItWorks": "A pseudo-random generator is a deterministic function of its seed, so the same seed replays the same draws. Floating-point addition rounds after every step, so $(a + b) + c \\neq a + (b + c)$ in general and the result depends on order. A canonical JSON dump with sorted keys maps equal configs to equal bytes, and SHA-256 maps different bytes to different digests with overwhelming probability.",
+   "approach": [
+    "Seed Python, NumPy and torch from one value — each library keeps its own generator, so one call is not enough",
+    "Pass a seeded generator and a worker seed function to the DataLoader — shuffle order and per-worker randomness become fixed",
+    "Enable deterministic algorithms — picks kernels with a fixed reduction order, or raises if none exists",
+    "Hash the config as canonical JSON and the data as bytes — a result is only comparable if the same hash produced it",
+    "Rerun with the same seed and compare the loss history — equality shows the pipeline is reproducible on this setup",
+    "Repeat over several seeds and compare the spread — a conclusion that survives seeds is robust, not just repeatable"
+   ],
+   "time": "O(1) to seed; hashing is O(n) in the bytes of the config or array; training cost is unchanged",
+   "space": "O(1) extra; the hash state is constant size",
+   "solution": "import hashlib, json, random\nimport numpy as np\nimport torch\n\ndef set_seed(seed):\n    random.seed(seed)\n    np.random.seed(seed)\n    torch.manual_seed(seed)\n    torch.use_deterministic_algorithms(True, warn_only=True)\n\ndef seed_worker(worker_id):\n    s = torch.initial_seed() % 2**32\n    random.seed(s)\n    np.random.seed(s)\n\ndef config_hash(cfg):\n    blob = json.dumps(cfg, sort_keys=True, separators=(\",\", \":\"))\n    return hashlib.sha256(blob.encode()).hexdigest()\n\ndef fingerprint(a):\n    a = np.ascontiguousarray(a)\n    h = hashlib.sha256()\n    h.update(f\"{a.dtype}{a.shape}\".encode())\n    h.update(a.tobytes())\n    return h.hexdigest()\n\ndef train(seed, steps=20, lr=0.1):\n    set_seed(seed)\n    X = torch.randn(64, 3)\n    y = X @ torch.tensor([1.0, -2.0, 0.5]) + 0.1 * torch.randn(64)\n    w = torch.randn(3, requires_grad=True)\n    hist = []\n    for _ in range(steps):\n        loss = ((X @ w - y) ** 2).mean()\n        loss.backward()\n        with torch.no_grad():\n            w -= lr * w.grad\n            w.grad.zero_()\n        hist.append(loss.item())\n    return hist",
+   "keyLines": [
+    8,
+    9,
+    17
+   ],
+   "dryRun": [
+    "$(a + b) + c \\neq a + (b + c)$ in floating point",
+    "$|\\mathrm{fl}(\\sum x_i) - \\sum x_i| \\leq (n-1)\\, u \\sum |x_i|$",
+    "Unit roundoff $u = 2^{-53}$ for float64",
+    "Seed spread $\\mathrm{SE} = \\frac{s}{\\sqrt{n}}$ over $n$ seeds",
+    "Credible gap if $|\\Delta| > 2\\,\\mathrm{SE}_{\\Delta}$"
+   ],
+   "description": "Any experiment you may compare, debug or publish: before a hyperparameter search, when a bug appears only sometimes, and when a reviewer must be able to regenerate a table.",
+   "examples": [
+    {
+     "input": "I set the seed but my runs still differ. Why?",
+     "output": "Common causes: an unseeded source (NumPy, Python, DataLoader workers), nondeterministic GPU kernels that use atomic adds, a different reduction order from thread or hardware changes, and different library versions. Floating-point addition is not associative, so order changes the last bits.",
+     "explanation": ""
+    },
+    {
+     "input": "Reproducible versus robust?",
+     "output": "Reproducible means the same code, data and seed give the same result. Robust means the conclusion holds across seeds and small perturbations. Report the mean and spread over several seeds, not one lucky run.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you tie a result to its inputs?",
+     "output": "Hash the config as canonical JSON (sorted keys, fixed separators) and hash the data bytes or file list, then store both with the metrics. Any change to a value changes the digest.",
+     "explanation": ""
+    },
+    {
+     "input": "Does torch.use_deterministic_algorithms guarantee identical results everywhere?",
+     "output": "No. It makes torch pick deterministic implementations or raise an error where none exists, which helps on one platform and release. The PyTorch notes say identical results are not guaranteed across releases, commits or platforms, and CPU and GPU can differ.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you seed DataLoader workers?",
+     "output": "Pass a seeded torch.Generator as the generator argument so the shuffle order is fixed, and a worker_init_fn that seeds NumPy and Python from torch.initial_seed() so per-worker augmentation is fixed.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Random seed, and the number of seeds per configuration",
+    "Deterministic mode on or off, and warn-only or error",
+    "Number of DataLoader workers (changes who draws what)",
+    "Tolerance used to compare runs, e.g. $10^{-6}$ relative"
+   ],
+   "edgeCases": [
+    "Seeding only torch while NumPy augmentation or Python shuffling keeps drawing fresh randomness",
+    "Expecting bitwise equality across different hardware, thread counts or library versions",
+    "Hashing a Python dict with str() or an unsorted dump, so equal configs give different hashes",
+    "Treating one seed as the result; a gap smaller than the seed spread is noise"
+   ],
+   "related": [
+    "experiment-tracking-runs",
+    "hyperparameter-search",
+    "pytorch-training-loop-anatomy"
    ],
    "diagram": []
   },
@@ -16306,6 +17692,94 @@
    "diagram": []
   },
   {
+   "slug": "sql-interview-patterns",
+   "title": "SQL Interview Patterns - Joins, Windows, Top-N, CTEs",
+   "platform": "Programming",
+   "url": "https://www.sqlite.org/windowfunctions.html",
+   "difficulty": "Medium",
+   "topics": [
+    "SQL",
+    "Window Functions",
+    "Joins",
+    "Data Wrangling"
+   ],
+   "patterns": [],
+   "summary": "The handful of SQL shapes that data and ML interviews repeat: group with HAVING, joins and the anti-join, the join fan-out trap, window functions, top-N per group, de-duplication and CTEs.",
+   "bruteForce": "Logic that needs loops, models or heavy string work; pull the rows out and use Python instead. Window functions over huge partitions are also costly, so filter and aggregate early.",
+   "intuition": "Every query is a pipeline over rows, and most mistakes are row-count mistakes. A join can multiply rows: a left join onto a table where a key matches $m$ rows returns $m$ rows for that key, so a $\\mathrm{SUM}$ taken after the join counts the parent value $m$ times. Aggregates collapse rows into one per group; window functions keep every row and add a value computed over its partition and order. Ranking with a window plus a filter in an outer query gives top-N per group and de-duplication. Flow: table → join → group or window → ranked result.",
+   "whyItWorks": "A left join emits one row per matching right row, or one row with NULLs when none match, so its size is $\\sum_k \\max(1, m_k)$ over left keys. Aggregating the right side to one row per key makes every $m_k \\leq 1$, restoring the original row count. $\\mathrm{ROW\\_NUMBER}$ numbers rows $1, 2, \\dots$ within a partition, so a filter on it keeps a fixed number of rows per group.",
+   "approach": [
+    "Filter groups with HAVING, rows with WHERE — WHERE runs before grouping, HAVING after the aggregate exists",
+    "Find unmatched rows with LEFT JOIN and a NULL test on the right key — the anti-join keeps exactly the left rows with no partner",
+    "Aggregate the many-side to one row per key before joining — otherwise duplicate keys multiply rows and inflate sums",
+    "Add $\\mathrm{ROW\\_NUMBER}$, $\\mathrm{RANK}$ or $\\mathrm{LAG}$ with PARTITION BY and ORDER BY — a value per row without collapsing rows",
+    "Wrap the window query in a CTE and filter on the rank — a window result cannot be filtered in the same SELECT",
+    "Pick $\\mathrm{ROW\\_NUMBER}$ for exactly one row per group, $\\mathrm{RANK}$ to keep ties — they differ only when ORDER BY values tie"
+   ],
+   "time": "O(n log n) for sort-based group, window and ranking steps; a hash or index join is about O(n + m) plus the output size",
+   "space": "O(n) for the sorted partitions plus the output rows",
+   "solution": "import sqlite3\n\nDB = sqlite3.connect(\":memory:\")\nDB.executescript(\"\"\"\nCREATE TABLE cust(id INT, name TEXT);\nCREATE TABLE orders(id INT, cust INT, amt INT, day INT);\nCREATE TABLE ship(order_id INT, carrier TEXT);\nINSERT INTO cust VALUES (1,'Ann'),(2,'Bob'),(3,'Cy'),(4,'Di');\nINSERT INTO orders VALUES (1,1,100,1),(2,1,50,2),(3,2,70,2),\n  (4,2,70,3),(5,3,30,4);\nINSERT INTO ship VALUES (1,'a'),(1,'b'),(2,'a'),(3,'a');\n\"\"\")\n\ndef run(q):\n    return DB.execute(q).fetchall()\n\nQ = {\n  \"having\": \"\"\"SELECT cust, SUM(amt) FROM orders\n    GROUP BY cust HAVING SUM(amt) > 60 ORDER BY cust\"\"\",\n  \"inner\": \"\"\"SELECT c.name, o.id FROM cust c\n    JOIN orders o ON o.cust = c.id ORDER BY o.id\"\"\",\n  \"anti\": \"\"\"SELECT c.name FROM cust c\n    LEFT JOIN orders o ON o.cust = c.id\n    WHERE o.id IS NULL\"\"\",\n  \"fanout\": \"\"\"SELECT SUM(o.amt) FROM orders o\n    LEFT JOIN ship s ON s.order_id = o.id\"\"\",\n  \"fanout_fixed\": \"\"\"SELECT SUM(o.amt) FROM orders o\n    LEFT JOIN (SELECT DISTINCT order_id FROM ship) s\n    ON s.order_id = o.id\"\"\",\n  \"windows\": \"\"\"SELECT id, cust, amt,\n    ROW_NUMBER() OVER (PARTITION BY cust ORDER BY amt DESC, id),\n    RANK() OVER (PARTITION BY cust ORDER BY amt DESC),\n    LAG(amt) OVER (PARTITION BY cust ORDER BY day),\n    SUM(amt) OVER (PARTITION BY cust ORDER BY day) FROM orders\n    ORDER BY id\"\"\",\n  \"top1\": \"\"\"WITH r AS (SELECT id, cust, amt,\n      ROW_NUMBER() OVER (PARTITION BY cust\n                         ORDER BY amt DESC, id) AS rn FROM orders)\n    SELECT id, cust, amt FROM r WHERE rn = 1 ORDER BY cust\"\"\",\n  \"dedup\": \"\"\"WITH r AS (SELECT order_id, carrier,\n      ROW_NUMBER() OVER (PARTITION BY order_id\n                         ORDER BY carrier) AS rn FROM ship)\n    SELECT order_id, carrier FROM r WHERE rn = 1\n    ORDER BY order_id\"\"\",\n}",
+   "keyLines": [
+    27,
+    31,
+    37
+   ],
+   "dryRun": [
+    "Inner join rows $= \\sum_k a_k b_k$",
+    "Left join rows $= \\sum_k a_k \\max(1, b_k)$",
+    "Fan-out: parent value counted $\\max(1, b_k)$ times",
+    "$\\mathrm{ROW\\_NUMBER}$ $1,2,3,4$ vs $\\mathrm{RANK}$ $1,1,3,4$ on a tie",
+    "$\\mathrm{LAG}(x)_i = x_{i-1}$, NULL at the first row",
+    "Running sum $S_i = \\sum_{j \\leq i} x_j$"
+   ],
+   "description": "Interview questions on tables of events, users or orders, and real feature extraction: counts per group, rows with no match, the latest or top row per group, previous-row deltas and running totals.",
+   "examples": [
+    {
+     "input": "Why did my SUM double after a join?",
+     "output": "The join key matched $m$ rows on the other side, so each parent row was repeated $m$ times and the sum counted it $m$ times. Aggregate the many-side to one row per key first, or sum before joining.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you find rows with no match?",
+     "output": "LEFT JOIN and keep rows where a right-side key IS NULL, or use NOT EXISTS. Avoid NOT IN when the subquery can return NULL, since it then matches nothing.",
+     "explanation": ""
+    },
+    {
+     "input": "ROW_NUMBER versus RANK on ties?",
+     "output": "$\\mathrm{ROW\\_NUMBER}$ gives every row a distinct number, breaking ties arbitrarily unless ORDER BY decides. $\\mathrm{RANK}$ gives tied rows the same rank and skips the next numbers, e.g. $1,1,3$.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you get the top-N rows per group?",
+     "output": "Compute $\\mathrm{ROW\\_NUMBER}$ or $\\mathrm{RANK}$ partitioned by the group and ordered by the score in a CTE or subquery, then filter on rank $\\leq N$ in the outer query.",
+     "explanation": ""
+    },
+    {
+     "input": "WHERE or HAVING?",
+     "output": "WHERE filters input rows before grouping and cannot use aggregates. HAVING filters groups after aggregation and can.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "PARTITION BY columns (the group for each window)",
+    "ORDER BY columns and a tie-breaker inside the window",
+    "N in top-N, and RANK versus ROW_NUMBER",
+    "Join type and join key uniqueness"
+   ],
+   "edgeCases": [
+    "Summing after a join onto a table with duplicate keys, which silently inflates totals",
+    "Using ROW_NUMBER with a non-unique ORDER BY, so the kept row can change between runs",
+    "Putting a filter on the right table in WHERE after a LEFT JOIN, which turns it into an inner join; put it in ON",
+    "Using NOT IN with a nullable column, which returns no rows if any value is NULL"
+   ],
+   "related": [
+    "pandas-groupby-merge-window",
+    "data-structures-algorithms",
+    "feature-engineering-encoding"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "state-graph-workflows",
    "title": "Agent Workflows as State Graphs",
    "platform": "LLM",
@@ -16715,6 +18189,35 @@
     "autoregressive-decoding",
     "top-k-top-p-sampling"
    ],
+   "diagram": []
+  },
+  {
+   "slug": "study-research-papers",
+   "title": "Study LLM Research Papers",
+   "platform": "Programming",
+   "url": "https://web.stanford.edu/class/ee384m/Handouts/HowtoReadPaper.pdf",
+   "difficulty": "Medium",
+   "topics": [
+    "Career",
+    "Research",
+    "Papers"
+   ],
+   "patterns": [],
+   "summary": null,
+   "bruteForce": null,
+   "intuition": null,
+   "whyItWorks": null,
+   "approach": null,
+   "time": null,
+   "space": null,
+   "solution": null,
+   "keyLines": [],
+   "dryRun": [],
+   "description": null,
+   "examples": [],
+   "constraints": [],
+   "edgeCases": [],
+   "related": [],
    "diagram": []
   },
   {
@@ -18369,6 +19872,34 @@
     "word2vec-skipgram"
    ],
    "diagram": []
+  },
+  {
+   "slug": "write-technical-articles",
+   "title": "Write Technical Articles",
+   "platform": "Programming",
+   "url": "https://developers.google.com/tech-writing",
+   "difficulty": "Easy",
+   "topics": [
+    "Career",
+    "Writing"
+   ],
+   "patterns": [],
+   "summary": null,
+   "bruteForce": null,
+   "intuition": null,
+   "whyItWorks": null,
+   "approach": null,
+   "time": null,
+   "space": null,
+   "solution": null,
+   "keyLines": [],
+   "dryRun": [],
+   "description": null,
+   "examples": [],
+   "constraints": [],
+   "edgeCases": [],
+   "related": [],
+   "diagram": []
   }
  ],
  "sheets": [
@@ -19433,6 +20964,121 @@
      "slug": "managed-vs-self-host-breakeven",
      "section": "19. LLMOps and production deployment",
      "order": 171
+    },
+    {
+     "slug": "project-chatbot-with-memory",
+     "section": "20. Real-world LLM projects",
+     "order": 172
+    },
+    {
+     "slug": "project-pdf-question-answering",
+     "section": "20. Real-world LLM projects",
+     "order": 173
+    },
+    {
+     "slug": "project-semantic-search-engine",
+     "section": "20. Real-world LLM projects",
+     "order": 174
+    },
+    {
+     "slug": "project-rag-knowledge-assistant",
+     "section": "20. Real-world LLM projects",
+     "order": 175
+    },
+    {
+     "slug": "project-code-assistant",
+     "section": "20. Real-world LLM projects",
+     "order": 176
+    },
+    {
+     "slug": "project-research-assistant",
+     "section": "20. Real-world LLM projects",
+     "order": 177
+    },
+    {
+     "slug": "project-support-agent",
+     "section": "20. Real-world LLM projects",
+     "order": 178
+    },
+    {
+     "slug": "project-multimodal-assistant",
+     "section": "20. Real-world LLM projects",
+     "order": 179
+    },
+    {
+     "slug": "project-domain-finetune",
+     "section": "20. Real-world LLM projects",
+     "order": 180
+    },
+    {
+     "slug": "project-multi-agent-research",
+     "section": "20. Real-world LLM projects",
+     "order": 181
+    },
+    {
+     "slug": "project-local-llm-platform",
+     "section": "20. Real-world LLM projects",
+     "order": 182
+    },
+    {
+     "slug": "project-llm-saas",
+     "section": "20. Real-world LLM projects",
+     "order": 183
+    },
+    {
+     "slug": "build-llm-portfolio",
+     "section": "21. Career and professional growth",
+     "order": 184
+    },
+    {
+     "slug": "publish-projects-on-github",
+     "section": "21. Career and professional growth",
+     "order": 185
+    },
+    {
+     "slug": "python-interview-prep",
+     "section": "21. Career and professional growth",
+     "order": 186
+    },
+    {
+     "slug": "sql-interview-patterns",
+     "section": "21. Career and professional growth",
+     "order": 187
+    },
+    {
+     "slug": "ai-system-design-capacity-estimation",
+     "section": "21. Career and professional growth",
+     "order": 188
+    },
+    {
+     "slug": "study-research-papers",
+     "section": "21. Career and professional growth",
+     "order": 189
+    },
+    {
+     "slug": "reproducibility-seeds-determinism",
+     "section": "21. Career and professional growth",
+     "order": 190
+    },
+    {
+     "slug": "contribute-to-open-source",
+     "section": "21. Career and professional growth",
+     "order": 191
+    },
+    {
+     "slug": "join-ai-communities",
+     "section": "21. Career and professional growth",
+     "order": 192
+    },
+    {
+     "slug": "write-technical-articles",
+     "section": "21. Career and professional growth",
+     "order": 193
+    },
+    {
+     "slug": "llm-engineer-interview-prep",
+     "section": "21. Career and professional growth",
+     "order": 194
     }
    ]
   },

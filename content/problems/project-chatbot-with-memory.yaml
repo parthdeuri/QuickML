@@ -1,0 +1,160 @@
+slug: project-chatbot-with-memory
+title: "Project Blueprint: Chatbot with Memory"
+url: https://arxiv.org/abs/2310.08560
+difficulty: Medium
+area: LLM
+topics: [LLM, Project, Chatbot, Memory, Context Window]
+summary: |
+  Build a chatbot that keeps its system prompt first, holds a short
+  recent window under a token budget $B$, folds dropped turns into a
+  running summary, and recalls stated facts later by similarity search.
+  The outcome is a bot that still answers a question about turn 1 after
+  the window has overflowed, with a prompt that never exceeds $B$.
+intuition: |
+  Two stores solve two different problems. The recent window keeps the
+  conversation coherent but is bounded, so old turns must leave it. A
+  summary keeps the gist at a few tokens, but it is lossy and exact
+  details vanish, so durable facts are written to a vector store when
+  they are said and retrieved by similarity when a later question needs
+  them. Each turn assembles the prompt in a fixed order: system prompt,
+  retrieved facts, summary, then recent turns. The main trade-off is the
+  split of $B$: more window gives fluent recent context, more facts and
+  summary give longer reach.
+  Flow: user turn → retrieve facts → trim window to budget → prompt → reply → store facts.
+approach:
+  - "Fix the prompt layout and token counter first — system prompt always first, and one counting rule makes the budget checkable"
+  - "Write a deterministic embedder and a scripted stub model — tests then run offline and repeat exactly"
+  - "Store facts from user turns as vectors — short-term trimming cannot lose what is already in the store"
+  - "On each turn retrieve the top-$k$ facts by cosine similarity above a threshold — only relevant facts spend budget"
+  - "Drop the oldest turns until the prompt fits $B$ and fold them into a capped summary — bounds cost and keeps the gist"
+  - "Test with a fact at turn 1 asked at turn 8, a budget assertion on every prompt and a summary check — proves memory, not just the window"
+code: |
+  import re
+  import zlib
+  import numpy as np
+
+  STOP = {"what", "is", "my", "the", "a", "of", "do", "you"}
+  FACT = re.compile(r"\bmy [a-z ]+ is [a-z0-9 ]+", re.I)
+
+  def toks(text):
+      return re.findall(r"[a-z0-9]+", text.lower())
+
+  def embed(text, dim=64):
+      v = np.zeros(dim)
+      for w in toks(text):
+          h = zlib.crc32(w.encode())
+          v[h % dim] += 1 if (h >> 16) & 1 else -1
+      n = np.linalg.norm(v)
+      return v / n if n else v
+
+  def count(text):
+      return len(text.split())
+
+  def stub_model(msgs):
+      q = set(toks(msgs[-1]["content"])) - STOP
+      best, top = "I do not know.", 0
+      for m in msgs[:-1]:
+          for line in m["content"].split(" | "):
+              f = FACT.search(line)
+              s = len(q & (set(toks(line)) - STOP)) if f else 0
+              if s > top:
+                  best, top = f.group(0), s
+      return best
+
+  class Chatbot:
+      def __init__(self, system, budget=40, k=2, thr=0.2):
+          self.system, self.budget, self.k, self.thr = (
+              system, budget, k, thr)
+          self.turns, self.summary = [], ""
+          self.facts, self.vecs = [], []
+
+      def recall(self, text):
+          if not self.facts:
+              return []
+          sims = np.stack(self.vecs) @ embed(text)
+          top = np.argsort(-sims, kind="stable")[:self.k]
+          return [self.facts[i] for i in top if sims[i] > self.thr]
+
+      def build(self, user_msg):
+          head = [{"role": "system", "content": self.system}]
+          mem = self.recall(user_msg)
+          if mem:
+              head.append({"role": "system",
+                           "content": "Facts: " + " | ".join(mem)})
+          while True:
+              s = self.summary
+              mid = [{"role": "system", "content": "Summary: " + s}]
+              msgs = head + (mid if s else []) + self.turns
+              used = sum(count(m["content"]) for m in msgs)
+              if used <= self.budget:
+                  return msgs
+              if len(self.turns) <= 1:
+                  if not s:
+                      return msgs
+                  self.summary = " ".join(s.split()[2:])
+                  continue
+              old = self.turns.pop(0)["content"].split()[:4]
+              s = (s + " " + " ".join(old)).split()[-20:]
+              self.summary = " ".join(s)
+
+      def respond(self, user_msg):
+          self.turns.append({"role": "user", "content": user_msg})
+          self.last_prompt = self.build(user_msg)
+          reply = stub_model(self.last_prompt)
+          self.turns.append({"role": "assistant", "content": reply})
+          if FACT.search(user_msg):
+              self.facts.append(user_msg)
+              self.vecs.append(embed(user_msg))
+          return reply
+key_lines: [45, 57, 75]
+time: "O(F·d) per turn to score $F$ stored facts of dimension $d$, plus O(T) to trim $T$ turns"
+space: "O(F·d) for the fact store; the live prompt holds at most $B$ tokens"
+when_to_use: |
+  Assistants whose conversations outgrow the context window, or that
+  must remember user preferences and stated facts across many turns or
+  sessions, at a cost per turn bounded by $B$.
+when_not_to_use: |
+  Short chats that fit in context, where retrieval only adds latency and
+  a chance of surfacing a wrong fact, or cases needing verbatim history
+  such as legal transcripts, where lossy summaries are unacceptable.
+why_it_works: |
+  The prompt size is bounded by construction, because turns are dropped
+  until the total is at most $B$, so cost per turn is constant instead of
+  growing with the conversation. Facts survive trimming because they are
+  copied to the store when stated, and cosine similarity on unit vectors
+  brings back the ones that share content with the new question. The
+  summary adds a small, capped amount of context about what was dropped.
+math:
+  - "t_sys + t_facts + t_sum + Σ t_recent ≤ B"
+  - "t_facts ≤ k · t_fact_max,   t_sum ≤ S"
+  - "Full history, n turns of u tokens: cost ≈ u · n(n+1)/2"
+  - "Capped prompt: cost ≤ n · B (n=100, u=40, B=600: 202000 vs 60000)"
+  - "Recall: cos(q, f) = e(q)·e(f) > θ, keep top-k by cos"
+  - "Turns kept ≈ (B − t_sys − t_facts − t_sum) / u"
+interview_qa:
+  - q: "How do you split the token budget between window, summary and facts?"
+    a: "Reserve the system prompt and output first, give facts a small fixed share of $k$ short items, cap the summary, and give the remainder to recent turns. Tune the split on conversations where the answer lies far back, and watch both recall of old facts and coherence of recent replies."
+  - q: "Why keep a fact store when there is already a summary?"
+    a: "A summary is lossy and gets worse when it is re-summarised, so specific values such as names, numbers and preferences disappear. A store keeps the exact text, and retrieval spends tokens on it only when the question is related."
+  - q: "How would you test that memory works and not just the window?"
+    a: "State a fact, push enough filler turns that it leaves the window, assert it is absent from the recent turns, then ask. A correct answer can then only come from retrieval. Also assert the prompt size bound on every turn."
+  - q: "What are the privacy implications of long-term memory?"
+    a: "Stored facts persist and may be personal, so store only what the user stated, scope memory per user, show and delete it on request, and avoid saving secrets."
+hyperparameters:
+  - "Token budget $B$ and its split between facts, summary and window"
+  - "Retrieval size $k$ and similarity threshold $\\theta$"
+  - "Summary cap $S$ and the summarisation method"
+  - "Which turns count as a durable fact (extraction rule)"
+pitfalls:
+  - "Counting words undercounts model tokens, so the real prompt can exceed the budget; use the model's own tokenizer in production"
+  - "If the newest turn alone exceeds $B$ this code keeps it anyway, so the bound needs a hard truncation for that case"
+  - "Hashing embeddings match only shared words and know nothing of paraphrase, so a trained embedding model is needed for real recall"
+  - "Stored facts can go stale or conflict (a changed preference); keep timestamps and prefer or replace the newest"
+related: [agent-memory, context-engineering, cosine-similarity-embeddings]
+math_tex:
+- '$t_{sys} + t_{facts} + t_{sum} + \sum t_{recent} \leq B$'
+- '$t_{facts} \leq k \cdot t_{fact}$, $t_{sum} \leq S$'
+- 'Full history: $\mathrm{cost} \approx u \cdot \frac{n(n+1)}{2}$'
+- 'Capped: $\mathrm{cost} \leq n B$ (200k vs 60k tokens)'
+- 'Recall: $e(q) \cdot e(f) > \theta$, keep top-$k$'
+- 'Turns kept $\approx \frac{B - t_{sys} - t_{facts} - t_{sum}}{u}$'

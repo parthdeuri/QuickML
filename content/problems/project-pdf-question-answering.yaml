@@ -1,0 +1,143 @@
+slug: project-pdf-question-answering
+title: "Project Blueprint: Question Answering over a PDF"
+url: https://arxiv.org/abs/2005.11401
+difficulty: Medium
+area: LLM
+topics: [LLM, Project, RAG, Question Answering, Citations]
+summary: |
+  Build a question-answering system over a document: clean each page,
+  chunk it with page metadata, embed and index the chunks, retrieve the
+  top-$k$ for a question, and answer with citations such as [p3]. The
+  outcome is an answerer that cites only chunks it retrieved and says
+  that it cannot answer when nothing in the document is similar enough.
+intuition: |
+  Grounding is the point: the model should answer from retrieved text,
+  and the reader should be able to check the page. That needs metadata
+  carried from ingestion to the answer, so every chunk keeps its page
+  and a stable id, and the prompt numbers its context with those ids.
+  Citations are then verified mechanically against the retrieved set, so
+  a made-up page is caught. Retrieval is also the gate: when even the
+  best chunk scores below a threshold $\theta$ the system abstains,
+  trading some missed answers for fewer confident wrong ones. The
+  threshold must sit between the best score of in-scope questions and of
+  out-of-scope ones. Real PDFs add a stage before all this, a parser for
+  text PDFs or OCR for scanned ones, because the text layer may be
+  missing or in the wrong reading order.
+  Flow: pages → clean → chunk with metadata → embed → top-k → numbered prompt → cited answer.
+approach:
+  - "Take pages as strings and clean them (rejoin hyphenated line breaks, collapse whitespace) — a parser or OCR would produce this input for a real PDF"
+  - "Chunk each page with overlap and keep page and id on every chunk — metadata is what makes citations possible"
+  - "Embed chunks once with a normalised hashing embedder — query and chunks share one space and search is a dot product"
+  - "Retrieve the top-$k$ and abstain if the best similarity is below $\\theta$ — the cheapest guard against answering out of scope"
+  - "Build a numbered-context prompt and call a stub model that answers from the best chunk and cites its page — the answer is tied to a source"
+  - "Verify every citation is among the retrieved chunks and measure recall@$k$ on a labelled set — the first is a guard, the second a regression test for retrieval"
+code: |
+  import re
+  import zlib
+  import numpy as np
+
+  STOP = {"the", "a", "an", "of", "is", "in", "to", "and", "what",
+          "who", "how", "does", "did", "was", "are", "for", "on",
+          "where", "will", "long", "do"}
+
+  def clean(text):
+      text = re.sub(r"-\s*\n\s*", "", text)
+      return re.sub(r"\s+", " ", text).strip()
+
+  def embed(text, dim=256):
+      v = np.zeros(dim)
+      for w in re.findall(r"[a-z0-9]+", text.lower()):
+          w = w[:-1] if len(w) > 3 and w.endswith("s") else w
+          if w not in STOP:
+              h = zlib.crc32(w.encode())
+              v[h % dim] += 1 if (h >> 16) & 1 else -1
+      n = np.linalg.norm(v)
+      return v / n if n else v
+
+  def ingest(pages, size=12, overlap=3):
+      index, step = [], size - overlap
+      for p, raw in enumerate(pages, 1):
+          words = clean(raw).split()
+          for i in range(0, max(len(words) - overlap, 1), step):
+              text = " ".join(words[i:i + size])
+              index.append({"id": len(index), "page": p, "text": text,
+                            "vec": embed(text)})
+      return index
+
+  def stub_model(prompt):
+      for line in prompt.splitlines():
+          m = re.match(r"\[(p\d+)\] (.*)", line)
+          if m:
+              return f"{m[2]} [{m[1]}]"
+      return "No context."
+
+  def answer(question, index, k=3, thr=0.25):
+      sims = np.array([c["vec"] @ embed(question) for c in index])
+      top = np.argsort(-sims, kind="stable")[:k]
+      got = [index[i] for i in top]
+      if sims[top[0]] < thr:
+          return {"answer": "Not found in the document.",
+                  "citations": [], "retrieved": [c["id"] for c in got],
+                  "abstained": True}
+      ctx = "\n".join(f"[p{c['page']}] {c['text']}" for c in got)
+      head = "Answer from the context only.\n"
+      prompt = f"{head}{ctx}\nQuestion: {question}"
+      ans = stub_model(prompt)
+      cites = re.findall(r"\[(p\d+)\]", ans)
+      ok = {f"p{c['page']}" for c in got}
+      assert set(cites) <= ok, "citation not in retrieved chunks"
+      return {"answer": ans, "citations": cites,
+              "retrieved": [c["id"] for c in got], "abstained": False}
+key_lines: [41, 44, 54]
+time: "O(N·d) per question to score $N$ chunks of dimension $d$ by brute force; ingestion is O(n) over $n$ words"
+space: "O(N·d) for the chunk embeddings plus the chunk text and metadata"
+when_to_use: |
+  Question answering over reports, manuals or papers that are too long
+  for the prompt or change often, where answers must point to a page so
+  a reader can check them.
+when_not_to_use: |
+  Short documents that fit in the prompt, scanned files without OCR, or
+  questions that need aggregation across the whole document (totals,
+  summaries), which top-$k$ retrieval of a few chunks cannot supply.
+why_it_works: |
+  With unit-length vectors the dot product equals cosine similarity, so
+  the nearest chunks to the question are the ones sharing the most
+  content with it. Page and id travel with each chunk, so the prompt
+  labels each piece of context and the answer can only cite labels that
+  were shown. Abstention works because in-scope questions have a
+  best-chunk score well above out-of-scope ones, so a threshold between
+  the two separates them.
+math:
+  - "chunks per page = ⌈(n − overlap) / (size − overlap)⌉"
+  - "index blow-up ≈ size / (size − overlap)  (12/9 = 1.33)"
+  - "cos(q, c) = e(q)·e(c) for unit vectors; abstain if max < θ"
+  - "recall@k = (1/|Q|) Σ_q 1[a gold chunk is in the top k]"
+  - "θ between max out-of-scope (0.18) and min in-scope (0.37) top score"
+  - "prompt tokens ≈ k · size + question + instruction"
+interview_qa:
+  - q: "How do you stop the model citing something that was not retrieved?"
+    a: "Number the context with chunk or page ids, then verify the cited ids against the retrieved set after generation and reject or regenerate on a mismatch. This checks the source exists, not that it supports the claim, so a faithfulness check is still needed."
+  - q: "How do you choose the abstention threshold?"
+    a: "Score a labelled set of in-scope and out-of-scope questions, plot the best-chunk similarity for each, and place $\\theta$ in the gap, leaning toward the side whose error costs more. Re-tune it when the embedder or chunking changes, since similarity scales differ."
+  - q: "What changes for real PDFs?"
+    a: "Text must be extracted first: a parser for digital PDFs, OCR for scans. Layout matters, since columns, headers, footers, tables and hyphenation corrupt the text, so clean it and chunk tables by their own units."
+  - q: "How do you evaluate the pipeline?"
+    a: "Separate retrieval from generation: recall@$k$ on labelled question and page pairs for the retriever, then faithfulness and answer relevance for the generated answer, as in a RAG evaluation."
+hyperparameters:
+  - "Chunk size and overlap"
+  - "Retrieval size $k$"
+  - "Abstention threshold $\\theta$"
+  - "Embedding model and dimension (a hashing stand-in here)"
+pitfalls:
+  - "Real PDFs need a parser or OCR first; this code starts from page strings, so extraction errors are not covered"
+  - "The hashing embedder matches shared words only (with crude plural stripping), so paraphrased questions can fall below the threshold and abstain wrongly"
+  - "A citation check proves the page was retrieved, not that the text supports the answer"
+  - "Chunks that cross a page break lose their page label; this code chunks per page, so facts spanning two pages can be cut"
+related: [document-chunking, rag-dense-retrieval, rag-evaluation-faithfulness]
+math_tex:
+- 'Chunks per page: $\lceil \frac{n - \mathrm{overlap}}{\mathrm{size} - \mathrm{overlap}} \rceil$'
+- 'Blow-up $\approx \frac{\mathrm{size}}{\mathrm{size} - \mathrm{overlap}} = 1.33$'
+- '$\cos(q,c) = e(q) \cdot e(c)$; abstain if $\max < \theta$'
+- 'Recall@$k$: $\frac{1}{|Q|}\sum_q \mathbb{1}[\mathrm{gold} \in \mathrm{top}\,k]$'
+- '$\theta$ between $0.18$ (out-of-scope) and $0.37$ (in-scope)'
+- 'Prompt: $k \cdot \mathrm{size} + t_q + t_{inst}$ tokens'

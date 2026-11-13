@@ -1,0 +1,127 @@
+slug: sql-interview-patterns
+title: SQL Interview Patterns - Joins, Windows, Top-N, CTEs
+url: https://www.sqlite.org/windowfunctions.html
+difficulty: Medium
+area: Programming
+topics: [SQL, Window Functions, Joins, Data Wrangling]
+summary: |
+  The handful of SQL shapes that data and ML interviews repeat: group
+  with HAVING, joins and the anti-join, the join fan-out trap, window
+  functions, top-N per group, de-duplication and CTEs.
+intuition: |
+  Every query is a pipeline over rows, and most mistakes are row-count
+  mistakes. A join can multiply rows: a left join onto a table where a
+  key matches $m$ rows returns $m$ rows for that key, so a $\mathrm{SUM}$
+  taken after the join counts the parent value $m$ times. Aggregates
+  collapse rows into one per group; window functions keep every row and
+  add a value computed over its partition and order. Ranking with a
+  window plus a filter in an outer query gives top-N per group and
+  de-duplication.
+  Flow: table → join → group or window → ranked result.
+approach:
+  - 'Filter groups with HAVING, rows with WHERE — WHERE runs before grouping, HAVING after the aggregate exists'
+  - 'Find unmatched rows with LEFT JOIN and a NULL test on the right key — the anti-join keeps exactly the left rows with no partner'
+  - 'Aggregate the many-side to one row per key before joining — otherwise duplicate keys multiply rows and inflate sums'
+  - 'Add $\mathrm{ROW\_NUMBER}$, $\mathrm{RANK}$ or $\mathrm{LAG}$ with PARTITION BY and ORDER BY — a value per row without collapsing rows'
+  - 'Wrap the window query in a CTE and filter on the rank — a window result cannot be filtered in the same SELECT'
+  - 'Pick $\mathrm{ROW\_NUMBER}$ for exactly one row per group, $\mathrm{RANK}$ to keep ties — they differ only when ORDER BY values tie'
+code: |
+  import sqlite3
+
+  DB = sqlite3.connect(":memory:")
+  DB.executescript("""
+  CREATE TABLE cust(id INT, name TEXT);
+  CREATE TABLE orders(id INT, cust INT, amt INT, day INT);
+  CREATE TABLE ship(order_id INT, carrier TEXT);
+  INSERT INTO cust VALUES (1,'Ann'),(2,'Bob'),(3,'Cy'),(4,'Di');
+  INSERT INTO orders VALUES (1,1,100,1),(2,1,50,2),(3,2,70,2),
+    (4,2,70,3),(5,3,30,4);
+  INSERT INTO ship VALUES (1,'a'),(1,'b'),(2,'a'),(3,'a');
+  """)
+
+  def run(q):
+      return DB.execute(q).fetchall()
+
+  Q = {
+    "having": """SELECT cust, SUM(amt) FROM orders
+      GROUP BY cust HAVING SUM(amt) > 60 ORDER BY cust""",
+    "inner": """SELECT c.name, o.id FROM cust c
+      JOIN orders o ON o.cust = c.id ORDER BY o.id""",
+    "anti": """SELECT c.name FROM cust c
+      LEFT JOIN orders o ON o.cust = c.id
+      WHERE o.id IS NULL""",
+    "fanout": """SELECT SUM(o.amt) FROM orders o
+      LEFT JOIN ship s ON s.order_id = o.id""",
+    "fanout_fixed": """SELECT SUM(o.amt) FROM orders o
+      LEFT JOIN (SELECT DISTINCT order_id FROM ship) s
+      ON s.order_id = o.id""",
+    "windows": """SELECT id, cust, amt,
+      ROW_NUMBER() OVER (PARTITION BY cust ORDER BY amt DESC, id),
+      RANK() OVER (PARTITION BY cust ORDER BY amt DESC),
+      LAG(amt) OVER (PARTITION BY cust ORDER BY day),
+      SUM(amt) OVER (PARTITION BY cust ORDER BY day) FROM orders
+      ORDER BY id""",
+    "top1": """WITH r AS (SELECT id, cust, amt,
+        ROW_NUMBER() OVER (PARTITION BY cust
+                           ORDER BY amt DESC, id) AS rn FROM orders)
+      SELECT id, cust, amt FROM r WHERE rn = 1 ORDER BY cust""",
+    "dedup": """WITH r AS (SELECT order_id, carrier,
+        ROW_NUMBER() OVER (PARTITION BY order_id
+                           ORDER BY carrier) AS rn FROM ship)
+      SELECT order_id, carrier FROM r WHERE rn = 1
+      ORDER BY order_id""",
+  }
+key_lines: [27, 31, 37]
+time: "O(n log n) for sort-based group, window and ranking steps; a hash or index join is about O(n + m) plus the output size"
+space: "O(n) for the sorted partitions plus the output rows"
+when_to_use: |
+  Interview questions on tables of events, users or orders, and real
+  feature extraction: counts per group, rows with no match, the latest
+  or top row per group, previous-row deltas and running totals.
+when_not_to_use: |
+  Logic that needs loops, models or heavy string work; pull the rows
+  out and use Python instead. Window functions over huge partitions are
+  also costly, so filter and aggregate early.
+why_it_works: |
+  A left join emits one row per matching right row, or one row with
+  NULLs when none match, so its size is $\sum_k \max(1, m_k)$ over left
+  keys. Aggregating the right side to one row per key makes every
+  $m_k \leq 1$, restoring the original row count. $\mathrm{ROW\_NUMBER}$
+  numbers rows $1, 2, \dots$ within a partition, so a filter on it keeps
+  a fixed number of rows per group.
+math:
+  - "Inner join rows = Σₖ aₖ · bₖ"
+  - "Left join rows = Σₖ aₖ · max(1, bₖ)"
+  - "Fan-out sum = Σₖ aₖ · max(1, bₖ) · value"
+  - "ROW_NUMBER: 1, 2, 3, 4 for tied values; RANK: 1, 1, 3, 4"
+  - "LAG(x) at row i = x at row i − 1, NULL at the first row"
+  - "Running sum Sᵢ = Σⱼ≤ᵢ xⱼ within a partition"
+math_tex:
+- 'Inner join rows $= \sum_k a_k b_k$'
+- 'Left join rows $= \sum_k a_k \max(1, b_k)$'
+- 'Fan-out: parent value counted $\max(1, b_k)$ times'
+- '$\mathrm{ROW\_NUMBER}$ $1,2,3,4$ vs $\mathrm{RANK}$ $1,1,3,4$ on a tie'
+- '$\mathrm{LAG}(x)_i = x_{i-1}$, NULL at the first row'
+- 'Running sum $S_i = \sum_{j \leq i} x_j$'
+interview_qa:
+  - q: "Why did my SUM double after a join?"
+    a: 'The join key matched $m$ rows on the other side, so each parent row was repeated $m$ times and the sum counted it $m$ times. Aggregate the many-side to one row per key first, or sum before joining.'
+  - q: "How do you find rows with no match?"
+    a: 'LEFT JOIN and keep rows where a right-side key IS NULL, or use NOT EXISTS. Avoid NOT IN when the subquery can return NULL, since it then matches nothing.'
+  - q: "ROW_NUMBER versus RANK on ties?"
+    a: '$\mathrm{ROW\_NUMBER}$ gives every row a distinct number, breaking ties arbitrarily unless ORDER BY decides. $\mathrm{RANK}$ gives tied rows the same rank and skips the next numbers, e.g. $1,1,3$.'
+  - q: "How do you get the top-N rows per group?"
+    a: 'Compute $\mathrm{ROW\_NUMBER}$ or $\mathrm{RANK}$ partitioned by the group and ordered by the score in a CTE or subquery, then filter on rank $\leq N$ in the outer query.'
+  - q: "WHERE or HAVING?"
+    a: 'WHERE filters input rows before grouping and cannot use aggregates. HAVING filters groups after aggregation and can.'
+hyperparameters:
+  - "PARTITION BY columns (the group for each window)"
+  - "ORDER BY columns and a tie-breaker inside the window"
+  - "N in top-N, and RANK versus ROW_NUMBER"
+  - "Join type and join key uniqueness"
+pitfalls:
+  - "Summing after a join onto a table with duplicate keys, which silently inflates totals"
+  - "Using ROW_NUMBER with a non-unique ORDER BY, so the kept row can change between runs"
+  - "Putting a filter on the right table in WHERE after a LEFT JOIN, which turns it into an inner join; put it in ON"
+  - "Using NOT IN with a nullable column, which returns no rows if any value is NULL"
+related: [pandas-groupby-merge-window, data-structures-algorithms, feature-engineering-encoding]

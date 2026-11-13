@@ -1,0 +1,151 @@
+slug: project-multimodal-assistant
+title: "Project Blueprint: Multimodal Assistant"
+url: https://arxiv.org/abs/2103.00020
+difficulty: Hard
+area: Vision
+topics: [Project Blueprint, Multimodal, Retrieval, Token Budget]
+summary: |
+  Build an assistant that accepts text, an image or both. A router picks
+  the path, a shared embedding space retrieves the matching image or
+  note, and a prompt builder counts image tokens as well as text tokens
+  so every request fits the context budget.
+intuition: |
+  The system is easy to get wrong because two different spaces matter.
+  Retrieval needs images and text in one embedding space, which is what
+  contrastive image-text training provides, so a text query can find an
+  image directly. Generation needs images as tokens, and an image costs
+  $N = (H/P)(W/P)$ patches, so a large image can eat the whole budget.
+  The main trade-off is spatial detail against context:
+  pooling $k \times k$ patches divides the cost by $k^2$, and the router
+  keeps text-only requests from paying for vision at all.
+  Flow: request → route → embed → retrieve → budgeted prompt → answer with citations.
+approach:
+  - "Write a stub image encoder and a text embedder into one hashed space — retrieval then works across modalities without a trained model"
+  - "Route each request as text, image or both — text-only requests skip the image path and its token cost"
+  - "Embed the query and rank the mixed gallery by cosine — one index serves images and notes"
+  - 'Count image tokens as $N/k^2$ after pooling — the prompt length is text tokens plus image tokens'
+  - "Pool the image harder, or reject it with a reason, when the total exceeds the budget — an oversize image must never silently truncate"
+  - "Answer from the retrieved items and cite their ids — a grounded answer can be checked against its sources"
+code: |
+  import zlib
+  import numpy as np
+
+  D, P = 64, 4
+  NAMES = ["tl", "tr", "bl", "br"]
+  ALIAS = {"sky": "tl_bright tr_bright", "sea": "bl_dark br_dark",
+           "night": "tl_dark tr_dark bl_dark br_dark",
+           "lamp": "tl_bright bl_bright tr_dark br_dark"}
+
+  def hvec(words):
+      v = np.zeros(D)
+      for w in words:
+          v[zlib.crc32(w.encode()) % D] += 1
+      n = np.linalg.norm(v)
+      return v / n if n else v
+
+  def n_patches(arr):
+      return (arr.shape[0] // P) * (arr.shape[1] // P)
+
+  class Assistant:
+      def __init__(self, items, budget=64):
+          self.items, self.budget = items, budget  # (id, kind, vec)
+
+      def embed_image(self, arr):
+          h, w = arr.shape
+          m = arr.reshape(2, h // 2, 2, w // 2).mean(axis=(1, 3))
+          lv = ["bright" if x > 0.5 else "dark" for x in m.ravel()]
+          return hvec([f"{n}_{l}" for n, l in zip(NAMES, lv)])
+
+      def embed_text(self, s):
+          ws = [ALIAS.get(w, w) for w in s.lower().split()]
+          return hvec(" ".join(ws).split())
+
+      def route(self, req):
+          t, i = bool(req.get("text")), req.get("image") is not None
+          return {(1, 0): "text", (0, 1): "image", (1, 1): "both"}.get(
+              (t, i), "empty")
+
+      def retrieve(self, req, k=1):
+          mode, q = self.route(req), 0
+          if mode in ("text", "both"):
+              q = q + self.embed_text(req["text"])
+          if mode in ("image", "both"):
+              q = q + self.embed_image(req["image"])
+          sc = [(float(v @ q), id_) for id_, _, v in self.items]
+          return [i for _, i in sorted(sc, reverse=True)[:k]]
+
+      def build_prompt(self, req):
+          nt = len((req.get("text") or "").split())
+          ni, pool, img = 0, 1, req.get("image")
+          if img is not None:
+              n, g = n_patches(img), img.shape[0] // P
+              for pool in (1, 2, 4):
+                  if g % pool == 0 and nt + n // pool**2 <= self.budget:
+                      ni = n // pool**2
+                      break
+              else:
+                  why = f"{n} patches need > {self.budget - nt} tokens"
+                  return {"ok": False, "reason": why}
+          return {"ok": True, "text_tokens": nt, "image_tokens": ni,
+                  "pool": pool, "total": nt + ni}
+
+      def answer(self, req):
+          p = self.build_prompt(req)
+          if not p["ok"]:
+              return p["reason"]
+          return "used " + ",".join(self.retrieve(req, 1))
+key_lines: [26, 45, 53]
+time: "O(G·D) to score a query against $G$ gallery items; the model then pays O((L + N/k²)²) in the total length"
+space: "O(G·D) for the index plus O((L + N/k²)·d) of KV cache per request"
+when_to_use: |
+  A product that mixes text and images, such as asking about a photo, a
+  screenshot or a diagram, with a fixed context window and a gallery or
+  notes store to ground the answers.
+when_not_to_use: |
+  Text-only products, where a vision path adds cost and failure modes,
+  and cases where one image embedding already solves the task, such as
+  plain image search with no generated answer.
+why_it_works: |
+  Retrieval and generation are decoupled. A shared space lets one
+  nearest-neighbour index serve every modality, and the prompt builder
+  turns an image into a known number of tokens, so the budget is a
+  checked arithmetic constraint rather than a hope. Pooling by $k$ cuts
+  the image cost by exactly $k^2$, giving a graceful way to fit.
+math:
+  - "N = (H/P)·(W/P) = 64 for H = W = 32, P = 4"
+  - "N′ = N/k², so 256 patches with k = 4 give 16 tokens"
+  - "Prompt tokens = L_text + N′ ≤ B  (budget B)"
+  - "Reject if L_text + N/k_max² > B: 1 + 1024/16 = 65 > 64"
+  - "Score = ⟨q, v⟩ with unit item vectors, q = e_text + e_image"
+  - "KV bytes per token = 2·layers·kv_heads·d_head·bytes"
+  - "Example: 2·32·8·128·2 = 131072 B, so 576 tokens ≈ 72 MiB"
+  - "Recall@k = queries with the right item in top k / queries"
+interview_qa:
+  - q: "Why must text and images share an embedding space for retrieval?"
+    a: "A text query can only be compared to an image vector if both live in one space. Contrastive training pulls matching pairs together there. Without it you need captions for every image and fall back to text search."
+  - q: "How do you stop images from blowing the context budget?"
+    a: 'Compute the token count before calling the model: $N/k^2$ for pooled patches. Pool harder, downscale or tile selectively, and if even the strongest pooling does not fit, reject with the numbers instead of truncating, since truncation can cut image tokens and break the request.'
+  - q: "When does routing save money, and what can go wrong?"
+    a: "Text-only requests skip the image encoder and its tokens, so they cost what they always did. The risk is a router that misclassifies, for example ignoring an attached image the question depends on, so log the route and test each branch."
+  - q: "How would you evaluate the system end to end?"
+    a: "Evaluate in parts. Measure retrieval with recall at $k$ on labelled text-to-image and image-to-note queries, answer faithfulness against the cited items, and the token and latency distribution. A single answer-quality score cannot tell a retrieval fault from a generation fault."
+hyperparameters:
+  - 'Patch size $P$ and pooling factor $k$ (tokens per image)'
+  - "Context budget for text plus image tokens"
+  - "Embedding dimension and top-$k$ retrieved items"
+  - "Router rules, and whether mixed queries sum or weight the two embeddings"
+pitfalls:
+  - "Counting only text tokens in the budget, so a single image overflows the context at serving time"
+  - "A hashing embedder collides: unrelated words can share a bucket, so retrieval tests need a margin, and real systems use a trained encoder"
+  - "Text and image embeddings from separately trained encoders do not share a space, so cross-modal scores are meaningless"
+  - "Pooling that does not divide the patch grid evenly silently drops edge patches, so check divisibility"
+related: [vlm-projector-image-tokens, multimodal-rag-fusion, clip-contrastive-loss]
+math_tex:
+- '$N = \frac{H}{P}\cdot\frac{W}{P}$, 64 for 32 by 32, $P=4$'
+- 'Pooled: $N^{\prime} = \frac{N}{k^2}$, so 256 gives 16 at $k=4$'
+- 'Prompt: $L_{text} + N^{\prime} \leq B$'
+- 'Reject if $L_{text} + \frac{N}{k_{max}^2} > B$: $1 + 64 > 64$'
+- 'Score: $\langle q, v\rangle$, $q = e_{text} + e_{img}$'
+- 'KV bytes per token: $2 \cdot \mathrm{layers} \cdot \mathrm{kv\_heads} \cdot d_{head} \cdot \mathrm{bytes}$'
+- 'Example: $2\cdot 32\cdot 8\cdot 128\cdot 2 = 131072$ B'
+- 'Recall: $\frac{\mathrm{queries\ hit\ in\ top\ k}}{\mathrm{queries}}$'

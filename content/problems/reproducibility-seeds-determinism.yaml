@@ -1,0 +1,122 @@
+slug: reproducibility-seeds-determinism
+title: Reproducibility - Seeds, Determinism and Fingerprints
+url: https://docs.pytorch.org/docs/2.15/notes/randomness.html
+difficulty: Medium
+area: MLOps
+topics: [Reproducibility, Random Seeds, Determinism, Experiment Hygiene]
+summary: |
+  Seed every random source, request deterministic kernels, and hash the
+  config and data so a result is tied to its inputs; know why bitwise
+  equality can still break and why robust is stronger than reproducible.
+intuition: |
+  A run is a function of code, data, config and every random draw. Fix
+  all four and the same machine gives the same numbers, which is
+  reproducible. The traps are hidden random sources (Python, NumPy,
+  torch, each DataLoader worker) and floating point: addition is not
+  associative, so a different reduction order, a GPU atomic add or
+  another library version changes the last bits, and training can
+  amplify that into a visibly different loss. Reproducible only says
+  you can re-get one number; robust says the conclusion holds across
+  seeds, and that needs several runs.
+  Flow: seed all sources → deterministic kernels → hash config and data → rerun and compare.
+approach:
+  - 'Seed Python, NumPy and torch from one value — each library keeps its own generator, so one call is not enough'
+  - 'Pass a seeded generator and a worker seed function to the DataLoader — shuffle order and per-worker randomness become fixed'
+  - 'Enable deterministic algorithms — picks kernels with a fixed reduction order, or raises if none exists'
+  - 'Hash the config as canonical JSON and the data as bytes — a result is only comparable if the same hash produced it'
+  - 'Rerun with the same seed and compare the loss history — equality shows the pipeline is reproducible on this setup'
+  - 'Repeat over several seeds and compare the spread — a conclusion that survives seeds is robust, not just repeatable'
+code: |
+  import hashlib, json, random
+  import numpy as np
+  import torch
+
+  def set_seed(seed):
+      random.seed(seed)
+      np.random.seed(seed)
+      torch.manual_seed(seed)
+      torch.use_deterministic_algorithms(True, warn_only=True)
+
+  def seed_worker(worker_id):
+      s = torch.initial_seed() % 2**32
+      random.seed(s)
+      np.random.seed(s)
+
+  def config_hash(cfg):
+      blob = json.dumps(cfg, sort_keys=True, separators=(",", ":"))
+      return hashlib.sha256(blob.encode()).hexdigest()
+
+  def fingerprint(a):
+      a = np.ascontiguousarray(a)
+      h = hashlib.sha256()
+      h.update(f"{a.dtype}{a.shape}".encode())
+      h.update(a.tobytes())
+      return h.hexdigest()
+
+  def train(seed, steps=20, lr=0.1):
+      set_seed(seed)
+      X = torch.randn(64, 3)
+      y = X @ torch.tensor([1.0, -2.0, 0.5]) + 0.1 * torch.randn(64)
+      w = torch.randn(3, requires_grad=True)
+      hist = []
+      for _ in range(steps):
+          loss = ((X @ w - y) ** 2).mean()
+          loss.backward()
+          with torch.no_grad():
+              w -= lr * w.grad
+              w.grad.zero_()
+          hist.append(loss.item())
+      return hist
+key_lines: [8, 9, 17]
+time: "O(1) to seed; hashing is O(n) in the bytes of the config or array; training cost is unchanged"
+space: "O(1) extra; the hash state is constant size"
+when_to_use: |
+  Any experiment you may compare, debug or publish: before a
+  hyperparameter search, when a bug appears only sometimes, and when a
+  reviewer must be able to regenerate a table.
+when_not_to_use: |
+  Do not treat one fixed seed as evidence. Deterministic mode can slow
+  kernels, and chasing bitwise equality across different GPUs or library
+  versions is usually futile; compare metrics within a tolerance and
+  across several seeds instead.
+why_it_works: |
+  A pseudo-random generator is a deterministic function of its seed, so
+  the same seed replays the same draws. Floating-point addition rounds
+  after every step, so $(a + b) + c \neq a + (b + c)$ in general and the
+  result depends on order. A canonical JSON dump with sorted keys maps
+  equal configs to equal bytes, and SHA-256 maps different bytes to
+  different digests with overwhelming probability.
+math:
+  - "(a + b) + c ≠ a + (b + c)  in floating point"
+  - "|fl(Σxᵢ) − Σxᵢ| ≤ (n − 1) · u · Σ|xᵢ|,   u = 2⁻⁵³"
+  - "Hash = SHA-256( canonical JSON with sorted keys )"
+  - "Seed spread: SE = s / √n over n seeds"
+  - "Mean of runs differs from one run by about 2 · SE"
+math_tex:
+- '$(a + b) + c \neq a + (b + c)$ in floating point'
+- '$|\mathrm{fl}(\sum x_i) - \sum x_i| \leq (n-1)\, u \sum |x_i|$'
+- 'Unit roundoff $u = 2^{-53}$ for float64'
+- 'Seed spread $\mathrm{SE} = \frac{s}{\sqrt{n}}$ over $n$ seeds'
+- 'Credible gap if $|\Delta| > 2\,\mathrm{SE}_{\Delta}$'
+interview_qa:
+  - q: "I set the seed but my runs still differ. Why?"
+    a: 'Common causes: an unseeded source (NumPy, Python, DataLoader workers), nondeterministic GPU kernels that use atomic adds, a different reduction order from thread or hardware changes, and different library versions. Floating-point addition is not associative, so order changes the last bits.'
+  - q: "Reproducible versus robust?"
+    a: 'Reproducible means the same code, data and seed give the same result. Robust means the conclusion holds across seeds and small perturbations. Report the mean and spread over several seeds, not one lucky run.'
+  - q: "How do you tie a result to its inputs?"
+    a: 'Hash the config as canonical JSON (sorted keys, fixed separators) and hash the data bytes or file list, then store both with the metrics. Any change to a value changes the digest.'
+  - q: "Does torch.use_deterministic_algorithms guarantee identical results everywhere?"
+    a: 'No. It makes torch pick deterministic implementations or raise an error where none exists, which helps on one platform and release. The PyTorch notes say identical results are not guaranteed across releases, commits or platforms, and CPU and GPU can differ.'
+  - q: "How do you seed DataLoader workers?"
+    a: 'Pass a seeded torch.Generator as the generator argument so the shuffle order is fixed, and a worker_init_fn that seeds NumPy and Python from torch.initial_seed() so per-worker augmentation is fixed.'
+hyperparameters:
+  - 'Random seed, and the number of seeds per configuration'
+  - 'Deterministic mode on or off, and warn-only or error'
+  - 'Number of DataLoader workers (changes who draws what)'
+  - 'Tolerance used to compare runs, e.g. $10^{-6}$ relative'
+pitfalls:
+  - 'Seeding only torch while NumPy augmentation or Python shuffling keeps drawing fresh randomness'
+  - 'Expecting bitwise equality across different hardware, thread counts or library versions'
+  - 'Hashing a Python dict with str() or an unsorted dump, so equal configs give different hashes'
+  - 'Treating one seed as the result; a gap smaller than the seed spread is noise'
+related: [experiment-tracking-runs, hyperparameter-search, pytorch-training-loop-anatomy]

@@ -211,3 +211,30 @@ sections:
   - experiment-tracking-runs
   - model-serving-api-contract
   - managed-vs-self-host-breakeven
+- name: 20. Real-world LLM projects
+  problems:
+  - project-chatbot-with-memory
+  - project-pdf-question-answering
+  - project-semantic-search-engine
+  - project-rag-knowledge-assistant
+  - project-code-assistant
+  - project-research-assistant
+  - project-support-agent
+  - project-multimodal-assistant
+  - project-domain-finetune
+  - project-multi-agent-research
+  - project-local-llm-platform
+  - project-llm-saas
+- name: 21. Career and professional growth
+  problems:
+  - build-llm-portfolio
+  - publish-projects-on-github
+  - python-interview-prep
+  - sql-interview-patterns
+  - ai-system-design-capacity-estimation
+  - study-research-papers
+  - reproducibility-seeds-determinism
+  - contribute-to-open-source
+  - join-ai-communities
+  - write-technical-articles
+  - llm-engineer-interview-prep

@@ -1,0 +1,144 @@
+slug: project-multi-agent-research
+title: "Project Blueprint: Multi-Agent Research Report"
+url: https://arxiv.org/abs/2308.00352
+difficulty: Hard
+area: LLM
+topics: [LLM, Agents, Multi-Agent, Project, Evaluation]
+summary: |
+  Build a planner, researcher, critic and writer that produce a cited
+  report on a topic from a small corpus. The planner splits the topic
+  into sections, researchers draft them, the critic rejects uncited
+  drafts once, the writer assembles the report, and a score measures
+  how many sections carry a valid citation.
+intuition: |
+  Roles pay off when each one has a narrow job that can be checked. The
+  critic enforces one concrete rule (a section must cite a document
+  that exists), so quality becomes a loop with a measurable exit rather
+  than a hope. The roles do not talk to each other; they read and write
+  a shared blackboard, which keeps hand-offs inspectable and makes cost
+  easy to count. The trade-off is cost: every extra role call adds
+  tokens, so a revision cap and a turn limit bound the spend, and the
+  finished report is scored on its own instead of trusting the loop.
+  Flow: topic → plan → research → critique → revise once → write → score.
+approach:
+  - "Define the blackboard and a single call wrapper — every role call is logged with its prompt, output and token count, so cost and turns come from one place"
+  - "Write the planner to return the section list — fixed sections make the later citation check well defined"
+  - "Write the researcher to pick the best corpus document and cite its id — grounding in retrieved text is what the critic can verify"
+  - "Write the critic to reject a draft with no valid citation — allow exactly one revision per section so the loop always ends"
+  - "Write the writer to assemble accepted sections in plan order — assembly is a separate role so it can fail or be limited on its own"
+  - "Add the turn limit and $\\mathrm{coverage}$ score, then replay the run — the limit returns a reason instead of a partial report passed off as complete"
+code: |
+  import re
+
+  def count(x):
+      if isinstance(x, str):
+          return len(x.split())
+      xs = x.values() if isinstance(x, dict) else x
+      return sum(count(i) for i in xs)
+
+  def call(board, role, prompt, fn):
+      if len(board["calls"]) >= board["max_turns"]:
+          board["stop"] = "max_turns"
+          return None
+      out = fn()
+      board["calls"].append((role, prompt, out))
+      board["tokens"] += count(prompt) + count(out)
+      return out
+
+  def planner(topic):
+      return [topic + " " + k for k in ("definition", "benefits",
+                                        "risks")]
+
+  def researcher(section, corpus, attempt):
+      w = set(section.lower().split())
+      ids = sorted(corpus)
+      best = max(ids, key=lambda i: len(w & set(corpus[i].split())))
+      flaky = section.endswith("risks") and attempt == 0
+      return corpus[best] + ("" if flaky else " [" + best + "]")
+
+  def critic(draft, corpus):
+      cites = re.findall(r"\[(\w+)\]", draft)
+      ok = bool(cites) and all(c in corpus for c in cites)
+      return "accept" if ok else "reject: add a valid citation"
+
+  def run_project(topic, corpus, max_turns):
+      b = {"calls": [], "tokens": 0, "stop": None,
+           "max_turns": max_turns, "drafts": {}}
+      plan = call(b, "planner", "plan " + topic, lambda: planner(topic))
+      for sec in plan or []:
+          for attempt in (0, 1):
+              p = "research %s try %d" % (sec, attempt)
+              d = call(b, "researcher", p,
+                       lambda: researcher(sec, corpus, attempt))
+              if d is None:
+                  break
+              b["drafts"][sec] = d
+              v = call(b, "critic", d, lambda: critic(d, corpus))
+              if v is None or v == "accept":
+                  break
+          if b["stop"]:
+              break
+      if b["stop"]:
+          return {"report": None, "reason": b["stop"], "board": b}
+      body = [{"title": s, "body": b["drafts"][s]} for s in plan]
+      rep = call(b, "writer", "write " + topic, lambda: body)
+      return {"report": rep, "reason": b["stop"] or "done", "board": b}
+
+  def report_score(report, corpus):
+      cite = lambda s: re.findall(r"\[(\w+)\]", s["body"])
+      ok = [any(c in corpus for c in cite(s)) for s in report]
+      return sum(ok) / len(ok)
+key_lines: [11, 15, 31]
+time: "O(S) role calls for $S$ sections, at most $2 + 4S$ turns, each costing one model call"
+space: "O(T) for the blackboard holding $T$ logged turns and the drafts"
+when_to_use: |
+  Report-style tasks that split into independent parts with a checkable
+  quality rule, such as cited summaries, comparison tables or audits,
+  where a bounded review loop is cheaper than a human edit pass.
+when_not_to_use: |
+  Short or tightly coupled tasks where one prompt suffices, and tasks
+  with no verifiable rule for the critic. Extra roles then add cost and
+  failure modes without raising quality.
+why_it_works: |
+  The critic turns a vague goal (a well sourced report) into a rule
+  that can be checked on each section, and the revision cap makes the
+  loop terminate. Because roles communicate only through the
+  blackboard, each hand-off can be logged, replayed and costed, and the
+  coverage score checks the final artifact independently of the loop's
+  own opinion of it.
+math:
+  - "Turns T = 1 + Σ_s (1 + r_s)·2 + 1 = 2 + 2S + 2R"
+  - "R = total revisions, at most one per section, so R ≤ S"
+  - "Expected turns with rejection rate p: 2 + 2S(1 + p)"
+  - "Example: S = 3, p = 1/3 → 2 + 6 · 4/3 = 10 turns"
+  - "Token cost = Σ over calls (prompt tokens + output tokens)"
+  - "Coverage = (sections with ≥ 1 valid citation) / S"
+  - "Budget check: stop when turns = max_turns, report reason"
+interview_qa:
+  - q: "Why a blackboard instead of agents messaging each other?"
+    a: "A shared store gives one place to inspect, replay and cost every hand-off, and roles stay decoupled so one can be swapped or limited without touching the rest. Direct messaging can be faster for tightly coupled work but is harder to audit."
+  - q: "Why allow only one revision per section?"
+    a: "Each revision costs a researcher call and a critic call, and an unbounded loop can chase a rule the corpus cannot satisfy. One revision catches the common fixable failure, and sections that still fail show up in the coverage score for a human to look at."
+  - q: "How do you evaluate the finished report?"
+    a: "Score it separately from the loop. Citation coverage is cheap and checks the critic's rule, but it does not show that claims are supported, so add a faithfulness check and a human-labelled sample for quality."
+  - q: "When does adding agents hurt?"
+    a: "When roles repeat context in every prompt, token cost grows with each added role and turn, and errors can compound across hand-offs. Add a role only when it has a checkable job that a single prompt does not do reliably."
+hyperparameters:
+  - "Turn limit $\\mathrm{max\\_turns}$ and per-section revision cap"
+  - "Number and granularity of planned sections $S$"
+  - "Critic rule strictness (any valid citation versus every claim cited)"
+  - "Number of retrieved documents given to each researcher"
+pitfalls:
+  - "A critic that only checks that a citation exists accepts irrelevant or fabricated support; verify the cited text actually backs the claim"
+  - "Stopping at the turn limit and still publishing the partial draft hides the failure; return the reason and no report"
+  - "Counting tokens from outputs only undercounts: prompts, which repeat shared context, usually dominate cost"
+  - "Letting roles read the whole blackboard each turn grows prompts with every turn; pass only the fields a role needs"
+related: [multi-agent-orchestration, planning-decomposition, reflection-self-correction]
+math_tex:
+- '$T = 2 + 2S + 2R$ for $S$ sections, $R$ revisions'
+- '$R \leq S$: one revision per section at most'
+- 'Expected turns: $2 + 2S(1 + p)$'
+- 'Example: $2 + 6 \cdot \frac{4}{3} = 10$ turns'
+- 'Cost: $\sum_{calls} (\mathrm{in} + \mathrm{out})$ tokens'
+- 'Coverage: $\frac{\mathrm{cited\ sections}}{S}$'
+- 'Stop when $T = \mathrm{max\_turns}$ and report why'

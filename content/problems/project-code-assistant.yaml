@@ -1,0 +1,156 @@
+slug: project-code-assistant
+title: "Project Blueprint: Code Question-Answering Assistant"
+url: https://docs.python.org/3/library/ast.html
+difficulty: Hard
+area: LLM
+topics: [LLM, Project, Code Search, RAG, Guardrails]
+summary: |
+  Build an assistant that answers questions about a small Python
+  repository and suggests code. It parses sources with the standard
+  library, indexes whole functions and classes, packs the best chunks
+  into a token budget, and checks every suggestion before showing it.
+intuition: |
+  Code has structure that fixed windows destroy: a window can cut a
+  function in half and splits a signature from its docstring. Chunking
+  at function and class boundaries keeps each unit self-contained and
+  gives it a name, a path and a line span to cite. The main trade-off
+  is precision against coverage: exact identifier matches find the
+  right symbol cheaply, embeddings rescue vague questions, and the
+  budget decides whether you show many signatures or a few full
+  bodies. The model's output is untrusted, so it is parsed and scanned
+  but never executed by the assistant.
+  Flow: source files → function chunks → retrieve → packed context → checked suggestion.
+approach:
+  - "Parse each file with the ast module — syntax errors surface early and nodes carry exact line spans"
+  - "Chunk per top-level function and class with name, docstring, path and span — units stay whole and citable"
+  - "Index names and docstrings with a hashing embedding — gives a symbol lookup plus a fuzzy fallback"
+  - "Retrieve by identifier overlap plus cosine similarity — exact names should outrank vague similarity"
+  - "Pack signatures and first docstring lines first, then bodies while the $B$ token budget allows — breadth before depth"
+  - "Check each suggestion with ast.parse and a call allow-list scan before display — generated code is never executed here"
+code: |
+  import ast, re, zlib
+  import numpy as np
+
+  DANGER = {"eval", "exec", "compile", "__import__", "os.system",
+            "subprocess.run", "subprocess.Popen"}
+
+  def toks(s):
+      return re.findall(r"[a-z0-9]+", s.lower().replace("_", " "))
+
+  def embed(s, d=64):
+      v = np.zeros(d)
+      for t in toks(s):
+          v[zlib.crc32(t.encode()) % d] += 1
+      return v / (np.linalg.norm(v) or 1)
+
+  def chunk_source(path, text):
+      lines, out = text.splitlines(), []
+      for n in ast.parse(text).body:
+          if isinstance(n, (ast.FunctionDef, ast.ClassDef)):
+              a, b = n.lineno, n.end_lineno
+              out.append({"name": n.name, "path": path, "start": a,
+                          "end": b, "sig": lines[a - 1].strip(),
+                          "doc": ast.get_docstring(n) or "",
+                          "body": "\n".join(lines[a - 1:b])})
+      return out
+
+  def index(chunks):
+      vecs = [embed(c["name"] + " " + c["doc"]) for c in chunks]
+      return {"chunks": chunks, "vecs": np.stack(vecs)}
+
+  def retrieve(idx, question, k):
+      q, sims = set(toks(question)), idx["vecs"] @ embed(question)
+      score = [3 * len(q & set(toks(c["name"])))
+               + len(q & set(toks(c["doc"]))) + s
+               for c, s in zip(idx["chunks"], sims)]
+      top = np.argsort(score)[::-1][:k]
+      return [idx["chunks"][i] for i in top]
+
+  def cost(s):
+      return len(s.split())
+
+  def pack(chunks, budget):
+      heads = [c["sig"] + " " + c["doc"].split("\n")[0]
+               for c in chunks]
+      used, keep = 0, [None] * len(chunks)
+      for i, h in enumerate(heads):          # signatures first
+          if used + cost(h) <= budget:
+              used += cost(h); keep[i] = h
+      for i, c in enumerate(chunks):         # bodies if room
+          extra = cost(c["body"]) - cost(heads[i])
+          if keep[i] and extra > 0 and used + extra <= budget:
+              used += extra; keep[i] = c["body"]
+      return [k for k in keep if k], used
+
+  def check_suggestion(code):
+      try:
+          tree = ast.parse(code)
+      except SyntaxError as e:
+          return False, ["syntax error on line %d" % e.lineno]
+      bad = []
+      for n in ast.walk(tree):
+          if isinstance(n, ast.Call):
+              f, parts = n.func, []
+              while isinstance(f, ast.Attribute):
+                  parts.append(f.attr); f = f.value
+              if isinstance(f, ast.Name):
+                  name = ".".join([f.id] + parts[::-1])
+                  if name in DANGER:
+                      bad.append("%s on line %d" % (name, n.lineno))
+      return not bad, bad
+key_lines: [33, 51, 62]
+time: "Indexing is O(n) in source size; retrieval is O(m·d) for $m$ chunks and embedding size $d$; packing is O(m)"
+space: "O(m·d) for the chunk embeddings plus the chunk texts"
+when_to_use: |
+  Answering questions about a codebase small enough to index whole,
+  such as one service or library, where answers should point at a
+  file and line range and suggestions must be screened before use.
+when_not_to_use: |
+  Cross-file reasoning that needs a call graph or type information, or
+  repositories in languages the parser does not handle. Static checks
+  do not prove a suggestion is correct or safe; they only catch
+  syntax errors and obvious dangerous calls.
+why_it_works: |
+  A syntax tree gives exact node boundaries, so each chunk is a
+  complete unit and its line span is the node's own span rather than a
+  guess. Identifier overlap is a high-precision signal for code
+  questions because users name the symbols they care about, while
+  embeddings add recall when they do not. Spending the budget on
+  signatures first maximises the number of symbols the model sees
+  before it spends tokens on bodies.
+math:
+  - "Context budget: B = window − system − question − output reserve"
+  - "Score(c) = 3·|names ∩ q| + |doc words ∩ q| + cos(e(c), e(q))"
+  - "Packing cost: Σ cost(selected text) ≤ B for every selection"
+  - "Chunks per file = number of top-level functions and classes"
+  - "Retrieval recall@k = |relevant ∩ top-k| / |relevant|"
+  - "Hash collision chance per word pair = 1/d for d buckets"
+interview_qa:
+  - q: "Why chunk by function rather than by fixed token windows?"
+    a: "A fixed window cuts through functions, separating a signature from its body and mixing unrelated code. A function or class is the natural unit of meaning, carries its own name, docstring and line span for citation, and keeps embeddings coherent. The cost is uneven chunk sizes, so very long functions may still need to be split and short ones merged."
+  - q: "Why combine identifier overlap with embeddings?"
+    a: "Code questions often contain the exact symbol name, and lexical matching finds it precisely and cheaply, where embeddings of short names are noisy. Embeddings help when the question describes behaviour in other words. Weighting names above docstring words above similarity lets exact hits win while keeping a fuzzy fallback."
+  - q: "The model suggests code. Why not just run it to test it?"
+    a: "Generated code is untrusted input, and executing it inside the assistant would hand it your process, files and credentials. The assistant only parses it and scans for dangerous calls. Real execution belongs in a separate sandbox with no network, resource limits and a disposable filesystem."
+  - q: "What are the limits of an allow-list or deny-list scan?"
+    a: "It is a cheap first filter, not a security boundary. Code can reach the same functions through aliases, getattr, string building or imports the scan does not model. Treat it as a way to flag the obvious cases, and enforce real safety with sandboxing and review."
+  - q: "How do you evaluate this assistant?"
+    a: "Build questions with known answer symbols and measure recall at k for retrieval, then measure answer faithfulness to the packed context and the fraction of suggestions that pass the checks and the repository tests. Separating retrieval from generation shows which half to fix."
+hyperparameters:
+  - "Chunk granularity (functions and classes only, or also methods and module headers)"
+  - "Retrieval weights for names, docstrings and embedding similarity, and the number of chunks $k$"
+  - "Token budget $B$ and the rule for choosing signatures versus bodies"
+  - "Allow-list or deny-list contents for the suggestion check"
+pitfalls:
+  - "Chunking only top-level definitions hides methods and module-level constants, so questions about them find nothing"
+  - "Line spans go stale after edits; re-index changed files and store a content hash so citations stay correct"
+  - "Whitespace word counts stand in for tokens; use the real tokenizer or leave a safety margin under $B$"
+  - "A syntax and call scan passes code that is wrong or unsafe in subtler ways; never execute suggestions outside a sandbox"
+related: [document-chunking, context-engineering, output-validation-guardrails]
+math_tex:
+- 'Budget: $B = W - s - q - r$ (window, system, question, reserve)'
+- 'Score: $3\,|N \cap q| + |D \cap q| + \cos(e_c, e_q)$'
+- 'Packing: $\sum_{i \in S} \mathrm{cost}(t_i) \leq B$'
+- 'Chunks per file $=$ top-level defs and classes'
+- 'Recall: $\frac{|\mathrm{relevant} \cap \mathrm{top}_k|}{|\mathrm{relevant}|}$'
+- 'Collision chance per word pair $= \frac{1}{d}$'

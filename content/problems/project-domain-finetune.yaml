@@ -1,0 +1,134 @@
+slug: project-domain-finetune
+title: "Project Blueprint: Domain Fine-Tune Plan and Release Gate"
+url: https://huggingface.co/docs/trl/sft_trainer
+difficulty: Hard
+area: LLM
+topics: [Project Blueprint, Fine-Tuning, Evaluation, Release Gate]
+summary: |
+  Plan a domain fine-tune as code before spending GPU time. Curate and
+  split the data, format chat examples with a response-only loss mask,
+  check the step count and memory fit, and end with a release gate that
+  returns ship or hold together with the reasons.
+intuition: |
+  Most fine-tuning failures are decided before training starts: leaked
+  validation data, loss on the prompt, a run that does not fit in
+  memory, or a win that is noise. Each of these is checkable with a few
+  lines of arithmetic, so the blueprint turns them into functions that
+  fail loudly. The design trade-off is gating strictness: a tight gate
+  blocks bad releases but costs reruns, and the gate has three checks
+  because a model can improve on the domain, win by chance or forget
+  general skills independently.
+  Flow: raw data → curated set → trained model → gate → release.
+approach:
+  - "Curate: dedup on normalised text, drop short responses, then split by source group — near-copies from one source must not sit on both sides"
+  - "Format each example with a chat template and a mask that is 1 only on response tokens — the model should learn to answer, not to echo the prompt"
+  - 'Compute steps as $E \cdot \lceil N/B \rceil$ and warmup as a fraction of steps — a wrong step count breaks the learning-rate schedule'
+  - "Estimate memory in bytes per parameter for full or adapter training — reject a config that exceeds the GPU before launching it"
+  - "Define the evaluation protocol: held-out loss, pairwise win rate with a sign test, and a general-set check — three independent ways to fail"
+  - "Gate the release on all checks and return the reasons — ship only when loss improves, the win is significant and forgetting is within tolerance"
+code: |
+  import hashlib, math, re, zlib
+  from scipy.stats import binomtest
+
+  def prepare(records, val_mod=4):
+      seen, kept = set(), []
+      for r in records:
+          txt = (r["prompt"] + r["response"]).lower()
+          txt = re.sub(r"\W+", " ", txt).strip()
+          key = hashlib.md5(txt.encode()).hexdigest()
+          if key in seen or len(r["response"].split()) < 3:
+              continue
+          seen.add(key)
+          kept.append(r)
+      val = lambda g: zlib.crc32(g.encode()) % val_mod == 0
+      return ([r for r in kept if not val(r["group"])],
+              [r for r in kept if val(r["group"])])
+
+  def format_example(prompt, response):
+      head = ["<user>"] + prompt.split() + ["<assistant>"]
+      body = response.split() + ["<end>"]
+      return head + body, [0] * len(head) + [1] * len(body)
+
+  def check_config(cfg):
+      steps = cfg["epochs"] * math.ceil(cfg["n"] / cfg["batch_size"])
+      warm = math.ceil(cfg["warmup_frac"] * steps)
+      p = cfg["params"]
+      if cfg["method"] == "full":
+          gb = p * (2 + 2 + 12) / 1e9      # bf16 w + g, fp32 master+m+v
+      else:                             # frozen base + adapters
+          gb = (p * 2 + p * cfg["lora_frac"] * 16) / 1e9
+      gb += cfg["act_gb"]
+      out = {"steps": steps, "warmup": warm, "mem_gb": round(gb, 1)}
+      out["fits"] = gb <= cfg["gpu_gb"]
+      if not out["fits"]:
+          out["reason"] = f"needs {gb:.1f} GB > {cfg['gpu_gb']} GB GPU"
+      return out
+
+  def release_gate(r, alpha=0.05, tol=0.02):
+      why = []
+      if r["ft_loss"] >= r["base_loss"]:
+          why.append("held-out loss did not improve")
+      n = r["wins"] + r["losses"]            # ties carry no sign
+      p = binomtest(r["wins"], n, 0.5, alternative="greater").pvalue
+      if p > alpha:
+          why.append(f"sign test p={p:.3f} > {alpha}")
+      drop = r["gen_base"] - r["gen_ft"]
+      if drop > tol:
+          why.append(f"forgetting {drop:.3f} > {tol}")
+      dec = "hold" if why else "ship"
+      return {"decision": dec, "p": p, "reasons": why}
+key_lines: [21, 24, 43]
+time: "O(N) for curation and formatting; the gate is O(1) given the evaluation counts"
+space: "O(N) to hold the records; training memory is about $16$ bytes per parameter for full Adam fine-tuning"
+when_to_use: |
+  Before any domain or style fine-tune, to catch leakage, masking and
+  memory mistakes cheaply, and as the standing definition of when a
+  checkpoint is good enough to release.
+when_not_to_use: |
+  When prompting or retrieval already meets the target, since a
+  fine-tune adds a model to maintain. The gate also needs a held-out
+  set and a comparison baseline, so it does not apply without them.
+why_it_works: |
+  Group splitting makes the validation set a proxy for new sources, the
+  mask makes the loss measure response quality only, and the byte
+  arithmetic is exact bookkeeping, so config errors surface before the
+  run. The sign test uses only non-tied wins and losses, so under no
+  difference each is a fair coin and the p-value is a binomial tail.
+math:
+  - "steps = E · ⌈N / B⌉ = 3 · ⌈1000/32⌉ = 96"
+  - "warmup = ⌈f · steps⌉ = ⌈0.03 · 96⌉ = 3"
+  - "Full Adam bytes/param = 2 + 2 + 4 + 4 + 4 = 16"
+  - "Full, 7e9 params: 7e9 · 16 = 112 GB, plus activations"
+  - "Adapter: 2p + 16·f·p = 14 + 1.12 GB for f = 0.01"
+  - "Sign test: p = Σ_{i≥w} C(n,i) / 2ⁿ, n = wins + losses"
+  - "w = 30, n = 40 gives p ≈ 0.0011"
+  - "Forgetting = general_base − general_ft ≤ tolerance"
+interview_qa:
+  - q: "Why split by source group instead of randomly?"
+    a: "Records from one source share phrasing and facts, so a random split leaks near-copies into validation and flatters the model. Splitting by group measures how it handles a source it has not seen."
+  - q: "Why does the sign test ignore ties?"
+    a: "A tie carries no preference. Among decisive pairs, no real difference means each side wins with probability one half, so the one-sided binomial tail on wins gives the p-value. Report the tie count alongside it."
+  - q: "How do you estimate whether a fine-tune fits a GPU?"
+    a: "Add bytes per parameter for weights, gradients and optimizer state, plus activations. Full Adam is about 16 bytes per parameter in mixed precision, while adapters pay 2 bytes for a frozen base plus 16 for the small trainable fraction."
+  - q: "Why gate on forgetting as well as the domain win?"
+    a: "Fine-tuning can raise domain scores while degrading general skills, and win rates on domain prompts do not show it. A general held-out set with a tolerance catches that regression before release."
+hyperparameters:
+  - "Epochs $E$, batch size $B$ and warmup fraction (steps and schedule)"
+  - "Adapter or full tuning, and trainable fraction (memory)"
+  - 'Gate thresholds: significance level $\alpha$ and forgetting tolerance'
+  - "Validation fraction and the grouping key"
+pitfalls:
+  - "Exact-hash dedup misses near-duplicates, so paraphrased copies still leak across the split"
+  - "Memory estimates omit activations, fragmentation and long sequences, so keep headroom beyond the byte arithmetic"
+  - "Counting ties as wins or dropping them silently inflates or hides the win rate; report wins, losses and ties"
+  - "A small evaluation set gives a weak sign test: with few decisive pairs even a real gain may not pass, so size it in advance"
+related: [sft-loss-masking, finetune-dataset-prep, finetune-evaluation]
+math_tex:
+- 'Steps: $E\,\lceil N/B\rceil = 3 \cdot 32 = 96$'
+- 'Warmup: $\lceil 0.03 \cdot 96\rceil = 3$'
+- 'Full Adam: $2+2+4+4+4 = 16$ bytes per parameter'
+- 'Full, $7\times 10^{9}$ params: $7\times 10^{9}\cdot 16 = 112$ GB'
+- 'Adapter: $2p + 16\,f\,p = 14 + 1.12$ GB, $f=0.01$'
+- 'Sign test: $p = \frac{1}{2^n}\sum_{i \geq w}\binom{n}{i}$'
+- 'Example: $w=30$, $n=40$ gives $p \approx 0.0011$'
+- 'Forgetting: $g_{base} - g_{ft} \leq \tau$'

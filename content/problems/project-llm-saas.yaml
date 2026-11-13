@@ -1,0 +1,152 @@
+slug: project-llm-saas
+title: 'Project Blueprint: Multi-Tenant LLM SaaS Backend'
+url: https://stripe.com/blog/idempotency
+difficulty: Hard
+area: MLOps
+topics: [Project, Multi-Tenancy, Metering, Rate Limiting]
+summary: |
+  Build the backend of a multi-tenant LLM product: API keys that map to
+  tenants and plans, a token bucket per tenant, usage metering that
+  turns each request into an idempotent billing event, tenant-isolated
+  caching, a margin report per tenant and a hard daily cap against
+  abuse.
+intuition: |
+  The model call is the easy part; the product is the layer around it.
+  Three properties matter. Fairness: one bucket per tenant means a
+  tenant that exhausts its quota hurts only itself. Correctness of
+  money: clients and gateways retry, so every billing event carries an
+  id and the meter ignores an id it has already seen, which makes
+  recording idempotent. Isolation: anything stored or cached is keyed by
+  tenant, because a cache shared by prompt alone would hand one
+  customer another's answer. Revenue per tenant is price times tokens
+  and cost is unit cost times tokens, so margin shows which plan loses
+  money, and the daily cap bounds the worst case.
+  Flow: request → tenant → quota check → model → usage event → invoice.
+approach:
+  - 'Map each API key to a tenant and plan, and reject unknown keys with 401 — nothing else runs unauthenticated'
+  - 'Give each tenant its own token bucket with capacity $C$ and rate $r$ from its plan — quotas are per tenant, so neighbours are isolated'
+  - 'Namespace every cache key and stored record by tenant — identical prompts never share answers across customers'
+  - 'Record one usage event per request with an idempotency id, ignoring ids already seen — a retry must not bill twice'
+  - 'Invoice as unique tokens times the price, and margin as invoice minus cost — plans that lose money become visible'
+  - 'Enforce a hard daily cap per tenant and return the reason — abuse and runaway loops stop at a known cost'
+code: |
+  import hashlib
+
+  class TokenBucket:
+      def __init__(self, cap, rate, now):
+          self.cap, self.rate = cap, rate
+          self.tokens, self.t = cap, now
+      def take(self, n, now):
+          refill = (now - self.t) * self.rate
+          self.tokens = min(self.cap, self.tokens + refill)
+          self.t = now
+          if n <= self.tokens:
+              self.tokens -= n
+              return True
+          return False
+
+  class Meter:
+      def __init__(self, price_1k, cost_1k):
+          self.price, self.cost = price_1k, cost_1k
+          self.events = {}
+      def record(self, event_id, tenant, tokens):
+          if event_id in self.events:    # a retry: already billed
+              return False
+          self.events[event_id] = (tenant, tokens)
+          return True
+      def tokens(self, tenant):
+          return sum(n for t, n in self.events.values() if t == tenant)
+      def invoice(self, tenant):
+          return self.tokens(tenant) / 1000 * self.price
+      def margin(self, tenant):
+          spend = self.tokens(tenant) / 1000 * self.cost
+          return self.invoice(tenant) - spend
+
+  def cache_key(tenant, prompt):
+      return tenant + ":" + hashlib.sha256(prompt.encode()).hexdigest()
+
+  class Gateway:
+      def __init__(self, keys, plans, meter, clock):
+          self.keys, self.plans = keys, plans
+          self.meter, self.clock = meter, clock
+          self.buckets, self.daily, self.cache = {}, {}, {}
+          self.model_calls = 0
+      def authenticate(self, api_key):
+          return self.keys.get(api_key)     # (tenant, plan) or None
+      def handle(self, api_key, req):
+          who = self.authenticate(api_key)
+          if who is None:
+              return dict(status=401, reason="invalid key")
+          tenant, plan = who
+          p, now = self.plans[plan], self.clock()
+          day = (tenant, int(now // 86400))
+          if self.daily.get(day, 0) >= p["daily"]:
+              return dict(status=429, reason="daily cap")
+          b = self.buckets.setdefault(
+              tenant, TokenBucket(p["cap"], p["rate"], now))
+          if not b.take(req["max_tokens"], now):
+              return dict(status=429, reason="rate limited")
+          ck = cache_key(tenant, req["prompt"])
+          if ck not in self.cache:          # stub model, scripted
+              self.model_calls += 1
+              n = len(req["prompt"].split()) + 5
+              self.cache[ck] = ("ans:" + req["prompt"], n)
+          answer, tokens = self.cache[ck]
+          if self.meter.record(req["id"], tenant, tokens):
+              self.daily[day] = self.daily.get(day, 0) + tokens
+          return dict(status=200, answer=answer, tokens=tokens)
+key_lines: [21, 51, 57]
+time: "O(1) per request plus O(E) to total a tenant's events when invoicing E events"
+space: "O(T) buckets, O(U) cache entries and O(E) stored billing events"
+when_to_use: |
+  Putting a model behind an API for several paying customers, where each
+  needs its own quota, bill and data boundary, and where retries are
+  routine so billing must be safe to repeat.
+when_not_to_use: |
+  An internal tool with one trusted team, where a single shared limit
+  is enough, or real billing, which needs a durable ledger, invoicing
+  rules and tax handling beyond this skeleton.
+why_it_works: |
+  A token bucket bounds a tenant to at most $C + r t$ units in any
+  window of length $t$, and each tenant has its own state, so one
+  tenant's usage cannot consume another's allowance. Recording keyed by
+  event id is idempotent: applying it twice leaves the same state as
+  applying it once, so total tokens equal the sum over unique ids no
+  matter how often a request is retried. Prefixing the tenant to every
+  cache key makes the key spaces disjoint.
+math:
+  - "Bucket bound: tokens in window t ≤ C + r · t"
+  - "Invoice = (Σ unique-event tokens / 1000) · price per 1k"
+  - "Cost = (Σ unique-event tokens / 1000) · unit cost per 1k"
+  - "Margin = invoice − cost = tokens/1000 · (price − unit cost)"
+  - "Margin % = (price − unit cost) / price"
+  - "Daily cap D: spend per tenant per day ≤ D / 1000 · unit cost"
+hyperparameters:
+  - 'Bucket capacity $C$ and refill rate $r$ per plan'
+  - 'Daily token cap $D$ per plan'
+  - 'Price and unit cost per 1,000 tokens'
+  - 'Idempotency id scope and retention time'
+pitfalls:
+  - 'Deriving the event id from a timestamp or counter on the server, which makes every retry look new; the client or request must supply it'
+  - 'A cache key built from the prompt alone, which leaks one tenant''s answer to another'
+  - 'Checking the quota and then updating usage in separate steps without a lock, so concurrent requests overspend'
+  - 'Pricing from average usage; a few heavy tenants can make a plan negative, so look at margin per tenant'
+interview_qa:
+  - q: "How do you make usage billing safe against retries?"
+    a: 'Each request carries a unique id, and the meter stores events by that id and ignores one it has seen. Recording is then idempotent, so a retry after a timeout leaves the invoice unchanged. The id must come from the client or be fixed before the first attempt.'
+  - q: "Why a token bucket per tenant instead of one global limit?"
+    a: 'A global limit lets one heavy tenant starve the rest. A bucket per tenant with capacity $C$ and refill rate $r$ allows bursts up to $C$ and a long-run rate of $r$, and an exhausted bucket only rejects that tenant''s requests.'
+  - q: "How do you isolate tenants in a shared cache?"
+    a: 'Put the tenant id in every key, here by prefixing the hash of the prompt, so the key spaces never overlap. The same applies to stored data, logs and any vector index, where a missing filter is the usual leak.'
+  - q: "What does the margin per tenant tell you?"
+    a: 'It is revenue minus cost, tokens times the difference between price and unit cost per 1,000 tokens. A plan with a flat fee and unlimited use can go negative for heavy users, so the daily cap and per-plan quotas bound the loss.'
+  - q: "When should the daily cap trigger, and what should the client see?"
+    a: 'It triggers when the day''s recorded tokens reach the plan cap, before any model call, so the cost stops at a known bound. The client gets 429 with a reason such as daily cap, which differs from a transient rate limit that clears in seconds.'
+related: [llm-api-retries-rate-limits, semantic-cache, llm-cost-latency-optimisation]
+math_tex:
+- 'Bucket bound: tokens in window $t$ $\leq C + r t$'
+- 'Invoice $= \frac{\sum n_{unique}}{1000} \cdot p$'
+- 'Cost $= \frac{\sum n_{unique}}{1000} \cdot c$'
+- 'Margin $= \frac{n}{1000} (p - c)$'
+- 'Margin fraction $= \frac{p - c}{p}$'
+- 'Daily cap: spend $\leq \frac{D}{1000} \cdot c$'

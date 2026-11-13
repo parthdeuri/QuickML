@@ -1,0 +1,115 @@
+slug: ai-system-design-capacity-estimation
+title: AI System Design - Capacity and Cost Estimation
+url: https://sre.google/sre-book/embracing-risk/
+difficulty: Medium
+area: MLOps
+topics: [System Design, Capacity Planning, LLM Serving, Cost]
+summary: |
+  Size an LLM feature on paper: users and requests give peak QPS, tokens
+  per request give tokens per second, that gives GPUs, memory per
+  replica, monthly cost, a latency budget and availability.
+intuition: |
+  An AI system-design answer is a chain of multiplications with units
+  that cancel. Daily users times requests per user, divided by 86400
+  seconds, is the average rate; a peak factor turns it into the rate
+  you must survive. Multiply by tokens per request to get tokens per
+  second, divide by what one GPU really delivers (throughput times
+  utilisation, never 100 percent) and round up. Little''s law then ties
+  rate and latency to concurrency, $L = \lambda W$, which sets how many
+  KV caches sit in memory next to the weights. Every hardware number is
+  an assumption you state aloud and can change.
+  Flow: users → peak QPS → tokens per second → GPUs → memory, cost, latency, availability.
+approach:
+  - 'Average rate $\lambda_{avg} = \frac{\mathrm{DAU} \cdot r}{86400}$, peak $\lambda = f \lambda_{avg}$ — you size for the peak, not the mean'
+  - 'Token rate $T = \lambda (t_{in} + t_{out})$ — GPUs are limited by tokens, not by requests'
+  - 'GPUs $= \lceil \frac{T}{\tau u} \rceil$ with per-GPU throughput $\tau$ and utilisation $u$ — the ceiling means a partial GPU is a whole one'
+  - 'Latency $W = W_q + \frac{t_{in}}{\tau_{pre}} + \frac{t_{out}}{\tau_{dec}}$ and concurrency $L = \lambda W$ — Little''s law gives the sequences in flight'
+  - 'Memory per replica $=$ weights $+$ sequences per replica $\cdot$ KV bytes per sequence — check it fits the GPU before trusting the GPU count'
+  - 'Cost $=$ GPUs $\cdot$ price $\cdot$ hours, and availability $1 - p^N$ — price the fleet and show redundancy buys nines'
+code: |
+  import math
+
+  def replica_availability(p, n):
+      # p = chance one replica is down, independent failures
+      return 1 - p ** n
+
+  def size_system(dau, req_per_user, peak, tok_in, tok_out,
+                  gpu_tokens_per_s, util, queue_s=0.2,
+                  prefill_tps=5000.0, decode_tps=50.0,
+                  params=8e9, w_bytes=2, kv_per_token=131072,
+                  price_hr=2.0, hours=730, p_down=0.01):
+      avg_qps = dau * req_per_user / 86400
+      peak_qps = avg_qps * peak
+      tok_per_s = peak_qps * (tok_in + tok_out)
+      eff = gpu_tokens_per_s * util
+      gpus = math.ceil(round(tok_per_s / eff, 9))
+      latency = queue_s + tok_in / prefill_tps + tok_out / decode_tps
+      conc = peak_qps * latency
+      per_rep = math.ceil(round(conc / gpus, 9))
+      kv_seq = kv_per_token * (tok_in + tok_out)
+      mem = params * w_bytes + per_rep * kv_seq
+      return {"avg_qps": avg_qps, "peak_qps": peak_qps,
+              "tok_per_s": tok_per_s, "gpus": gpus,
+              "latency_s": latency, "concurrency": conc,
+              "seqs_per_replica": per_rep, "mem_bytes": mem,
+              "monthly_cost": gpus * price_hr * hours,
+              "availability": replica_availability(p_down, gpus)}
+key_lines: [16, 17, 18]
+time: "O(1) arithmetic; no model is run"
+space: "O(1)"
+when_to_use: |
+  System-design interviews and early planning for an LLM feature: to
+  show how users, token counts and hardware turn into a GPU count, a
+  memory check, a bill and a latency budget before any load test.
+when_not_to_use: |
+  As a final sizing. Real throughput depends on batching, sequence
+  lengths, the serving stack and traffic burstiness, so treat the
+  answer as an order of magnitude and confirm with a load test.
+why_it_works: |
+  Each step is a conservation law: requests per second times tokens per
+  request is tokens per second, and a fleet must supply at least that
+  many. Little''s law holds for any stable queue, so
+  $L = \lambda W$ gives concurrency from rate and latency without
+  assuming a distribution. With independent failures a service is down
+  only if all $N$ replicas are, which has probability $p^N$.
+math:
+  - "λ_avg = DAU · r / 86400,   λ = f · λ_avg"
+  - "T = λ · (t_in + t_out)  tokens per second"
+  - "GPUs = ⌈ T / (τ · u) ⌉"
+  - "W = W_q + t_in/τ_pre + t_out/τ_dec"
+  - "L = λ · W   (Little''s law, concurrent sequences)"
+  - "Memory = P · b_w + (L / GPUs) · t · kv_per_token"
+  - "Cost = GPUs · price · hours"
+  - "Availability = 1 − pᴺ"
+math_tex:
+- '$\lambda_{avg} = \frac{\mathrm{DAU} \cdot r}{86400}, \;\; \lambda = f \lambda_{avg}$'
+- '$T = \lambda (t_{in} + t_{out})$ tokens per second'
+- '$\mathrm{GPUs} = \lceil \frac{T}{\tau u} \rceil$'
+- '$W = W_q + \frac{t_{in}}{\tau_{pre}} + \frac{t_{out}}{\tau_{dec}}$'
+- 'Little: $L = \lambda W$'
+- 'Memory $= P b_w + \frac{L}{\mathrm{GPUs}}\, t\, c_{kv}$'
+- 'Cost $= \mathrm{GPUs} \cdot \mathrm{price} \cdot \mathrm{hours}$'
+- 'Availability $= 1 - p^N$'
+interview_qa:
+  - q: "Walk me through sizing an LLM chatbot."
+    a: 'Daily users times requests per user over 86400 gives average QPS, times a peak factor gives peak QPS. Multiply by tokens per request for tokens per second, divide by per-GPU throughput times utilisation, and round up. Then check memory, latency and cost.'
+  - q: "How many requests are in flight?"
+    a: 'Little''s law,$L = \lambda W$: peak QPS times mean latency. At 300 QPS and 5.3 s that is 1590 concurrent sequences, each holding a KV cache.'
+  - q: "Why divide by utilisation?"
+    a: 'A GPU cannot run at its peak throughput all the time: queues need slack, traffic is bursty and batches are uneven. Planning at $u = 0.5$ doubles the fleet relative to $u = 1$ but keeps latency stable.'
+  - q: "What does a second replica buy?"
+    a: 'With independent failures the chance both are down is $p^2$, so availability goes from $1 - p$ to $1 - p^2$. Real failures are correlated (same zone, same bad deploy), so the true figure is lower.'
+  - q: "Where do the weights and the KV cache fit in?"
+    a: 'Weights are a fixed cost per replica, $P b_w$ bytes. The cache grows with the sequences on that replica and their length, so memory limits concurrency per GPU.'
+hyperparameters:
+  - 'Peak factor $f$ (peak over average traffic)'
+  - 'Per-GPU throughput $\tau$ and target utilisation $u$'
+  - 'Tokens in and out per request'
+  - 'Weight precision and KV bytes per token'
+  - 'Per-replica failure probability $p$'
+pitfalls:
+  - "Sizing for average QPS; the peak, not the mean, decides the fleet"
+  - 'Using a vendor''s peak tokens per second as $\tau$ with no utilisation margin'
+  - "Counting only weights and forgetting that the KV cache for in-flight sequences can fill the rest of the GPU"
+  - "Treating replica failures as independent when they share a zone, a rollout or a dependency"
+related: [gpu-memory-estimation, autoscaling-littles-law, llm-cost-latency-optimisation]

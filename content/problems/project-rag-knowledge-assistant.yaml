@@ -1,0 +1,150 @@
+slug: project-rag-knowledge-assistant
+title: "Project Blueprint: RAG Knowledge Assistant"
+url: https://arxiv.org/abs/2005.11401
+difficulty: Hard
+area: LLM
+topics: [Project Blueprint, RAG, Access Control, Citations]
+summary: |
+  Build a company-knowledge assistant. Documents are ingested with
+  owner and permission metadata, retrieval is hybrid, access control is
+  a hard pre-filter, answers are grounded and cited, the assistant
+  abstains on weak evidence, and the index stays fresh when documents
+  change or are deleted.
+intuition: |
+  A plain PDF question-answering pipeline has one reader and a frozen
+  corpus. A company assistant has many readers with different rights and
+  a corpus that keeps changing, and those two facts drive the design.
+  Permissions must be enforced at retrieval, before ranking and before
+  the prompt is built, because anything that reaches the model can leak
+  into the answer. Freshness needs a stable document id so a re-ingest
+  replaces old chunks instead of adding to them. The model is the least
+  trusted part: it only quotes what it is given, cites it, and abstains
+  when the evidence is weak.
+  Flow: user + question → permitted chunks → hybrid retrieval → evidence check → grounded answer with citations.
+why_it_works: |
+  A hard pre-filter makes the ACL guarantee structural: a chunk the user
+  may not read is never a candidate, so it cannot be ranked, quoted or
+  cited, however well it matches. The evidence check turns retrieval
+  quality into a decision, since low coverage of the question terms
+  means answering would require the model to invent. Citations and a
+  faithfulness check keep every claim traceable to retrieved text.
+when_to_use: |
+  Internal assistants over wikis, policies and tickets where users have
+  different rights, documents change, and each answer must show its
+  source and admit when it does not know.
+when_not_to_use: |
+  Single-user or static corpora, where plain retrieval is simpler. Also
+  when permissions cannot be expressed as metadata on chunks, or when
+  you need reasoning across many documents that retrieval of a few chunks
+  cannot supply.
+math:
+  - "Visible(u, c) = 1 if groups(u) ∩ ACL(c) ≠ ∅, else 0"
+  - "Candidates = {c : Visible(u, c) = 1}, filtered before ranking"
+  - "RRF(c) = Σ_lists 1 / (60 + rank(c))"
+  - "Evidence = max over top-k of |Q ∩ chunk| / |Q|; abstain if < τ"
+  - "Faithfulness = |supported claims| / |claims|"
+  - "Chunks per document = ⌈doc tokens / chunk tokens⌉"
+  - "Prompt tokens ≈ system + k · chunk tokens + question"
+approach:
+  - "Ingest each document with a stable id, text and an ACL, split into chunks that inherit the ACL — one fact per chunk keeps citations precise"
+  - "On re-ingest delete the old chunks of that id first, and expose a remove call — updated facts replace stale ones and deleted documents vanish"
+  - "At query time keep only chunks whose ACL intersects the user groups — a hard pre-filter, not a post-hoc clean-up"
+  - 'Rank the permitted chunks with dense and lexical lists fused by $\frac{1}{k + \mathrm{rank}}$ — hybrid retrieval over only what the user may see'
+  - 'Compute evidence as the share of question terms covered by the best chunk and abstain below $\tau$ — an honest I-do-not-know beats an invented answer'
+  - "Build the prompt from the retrieved chunks, answer through the model, return citations and score faithfulness — traceability and a regression metric"
+code: |
+  import re, zlib
+  import numpy as np
+
+  STOP = {"the", "a", "is", "of", "to", "what", "how", "do", "does",
+          "for", "in", "and", "are", "i", "my", "our", "we", "can"}
+  IDK = "I don't know from the documents you can access."
+
+  def toks(s):
+      return re.findall(r"[a-z0-9]+", s.lower())
+
+  def embed(s, dim=64):
+      v = np.zeros(dim)
+      for t in toks(s):
+          v[zlib.crc32(t.encode()) % dim] += 1.0
+      return v / (np.linalg.norm(v) or 1.0)
+
+  def stub_llm(prompt, question):  # quotes the best context line
+      ctx = [l for l in prompt.split("\n") if l.startswith("[")]
+      q = set(toks(question)) - STOP
+      return max(ctx, key=lambda l: len(q & set(toks(l))))
+
+  class Assistant:
+      def __init__(self, k=2, min_evidence=0.5):
+          self.k, self.min_ev, self.chunks = k, min_evidence, {}
+
+      def ingest(self, doc_id, text, acl):
+          self.remove(doc_id)  # re-ingest replaces old chunks
+          parts = re.split(r"(?<=[.!?])\s+", text.strip())
+          for i, s in enumerate(parts):
+              self.chunks[(doc_id, i)] = dict(text=s, acl=set(acl),
+                  vec=embed(s), toks=set(toks(s)))
+
+      def remove(self, doc_id):
+          for key in [c for c in self.chunks if c[0] == doc_id]:
+              del self.chunks[key]
+
+      def ask(self, user, question):
+          C = self.chunks
+          ok = [c for c in C if C[c]["acl"] & set(user["groups"])]
+          q, qv = set(toks(question)) - STOP, embed(question)
+          dense = sorted(ok, key=lambda c: -float(C[c]["vec"] @ qv))
+          lex = sorted(ok, key=lambda c: -len(q & C[c]["toks"]))
+          fused = {}
+          for lst in (dense, lex):
+              for r, c in enumerate(lst, 1):
+                  fused[c] = fused.get(c, 0.0) + 1 / (60 + r)
+          top = sorted(fused, key=lambda c: (-fused[c], c))[:self.k]
+          cover = max((len(q & C[c]["toks"]) / len(q) for c in top),
+                      default=0.0)
+          if cover < self.min_ev:
+              return dict(answer=IDK, cites=[], abstained=True, ctx="")
+          ctx = "\n".join(f"[{d}#{i}] {C[(d, i)]['text']}"
+                          for d, i in top)
+          ans = stub_llm(f"{ctx}\nQ: {question}", question)
+          cites = sorted(set(re.findall(r"\[([^\]]+)\]", ans)))
+          return dict(answer=ans, cites=cites, abstained=False, ctx=ctx)
+
+  def faithfulness(answer, ctx):
+      body = re.sub(r"\[[^\]]*\]", "", answer)
+      claims = [c for c in re.split(r"(?<=[.!?])\s+", body) if toks(c)]
+      have = set(toks(ctx))
+      return sum(set(toks(c)) <= have for c in claims) / len(claims)
+key_lines: [39, 46, 50]
+time: "O(P·d) per question over the P permitted chunks for the dense scan and O(|q|·P) for term overlap, plus one model call; ANN and inverted indexes make retrieval sublinear"
+space: "O(C·d) for C chunk vectors plus text, tokens and an ACL set per chunk"
+hyperparameters:
+  - "Chunk size and overlap (here one sentence per chunk)"
+  - 'Retrieved chunks $k$ and the RRF constant, about 60'
+  - 'Abstention threshold $\tau$ on evidence coverage'
+  - "ACL model: groups, roles or per-user lists, and where it is stored"
+pitfalls:
+  - "Post-filtering by permission, or filtering only the citations, lets forbidden text reach the prompt; restrict candidates before ranking"
+  - "Stale ACLs: a permission change must update chunk metadata, or revoked users keep access and new users are locked out"
+  - "Re-ingesting under a new id instead of the same id leaves old chunks answering with outdated facts"
+  - "A model that paraphrases can still add unsupported claims; the quoting stub gets faithfulness 1 only because it cannot generate, so real systems need a claim-level check"
+interview_qa:
+  - q: "Why enforce permissions at retrieval and not in the model prompt?"
+    a: "A model cannot be trusted to withhold text it has seen, and instructions can be bypassed. If a forbidden chunk is never retrieved it cannot appear in the prompt, the answer or the citations. The filter must be a hard pre-filter, because oversampling and post-filtering are only probabilistic."
+  - q: "How does this differ from a PDF question-answering pipeline?"
+    a: "It is multi-user, so every chunk carries an ACL and queries carry an identity. It is updatable, so documents have stable ids and re-ingest replaces chunks. It also abstains and cites, since users act on the answers and need to verify them."
+  - q: "How do you decide when to abstain?"
+    a: "Use an evidence signal such as coverage of the question terms by the best chunk, or a retriever or reranker score, and set the threshold on a labelled set to trade wrong answers against needless refusals. Abstaining on no permitted evidence also avoids hinting that a hidden document exists."
+  - q: "How do you keep the index fresh at scale?"
+    a: "Process change events: on an edit delete the chunks of that document id and insert the new ones, on a delete remove them, on a permission change update the ACL metadata. Run periodic reconciliation against the source of truth and rebuild approximate indexes as deletions accumulate."
+  - q: "What would you monitor in production?"
+    a: "Retrieval recall on a labelled set, faithfulness and citation validity of sampled answers, abstention rate, index lag after edits, and a canary test that restricted documents never appear for unauthorised test users."
+related: [rag-dense-retrieval, metadata-filtering, rag-evaluation-faithfulness]
+math_tex:
+- '$\mathrm{Visible}(u,c) = 1$ if $\mathrm{groups}(u) \cap \mathrm{ACL}(c) \neq \emptyset$'
+- 'Candidates $= \{c : \mathrm{Visible}(u,c) = 1\}$, before ranking'
+- '$\mathrm{RRF}(c) = \sum \frac{1}{60 + \mathrm{rank}(c)}$'
+- 'Evidence $= \max \frac{|Q \cap \mathrm{chunk}|}{|Q|}$; abstain if $< \tau$'
+- 'Faithfulness: $\frac{\mathrm{supported\ claims}}{\mathrm{claims}}$'
+- 'Chunks per doc: $\lceil \frac{\mathrm{doc\ tokens}}{\mathrm{chunk\ tokens}} \rceil$'
+- 'Prompt $\approx$ system $+ k \cdot$ chunk tokens $+$ question'

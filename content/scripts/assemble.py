@@ -194,6 +194,19 @@ SHEETS["llm-engineer"][2].append(("19. LLMOps and production deployment", [
     "autoscaling-littles-law", "container-binpacking-scheduling", "experiment-tracking-runs",
     "model-serving-api-contract", "managed-vs-self-host-breakeven"]))
 
+SHEETS["llm-engineer"][2].extend([
+  ("20. Real-world LLM projects", [
+    "project-chatbot-with-memory", "project-pdf-question-answering", "project-semantic-search-engine",
+    "project-rag-knowledge-assistant", "project-code-assistant", "project-research-assistant",
+    "project-support-agent", "project-multimodal-assistant", "project-domain-finetune",
+    "project-multi-agent-research", "project-local-llm-platform", "project-llm-saas"]),
+  ("21. Career and professional growth", [
+    "build-llm-portfolio", "publish-projects-on-github", "python-interview-prep",
+    "sql-interview-patterns", "ai-system-design-capacity-estimation", "study-research-papers",
+    "reproducibility-seeds-determinism", "contribute-to-open-source", "join-ai-communities",
+    "write-technical-articles", "llm-engineer-interview-prep"]),
+])
+
 def main():
     have = {p.stem for p in PROBLEMS.glob("*.yaml")}
     used = set()

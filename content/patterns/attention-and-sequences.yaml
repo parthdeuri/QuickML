@@ -45,5 +45,6 @@ problems:
 - gpt-decoder-only
 - llama-rmsnorm-gqa
 - sliding-window-attention
+- flash-attention-online-softmax
 aliases:
 - Attention and sequences

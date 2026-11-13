@@ -1,0 +1,137 @@
+slug: pii-redaction
+title: PII Detection and Redaction
+url: https://csrc.nist.gov/pubs/sp/800/122/final
+difficulty: Medium
+area: LLM
+topics: [LLM, Privacy, Data Cleaning, Safety]
+summary: |
+  Find personal data with pattern detectors, validate card numbers with
+  a checksum, replace each value with a typed, consistent placeholder,
+  and measure the detector with precision and recall.
+intuition: |
+  Text sent to a model, a log or a training set can carry identifiers
+  that should not travel with it. Fixed formats such as emails and
+  card numbers are easy to match, and a checksum rejects most random
+  digit runs. A typed placeholder keeps the sentence useful, and giving
+  the same value the same placeholder keeps references intact. Names
+  and context-dependent facts have no fixed format, so patterns miss
+  them.
+  Flow: raw text → detect spans → drop overlaps → placeholders → redacted text.
+approach:
+  - "Run one regex per type (email, phone, IPv4, card) — each format has a recognisable shape"
+  - "Validate candidates, Luhn for cards and range for IP octets — cuts false positives from random digits"
+  - "Resolve overlaps by priority — one character must belong to at most one span"
+  - "Map each distinct value to <TYPE_n> in order of first appearance — the same value gets the same placeholder"
+  - "Score detectors on labelled text with $P = TP/(TP+FP)$ and $R = TP/(TP+FN)$ — recall is the privacy risk"
+code: |
+  import re
+
+  def luhn_valid(number):
+      d = [int(c) for c in number if c.isdigit()]
+      if len(d) < 13:
+          return False
+      tot = 0
+      for i, x in enumerate(reversed(d)):
+          if i % 2:
+              x *= 2
+              if x > 9:
+                  x -= 9
+          tot += x
+      return tot % 10 == 0
+
+  RX = [
+      ("CARD", r"(?<!\d)\d(?:[ -]?\d){12,18}(?!\d)"),
+      ("EMAIL", r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"),
+      ("IP", r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])"),
+      ("PHONE", r"(?<!\d)(?:\(\d{3}\) ?|\d{3}[-. ])\d{3}[-. ]\d{4}"
+                r"(?!\d)"),
+  ]
+
+  def ok(kind, s):
+      if kind == "CARD":
+          return luhn_valid(s)
+      if kind == "IP":
+          return all(int(x) <= 255 for x in s.split("."))
+      return True
+
+  def detect(text):
+      taken, out = [], []
+      for kind, pat in RX:
+          for m in re.finditer(pat, text):
+              a, b = m.span()
+              if ok(kind, m.group()) and not any(
+                      a < y and x < b for x, y in taken):
+                  taken.append((a, b))
+                  out.append((kind, (a, b)))
+      return sorted(out, key=lambda t: t[1])
+
+  def redact(text):
+      names, count, parts, pos = {}, {}, [], 0
+      for kind, (a, b) in detect(text):
+          val = text[a:b].lower()
+          if (kind, val) not in names:
+              count[kind] = count.get(kind, 0) + 1
+              names[(kind, val)] = f"<{kind}_{count[kind]}>"
+          parts += [text[pos:a], names[(kind, val)]]
+          pos = b
+      return "".join(parts) + text[pos:]
+
+  def precision_recall(pred, true):
+      pred, true = set(pred), set(true)
+      tp = len(pred & true)
+      p = tp / len(pred) if pred else 1.0
+      r = tp / len(true) if true else 1.0
+      return p, r
+key_lines: [10, 36, 45]
+time: "O(L) per pattern over L characters, plus O(m log m) to sort m matches"
+space: "O(m) for spans and the placeholder map"
+when_to_use: |
+  Cleaning text before logging, analytics, fine-tuning data or calls to
+  an external model, where structured identifiers such as emails,
+  phone numbers, IP addresses and card numbers must not leave the
+  system.
+when_not_to_use: |
+  Do not rely on patterns alone for names, addresses or identifiers that
+  depend on context; those need a named-entity model and human review.
+  Redaction is also not anonymisation, since remaining text can still
+  identify a person.
+why_it_works: |
+  Emails, phones and IPs have regular structure that regexes capture,
+  and a payment-card number carries a check digit, so about one random
+  digit run in ten passes the Luhn test, which removes most false
+  matches. Keying placeholders on the normalised value makes the map
+  a function from value to token, so repeats stay linked without
+  revealing the value. Precision $TP/(TP+FP)$ and recall
+  $TP/(TP+FN)$ expose both over-redaction and leaks.
+math:
+  - "Luhn: Σ (digit or 2·digit − 9 if > 9) ≡ 0 (mod 10)"
+  - "precision = TP / (TP + FP)"
+  - "recall = TP / (TP + FN)"
+  - "F1 = 2PR / (P + R)"
+  - "P(random digits pass Luhn) ≈ 1/10"
+interview_qa:
+  - q: "Why use a Luhn check on card numbers?"
+    a: "Any long digit run matches a card regex, but real card numbers satisfy a checksum. About nine in ten random runs fail it, so false positives drop sharply."
+  - q: "Why map the same value to the same placeholder?"
+    a: "It keeps references and counts intact, so a model can still tell that two mentions are one person or address, without seeing the value."
+  - q: "Which metric matters more for a redactor, precision or recall?"
+    a: "Usually recall, because a missed identifier is a leak, while a false positive only removes some context. Track both and choose the trade-off per data type."
+  - q: "Is redacted text anonymous?"
+    a: "No. Names, rare facts or combinations of details can still re-identify someone, and the placeholder map is itself sensitive. Redaction lowers risk but does not guarantee anonymity."
+hyperparameters:
+  - "Set of entity types and their regexes"
+  - "Overlap priority between types"
+  - "Placeholder format and whether values are normalised before keying"
+  - "Minimum digit count for the card detector"
+pitfalls:
+  - "Regexes miss names, street addresses and free-form identifiers, so recall on the unchecked classes is unknown"
+  - "A phone or ID number can pass the card regex, so run the checksum and resolve overlaps"
+  - "Keeping the value-to-placeholder map next to the redacted text defeats the purpose; store it separately or drop it"
+  - "Evaluate on labelled synthetic or consented text, never on real people's data, and re-check when formats change"
+related: [precision-recall-f1, data-leakage, prompt-injection-defense]
+math_tex:
+- 'Luhn: $S \,\mathrm{mod}\, 10 = 0$ for digit sum $S$'
+- 'Precision: $P = \frac{TP}{TP + FP}$'
+- 'Recall: $R = \frac{TP}{TP + FN}$'
+- 'F1: $\frac{2PR}{P + R}$'
+- 'Random digits pass Luhn: $\approx 1/10$'

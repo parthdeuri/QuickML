@@ -1,0 +1,134 @@
+slug: output-validation-guardrails
+title: Output Validation and Guardrails
+url: https://genai.owasp.org/llmrisk/llm052025-improper-output-handling/
+difficulty: Medium
+area: LLM
+topics: [LLM, Safety, Validation, Guardrails]
+summary: |
+  Run model output through layered checks before it reaches a user or
+  a tool, report every failure, retry with feedback or fall back, and
+  decide whether a broken check blocks or lets the output through.
+intuition: |
+  Treat the model as an untrusted producer: whatever it writes will be
+  rendered, executed or acted on, so each destination deserves its own
+  checks. Cheap checks (length, patterns, PII) run first and catch
+  different failures than slow ones (grounding), so stacking them in
+  series trades more false rejections for fewer misses. Each check
+  also needs a policy for when it crashes: fail closed blocks safely,
+  fail open keeps the product up.
+  Flow: model output → validators → pass, retry with feedback or fallback.
+approach:
+  - "Write each checker as a function returning ok and a reason — checkers stay small, testable and composable"
+  - "Run all checkers and collect every failing reason — one pass tells the retry everything that was wrong"
+  - "Treat a checker exception by the policy, closed blocks and open skips — a crash must not silently decide the outcome"
+  - "On failure, retry with the reasons added to the prompt, up to a limit — the model can fix specific problems"
+  - "After the retries use a safe fallback response — the user never sees the rejected output"
+  - 'Estimate series rates as $1-\prod_i(1-f_i)$ false rejects and $\prod_i m_i$ misses — shows what each extra layer costs and buys'
+code: |
+  import json, re
+
+  def length(n):
+      return lambda o: (len(o) <= n, f"over {n} chars")
+
+  def banned(patterns):
+      def check(o):
+          bad = [p for p in patterns if re.search(p, o, re.I)]
+          return not bad, f"banned: {bad}"
+      return check
+
+  def no_pii(o):
+      pat = r"[\w.]+@[\w.]+\.\w+|\b\d{3}[- ]\d{3}[- ]\d{4}\b"
+      return not re.search(pat, o), "contains email or phone"
+
+  def valid_json(o):
+      try:
+          json.loads(o)
+          return True, ""
+      except ValueError:
+          return False, "invalid json"
+
+  def grounded(sources, thresh=0.8):
+      vocab = set(" ".join(sources).lower().split())
+      def check(o):
+          w = [x for x in o.lower().split() if len(x) > 3]
+          hit = sum(x in vocab for x in w) / max(len(w), 1)
+          return hit >= thresh, f"grounded {hit:.2f} < {thresh}"
+      return check
+
+  def run_guards(output, guards, mode="closed"):
+      reasons = []
+      for g in guards:
+          try:
+              ok, why = g(output)
+          except Exception as e:
+              ok, why = mode == "open", f"checker error: {e}"
+          if not ok:
+              reasons.append(why)
+      return not reasons, reasons
+
+  def guarded(generate, guards, mode, retries, fallback):
+      feedback = []
+      for _ in range(retries + 1):
+          out = generate(feedback)
+          ok, feedback = run_guards(out, guards, mode)
+          if ok:
+              return out
+      return fallback
+
+  def series_rates(fpr_list, miss_list):
+      keep = pass_all = 1.0
+      for f in fpr_list:
+          keep *= 1 - f
+      for m in miss_list:
+          pass_all *= m
+      return 1 - keep, pass_all
+key_lines: [37, 38, 39]
+time: "O(sum of checker costs) per attempt, times at most retries + 1 attempts"
+space: "O(1) beyond the output and the collected reasons"
+when_to_use: |
+  Whenever model text is shown to users, parsed by code, or turned
+  into a tool call, especially in regulated or customer-facing
+  settings where a bad output has a real cost.
+when_not_to_use: |
+  Do not treat validators as a replacement for least-privilege tools
+  and human approval of dangerous actions. Regex rules are brittle
+  against paraphrase, and extra layers also add latency and false
+  rejections.
+why_it_works: |
+  A bad output has to get past every checker in series. If the
+  checkers fail independently, the chance that all of them miss is the
+  product of the miss rates, so each added layer multiplies the miss
+  rate down. The price is that a good output must also pass every
+  checker, so the false-reject rate climbs as $1-\prod_i(1-f_i)$.
+  Independence is an assumption: checkers built on similar rules tend
+  to miss the same outputs, so the real miss rate is higher.
+math:
+  - "false reject of a good output:  F = 1 − Πᵢ (1 − fᵢ)"
+  - "bad output slips through:  M = Πᵢ mᵢ"
+  - "assumes the checks err independently"
+  - "grounded = |{content words in sources}| / |{content words}|"
+  - "attempts ≤ retries + 1"
+math_tex:
+- 'False reject of good output $F = 1 - \prod_i (1 - f_i)$'
+- 'Bad output slips through $M = \prod_i m_i$'
+- 'Assumes checks err independently'
+- '$\mathrm{grounded} = \frac{\mathrm{content\ words\ in\ sources}}{\mathrm{content\ words}}$'
+- 'Attempts $\leq \mathrm{retries} + 1$'
+interview_qa:
+  - q: "When would you fail open instead of fail closed?"
+    a: "Fail closed when a bad output is costly, such as a tool call or a regulated answer. Fail open when availability matters more and the check is advisory, but log every skipped check so the gap is visible."
+  - q: "How is this different from schema validation or injection defence?"
+    a: "Schema validation checks only shape, and injection defence protects the input side and the tools. Output guardrails add content policy, privacy and grounding checks on whatever the model produced, whatever the cause."
+  - q: "Why does adding more validators not always help?"
+    a: "Each one raises the false-reject rate and latency. If validators share blind spots they miss the same outputs, so the gain is smaller than the independent product suggests."
+hyperparameters:
+  - "Fail-closed or fail-open per checker"
+  - "Maximum number of retries"
+  - "Grounding threshold and minimum word length"
+  - "Order of checkers, cheap ones first"
+pitfalls:
+  - "Rates multiply only under independence; measure the combined rates on labelled data instead of trusting the formula"
+  - "Retry feedback that quotes the offending text can leak it back into the prompt; give reasons, not content"
+  - "Word-overlap grounding passes fluent but unsupported claims; use entailment checks for high stakes"
+  - "Validate for the destination, for example escape text before putting it in HTML or SQL, not only for content"
+related: [structured-outputs-json-schema, prompt-injection-defense, hallucination-detection]

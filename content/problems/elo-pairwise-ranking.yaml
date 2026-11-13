@@ -1,0 +1,106 @@
+slug: elo-pairwise-ranking
+title: Ranking Models from Pairwise Comparisons - Elo and Bradley-Terry
+url: https://arxiv.org/abs/2403.04132
+difficulty: Medium
+area: LLM
+topics: [LLM, Evaluation, Ranking, Bradley-Terry, Elo]
+summary: |
+  Turn many head-to-head votes between models into a leaderboard. Elo
+  updates ratings game by game, while Bradley-Terry fits one strength per
+  model by maximum likelihood over all games at once.
+intuition: |
+  A vote only says which of two answers was better, so a ranking has to be
+  inferred from who beats whom. Both methods assume the chance that $A$
+  wins depends on the rating gap alone. Elo nudges ratings after every
+  game, so the final numbers depend on the order of the games, while
+  Bradley-Terry looks at the whole win table and finds the strengths that
+  make the observed wins most likely, with no order dependence. Elo is
+  the same logistic model, just fitted by online stochastic updates.
+  Flow: pairwise votes → win table → fit strengths → rating scale → leaderboard.
+approach:
+  - "Collect votes as a win matrix $W_{ij}$, the times $i$ beat $j$ — the sufficient statistic for the model"
+  - "For Elo, compute $E_A = 1/(1 + 10^{(R_B - R_A)/400})$ — the predicted win probability from the rating gap"
+  - "Update $R_A \\leftarrow R_A + K(S_A - E_A)$ and subtract the same from $R_B$ — a surprise moves ratings, and total rating is conserved"
+  - "For Bradley-Terry, start with all strengths equal — a neutral starting point"
+  - "Set $p_i = W_i / \\sum_j n_{ij}/(p_i + p_j)$, with $W_i$ total wins — the minorisation-maximisation step that never decreases the likelihood"
+  - "Renormalise strengths to geometric mean $1$ — only ratios are identifiable"
+  - "Convert with rating $= 400\\log_{10} p + c$ — puts Bradley-Terry on the familiar Elo scale"
+code: |
+  import numpy as np
+
+  def expected(ra, rb):
+      return 1 / (1 + 10 ** ((rb - ra) / 400))
+
+  def elo_update(ra, rb, score_a, k=32):
+      d = k * (score_a - expected(ra, rb))
+      return ra + d, rb - d
+
+  def bt_fit(W, iters=200):
+      # W[i, j] = times i beat j; returns strengths, geomean 1
+      n = W + W.T
+      p = np.ones(len(W))
+      for _ in range(iters):
+          denom = (n / (p[:, None] + p[None, :])).sum(1)
+          p = W.sum(1) / denom
+          p = p / np.exp(np.log(p).mean())
+      return p
+
+  def bt_to_elo(p):
+      return 400 * np.log10(p)
+key_lines: [7, 15, 16]
+time: "Elo is O(1) per game; each Bradley-Terry iteration is O(M²) for M models, with a few hundred iterations at most"
+space: "O(M) ratings for Elo, O(M²) for the win matrix"
+when_to_use: |
+  Ranking systems from crowdsourced or LLM-judged head-to-head
+  comparisons, where scores are relative and models are not all compared
+  on a shared absolute metric.
+when_not_to_use: |
+  When each model has an absolute score on a fixed test set, where
+  averaging is simpler. Also when comparisons are not transitive, for
+  example rock-paper-scissors style matchups, or when the match graph is
+  disconnected so strengths cannot be compared.
+why_it_works: |
+  Under $P(A \succ B) = p_A/(p_A + p_B)$ the log-likelihood is
+  $\sum_{ij} W_{ij}\left[\log p_i - \log(p_i + p_j)\right]$. Setting its
+  gradient to zero gives the fixed point $p_i = W_i / \sum_j n_{ij}/(p_i + p_j)$,
+  and iterating it is a minorisation-maximisation scheme that increases
+  the likelihood monotonically. Elo is a stochastic gradient step on the
+  same logistic likelihood with step size $K$, so it tracks a moving
+  target and depends on the order of games.
+math:
+  - "E_A = 1 / (1 + 10^((R_B − R_A)/400)),   E_A + E_B = 1"
+  - "R_A' = R_A + K (S_A − E_A)"
+  - "R_B' = R_B − K (S_A − E_A)"
+  - "P(A beats B) = p_A / (p_A + p_B)"
+  - "log L = Σ_ij W_ij [ log p_i − log(p_i + p_j) ]"
+  - "p_i ← W_i / Σ_j n_ij / (p_i + p_j)"
+  - "rating_i = 400 · log10(p_i) + c"
+interview_qa:
+  - q: "How do Elo and Bradley-Terry differ?"
+    a: "Both use a logistic win probability from a strength gap. Elo updates online after each game, so results depend on game order and on $K$. Bradley-Terry fits all games jointly by maximum likelihood and is order independent."
+  - q: "Why does the Elo update conserve total rating?"
+    a: "The winner gains $K(S_A - E_A)$ and the loser loses exactly the same amount, so the sum of ratings never changes. A $400$ point gap means odds of $10$ to $1$."
+  - q: "Why can strengths only be found up to scale?"
+    a: "The probability $p_A/(p_A + p_B)$ is unchanged if every $p$ is multiplied by a constant. So the fit fixes the scale, for example geometric mean $1$, and only ratios matter."
+  - q: "How is this related to a reward model?"
+    a: "It is the same Bradley-Terry likelihood, but here each item has a free strength in a table rather than a score predicted from text features."
+hyperparameters:
+  - "Elo step size $K$ and initial rating"
+  - "Number of Bradley-Terry iterations or a convergence tolerance"
+  - "Tie handling, for example counting a tie as half a win to each side"
+  - "Which matchups to sample, since uneven coverage widens intervals"
+pitfalls:
+  - "A model with no wins, or no losses, has an unbounded maximum-likelihood strength; add a small prior or pseudo-counts"
+  - "Elo with a large $K$ is noisy and order dependent; shuffle games or prefer Bradley-Terry for a final leaderboard"
+  - "Ratings are only meaningful relative to the compared set and prompt distribution, and a point estimate needs bootstrap intervals"
+  - "The matchup graph must be connected, or models in separate groups cannot be compared"
+related: [reward-model-bradley-terry, finetune-evaluation, logistic-regression]
+math_tex:
+- '$E_A = \frac{1}{1 + 10^{(R_B - R_A)/400}},\;\; E_A + E_B = 1$'
+- '$R_A^{\prime} = R_A + K(S_A - E_A)$'
+- 'and $R_B^{\prime} = R_B - K(S_A - E_A)$'
+- '$P(A \succ B) = \frac{p_A}{p_A + p_B}$'
+- '$\log L = \sum_{ij} W_{ij}\left[\log p_i - \log(p_i + p_j)\right]$'
+- '$p_i \leftarrow \frac{W_i}{\sum_{j} n_{ij}/(p_i + p_j)}$'
+- 'Rating: $R_i = 400\log_{10} p_i + c$'
+patterns: ["Text evaluation and retrieval"]

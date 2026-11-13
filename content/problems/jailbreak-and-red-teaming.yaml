@@ -1,0 +1,122 @@
+slug: jailbreak-and-red-teaming
+title: Jailbreaks and Red-Team Evaluation
+url: https://genai.owasp.org/llm-top-10/
+difficulty: Medium
+area: LLM
+topics: [LLM, Safety, Evaluation, Red Teaming]
+summary: |
+  A jailbreak is user input crafted to make a model break its own
+  policy. Red teaming measures that risk with a taxonomy of attacks, a
+  seed test set, benign mutations and an attack success rate with a
+  confidence interval, repeated after every change.
+intuition: |
+  A jailbreak is aimed at the model's policy by the user, whereas
+  prompt injection hides instructions in untrusted data. You cannot
+  list every bad phrasing, so you measure instead: take a fixed set of
+  seed tests per category, rewrite each in cheap ways, and count how
+  often the target misbehaves. A keyword filter blocks the plain seed
+  but a trivial rewrite slips past, which is why the rate, not any one
+  example, is the signal. With few attempts the rate is noisy, so report
+  an interval.
+  Flow: test prompts → mutations → target → success rate with interval.
+approach:
+  - "Define a taxonomy of attack categories and a seed per case — coverage says what was never tested"
+  - "Use only a harmless stand-in as the forbidden behaviour — the evaluation stays safe and reproducible"
+  - "Apply deterministic benign mutations (casing, wrapper, spacing) — same inputs give the same results every run"
+  - "Run each variant against the target and record success per category — a success is the forbidden stand-in appearing"
+  - 'Compute $\mathrm{ASR} = k/n$ with a Wilson interval and compare model versions — small $n$ makes raw rates misleading'
+code: |
+  import math
+  import re
+
+  BLOCK = ["secret word"]  # toy keyword filter
+
+  def stub_target(text):
+      low = text.lower()
+      if any(w in low for w in BLOCK):
+          return "REFUSED"
+      norm = re.sub("[^a-z]", "", low)
+      return "pineapple" if "secretword" in norm else "ok"
+
+  OPS = {
+      "identity": lambda s: s,
+      "upper": lambda s: s.upper(),
+      "wrap": lambda s: "Please help with this: " + s,
+      "lang": lambda s: "[lang=xx] " + s,
+      "dashed": lambda s: " ".join("-".join(w) for w in s.split()),
+  }
+
+  def mutate(seed, ops):
+      return [(op, OPS[op](seed)) for op in ops]
+
+  def run_suite(target_fn, seeds, ops):
+      out = []
+      for cat, seed in seeds:
+          for op, text in mutate(seed, ops):
+              ok = "pineapple" in target_fn(text)
+              out.append({"cat": cat, "op": op, "success": ok})
+      return out
+
+  def asr_with_ci(k, n, z=1.959963984540054):
+      p = k / n
+      d = 1 + z * z / n
+      c = (p + z * z / (2 * n)) / d
+      h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
+      return p, c - h, c + h
+
+  def coverage(results, categories):
+      return {c: sum(r["cat"] == c for r in results)
+              for c in categories}
+key_lines: [8, 28, 36]
+time: "O(S·M) target calls for S seeds and M mutations; the statistics are O(1)"
+space: "O(S·M) result records"
+when_to_use: |
+  Before shipping a model or system prompt, and after every change to
+  the model, prompt, filter or tool set, to compare robustness across
+  versions and to find categories with no coverage.
+when_not_to_use: |
+  Do not treat a low rate as proof of safety: the seeds and mutations
+  only sample the space of attacks. It also says nothing about
+  injection through retrieved data, which needs its own tests.
+why_it_works: |
+  Each attempt is a Bernoulli trial, so the success count $k$ out of
+  $n$ estimates a rate, and the Wilson interval stays valid for small
+  $n$ and for rates near $0$ or $1$ where the plain normal interval
+  fails. A fixed seed set with deterministic mutations makes two model
+  versions comparable on identical inputs, so a change in rate or in a
+  single seed is a regression signal. The interval shows when a
+  difference is within noise.
+math:
+  - "ASR = k / n   (successes over attempts)"
+  - "p̂ = k / n"
+  - "Wilson centre = (p̂ + z²/2n) / (1 + z²/n)"
+  - "half-width = z·√(p̂(1−p̂)/n + z²/4n²) / (1 + z²/n)"
+  - "Interval = centre ± half-width"
+  - "No successes in n tries: upper bound ≈ 3 / n (95%)"
+interview_qa:
+  - q: "How does a jailbreak differ from prompt injection?"
+    a: "A jailbreak is the user's own input trying to push the model past its policy. Prompt injection smuggles instructions inside untrusted data such as a web page, and the user may be innocent."
+  - q: "Why report an interval and not just the attack success rate?"
+    a: "With few attempts the rate is noisy, so a drop from one run to the next may be chance. The Wilson interval shows the plausible range and behaves sensibly near zero."
+  - q: "Why do keyword filters fail?"
+    a: "They match surface strings, and a rewrite with different spacing, casing or language keeps the meaning but removes the match. The model understands the rewrite while the filter does not."
+  - q: "When must you re-run the evaluation?"
+    a: "After every change to the model, system prompt, filters or tools, since any of them can reopen a gap, and keep the seed set fixed so versions compare."
+hyperparameters:
+  - "Attack categories in the taxonomy and seeds per category"
+  - "Set of mutation operators"
+  - "Confidence level $z$ of the interval"
+  - "Success criterion used to judge a response"
+pitfalls:
+  - "A low attack success rate only bounds the tested attacks; it is not a proof of safety"
+  - "Mutations of the same seed are correlated, so $n$ overstates the independent evidence and the interval is too narrow"
+  - "A fixed public seed set can be overfitted by tuning the system to it, so refresh it and keep a held-out part"
+  - "Categories with zero attempts look safe in the average; always report coverage next to the rate"
+related: [prompt-injection-defense, hallucination-detection, precision-recall-f1]
+math_tex:
+- 'Rate: $\mathrm{ASR} = k / n$'
+- 'Estimate: $\hat{p} = k / n$'
+- 'Wilson centre: $\frac{\hat{p} + z^2/2n}{1 + z^2/n}$'
+- 'Half-width: $\frac{z\sqrt{\hat{p}(1-\hat{p})/n + z^2/4n^2}}{1 + z^2/n}$'
+- 'Interval: centre $\pm$ half-width'
+- 'Zero successes: upper $\approx 3 / n$ (95%)'

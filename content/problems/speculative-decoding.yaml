@@ -1,0 +1,106 @@
+slug: speculative-decoding
+title: Speculative Decoding
+url: https://arxiv.org/abs/2211.17192
+difficulty: Hard
+area: LLM
+topics: [LLM, Inference, Sampling]
+summary: |
+  A small draft model proposes $\gamma$ tokens, the large target model
+  scores them in one parallel pass, and a rejection rule keeps the
+  output distribution exactly the target's while emitting several
+  tokens per target pass.
+intuition: |
+  Generation is slow because each target pass yields one token, yet
+  checking many proposed tokens costs about the same as one step, since
+  the pass is memory-bound. The rejection rule fixes any draft error:
+  a draft token $x$ survives with probability $\min(1, p(x)/q(x))$, and
+  a rejection is replaced by a draw from the leftover mass, so the
+  output is distributed as the target alone. A bad draft only costs
+  speed, never correctness.
+  Flow: draft proposes → target verifies → accept or resample → emit.
+approach:
+  - 'Sample $\gamma$ tokens from the draft $q$ autoregressively — cheap because the draft is small'
+  - 'Run the target once over the prefix plus drafts to get $p$ at every position — one parallel pass'
+  - 'Accept draft token $x$ with probability $\min(1, p(x)/q(x))$ — keeps tokens the target likes at least as much'
+  - 'On the first rejection, resample from $\mathrm{norm}(\max(0, p-q))$ and stop — restores exactly the target distribution'
+  - 'If all are accepted, draw one bonus token from the target — the pass already computed it'
+code: |
+  import numpy as np
+
+  def accept_or_resample(p, q, x, rng):
+      if rng.random() < min(1.0, p[x] / q[x]):
+          return x, True
+      r = np.maximum(p - q, 0.0)
+      return rng.choice(len(p), p=r / r.sum()), False
+
+  def speculative_step(p_fn, q_fn, prefix, gamma, rng):
+      seq, draft = list(prefix), []
+      for _ in range(gamma):
+          q = q_fn(seq)
+          x = rng.choice(len(q), p=q)
+          draft.append((x, q))
+          seq.append(x)
+      out = []
+      for x, q in draft:
+          p = p_fn(list(prefix) + out)
+          t, ok = accept_or_resample(p, q, x, rng)
+          out.append(t)
+          if not ok:
+              return out
+      p = p_fn(list(prefix) + out)
+      return out + [rng.choice(len(p), p=p)]
+
+  def expected_tokens(alpha, gamma):
+      if alpha >= 1.0:
+          return gamma + 1.0
+      return (1 - alpha ** (gamma + 1)) / (1 - alpha)
+key_lines: [4, 6, 7]
+time: 'One target pass plus $\gamma$ draft passes per step; about $\frac{1-\alpha^{\gamma+1}}{1-\alpha}$ tokens emitted'
+space: 'Both models weights and two KV caches, plus $O(\gamma)$ extra positions per step'
+when_to_use: |
+  Latency-bound generation where a much cheaper draft model agrees
+  with the target on many tokens, and exact sampling from the target
+  distribution must be preserved.
+when_not_to_use: |
+  Large-batch throughput serving where the target is already
+  compute-bound, or when no draft model tracks the target well, since a
+  low acceptance rate $\alpha$ makes the draft overhead a net loss.
+why_it_works: |
+  A token $x$ is emitted either by acceptance, with probability
+  $\min(p(x), q(x))$, or after a rejection by a residual draw. The
+  residual draw contributes exactly $\max(0, p(x)-q(x))$, because the
+  rejection probability $1-\sum_y \min(p(y), q(y))$ cancels with the
+  residual normaliser. Adding them gives $p(x)$. Each position is
+  therefore exact, and by induction so is the whole sequence.
+math:
+  - "accept x ~ q with prob min(1, p(x) / q(x))"
+  - "residual: p'(x) = max(0, p(x) − q(x)) / Σ_y max(0, p(y) − q(y))"
+  - "P(emit x) = min(p, q) + max(0, p − q) = p(x)"
+  - "α = 1 − TV(p, q) = Σ_x min(p(x), q(x))"
+  - "E[tokens per target pass] = (1 − α^(γ+1)) / (1 − α)"
+interview_qa:
+  - q: "Why is the output distribution unchanged?"
+    a: 'The accept-or-resample rule emits $x$ with total probability $\min(p,q) + \max(0,p-q) = p(x)$, so each token is an exact draw from the target.'
+  - q: "What does the acceptance rate depend on?"
+    a: 'On how close the draft is to the target, $\alpha = \sum_x \min(p(x), q(x))$, under an i.i.d. assumption across positions. Real acceptance varies by context.'
+  - q: "Why does it speed up decoding at all?"
+    a: 'Autoregressive decoding is memory-bound, so scoring $\gamma+1$ positions in one pass costs about the same as one position, and each pass yields more than one token on average.'
+  - q: "What happens with a terrible draft?"
+    a: "Most tokens are rejected, so each step emits about one token and the draft work is wasted, but the output is still exactly the target's."
+hyperparameters:
+  - 'Speculation length $\gamma$ (drafted tokens per step)'
+  - "Choice and size of the draft model"
+  - "Sampling temperature, applied identically to target and draft"
+  - "Cost ratio of a draft pass to a target pass"
+pitfalls:
+  - 'Rejection sampling compares $p$ and $q$ after the same temperature and truncation; mismatched processing breaks exactness'
+  - 'Larger $\gamma$ is not always better: gains saturate as $\alpha^{\gamma}$ shrinks while draft cost grows linearly'
+  - 'The formula $\frac{1-\alpha^{\gamma+1}}{1-\alpha}$ assumes the same $\alpha$ at every position, which real text violates'
+  - "Both models need their KV caches rolled back to the last accepted position after a rejection"
+related: [autoregressive-decoding, kv-cache, temperature-sampling]
+math_tex:
+- 'accept $x \sim q$ with prob $\min(1, \frac{p(x)}{q(x)})$'
+- 'Residual $p^{\prime}(x) = \frac{\max(0, p(x)-q(x))}{\sum_y \max(0, p(y)-q(y))}$'
+- '$P(\mathrm{emit}\ x) = \min(p,q) + \max(0, p-q) = p(x)$'
+- '$\alpha = 1 - \mathrm{TV}(p, q) = \sum_x \min(p(x), q(x))$'
+- 'Tokens per pass $= \frac{1-\alpha^{\gamma+1}}{1-\alpha}$'

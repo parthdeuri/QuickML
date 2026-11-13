@@ -1,0 +1,101 @@
+slug: magnitude-pruning
+title: Magnitude Pruning (Unstructured and Structured)
+url: https://arxiv.org/abs/1506.02626
+difficulty: Medium
+area: LLM
+topics: [Compression, Pruning, Sparsity, Inference]
+summary: |
+  Zero the weights with the smallest magnitude to hit a sparsity target,
+  or drop whole rows and channels to get a genuinely smaller dense
+  layer.
+intuition: |
+  A trained network is over-parameterised, and a weight near zero
+  contributes almost nothing to the output, so removing it barely
+  changes predictions. Where the zeros sit decides the payoff:
+  scattered zeros save storage but dense hardware still multiplies
+  them, while removing whole channels shrinks the matrices themselves.
+  Flow: weights → rank by magnitude → zero lowest → fine-tune → sparse model.
+approach:
+  - 'Pick a sparsity target $s$ — the fraction of weights to remove'
+  - 'Rank weights by $|w|$ and find the threshold for $k = sN$ of them — small weights matter least'
+  - 'Zero everything below it with a mask and keep the rest unchanged — the mask is stored with the weights'
+  - 'For global pruning, rank across all layers together — layers with small weights lose more'
+  - 'For structured pruning, score each row by its norm and keep the top rows — a smaller dense matrix'
+  - 'Fine-tune with the mask fixed, and repeat in small steps — recovers accuracy at high sparsity'
+code: |
+  import numpy as np
+
+  def magnitude_mask(W, sparsity):
+      k = int(round(sparsity * W.size))
+      mask = np.ones(W.shape, bool)
+      if k > 0:
+          order = np.argsort(np.abs(W), axis=None, kind="stable")
+          mask.flat[order[:k]] = False
+      return mask
+
+  def global_masks(Ws, sparsity):
+      flat = np.concatenate([np.abs(W).ravel() for W in Ws])
+      k = int(round(sparsity * flat.size))
+      keep = np.ones(flat.size, bool)
+      keep[np.argsort(flat, kind="stable")[:k]] = False
+      out, i = [], 0
+      for W in Ws:
+          out.append(keep[i:i + W.size].reshape(W.shape))
+          i += W.size
+      return out
+
+  def prune_channels(W, keep_fraction, norm=2):
+      n = max(1, int(np.ceil(keep_fraction * W.shape[0])))
+      score = np.linalg.norm(W, ord=norm, axis=1)
+      keep = np.sort(np.argsort(-score, kind="stable")[:n])
+      return W[keep], keep
+key_lines: [7, 14, 24]
+time: "O(N log N) to sort $N$ weights; $O(N)$ with a selection algorithm"
+space: "O(N) for the mask"
+when_to_use: |
+  To shrink checkpoints or reduce memory traffic when a small accuracy
+  loss is acceptable, using structured pruning when the target hardware
+  runs dense kernels.
+when_not_to_use: |
+  Expecting unstructured zeros to speed up dense GPU matrix multiplies;
+  without sparse kernels or hardware support the zeros are still
+  computed. Also unsuited when accuracy cannot be re-checked after
+  pruning.
+why_it_works: |
+  Near a trained solution, loss is flat in most weight directions, so
+  small weights can be set to zero with little loss increase. Fine-tuning
+  then lets the remaining weights compensate. Pruning gradually lets each
+  step stay in that flat region, which is why iterative prune and
+  fine-tune beats one-shot at high sparsity.
+math:
+  - "Mask: mᵢ = 1 if |wᵢ| > τ else 0"
+  - "W′ = M ⊙ W"
+  - "Sparsity s = 1 − nnz(W) / numel(W)"
+  - "Threshold τ is the k-th smallest |w|, k = s · N"
+  - "Channel score ‖Wᵢ,:‖ₚ, keep top ⌈f · n⌉ rows"
+interview_qa:
+  - q: "Why does unstructured pruning not speed up inference by itself?"
+    a: "Dense kernels multiply every entry whether it is zero or not, so speed-ups need sparse kernels or hardware support for a sparsity pattern."
+  - q: "What is the difference between global and layer-wise pruning?"
+    a: "Layer-wise pruning removes the same fraction in every layer, while global pruning uses one threshold, so layers with smaller weights end up sparser."
+  - q: "Why prune iteratively?"
+    a: "Removing a few weights and fine-tuning in between keeps the network near a good solution, while removing most weights at once can cause damage that fine-tuning cannot repair."
+  - q: "When is structured pruning preferred?"
+    a: "When you want real speed-ups on dense hardware, because removing whole rows, channels or heads produces smaller dense matrices."
+hyperparameters:
+  - "Target sparsity $s$ and its schedule across rounds"
+  - "Global or per-layer thresholding"
+  - "Norm used to score channels ($L_1$ or $L_2$)"
+  - "Fine-tuning steps between pruning rounds"
+pitfalls:
+  - "Counting zeros as saved compute or memory when the model is still stored and multiplied densely"
+  - "Pruning the weights but letting fine-tuning regrow them; the mask must be applied after every update"
+  - "Global pruning can wipe out an entire layer whose weights are small in scale"
+  - "Removing a channel also requires removing the matching input columns of the next layer"
+related: [int8-quantization, knowledge-distillation, lora-low-rank-adaptation]
+math_tex:
+- 'Mask: $m_i = 1$ if $|w_i| > \tau$ else $0$'
+- $W' = M \odot W$
+- 'Sparsity $s = 1 - \frac{\mathrm{nnz}(W)}{\mathrm{numel}(W)}$'
+- 'Threshold $\tau$ is the $k$-th smallest $|w|$'
+- 'Channel score $\|W_{i,:}\|_p$, keep top $\lceil f n \rceil$'

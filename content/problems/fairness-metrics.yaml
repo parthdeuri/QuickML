@@ -1,0 +1,113 @@
+slug: fairness-metrics
+title: Group Fairness Metrics and Counterfactual Tests
+url: https://fairmlbook.org/
+difficulty: Medium
+area: MLOps
+topics: [Fairness, Evaluation, LLM]
+summary: |
+  Compare a model's decisions across groups: selection rates, true and
+  false positive rates, calibration, and for language models the change
+  in output when only a group term in the prompt is swapped.
+intuition: |
+  Each criterion fixes a different quantity to be equal across groups:
+  selection rate (demographic parity), true-positive rate (equal
+  opportunity), both error rates (equalised odds), or calibration. They
+  are different questions, and when base rates differ they cannot all hold
+  at once, so the choice is a decision about the application.
+  Flow: predictions + group → per-group rates → gaps → compare to a threshold.
+approach:
+  - "Split predictions by group — every metric is computed within a group"
+  - "Compute selection rate, $\\mathrm{TPR}$ and $\\mathrm{FPR}$ per group — the building blocks of all the gaps"
+  - "Take the spread across groups — demographic parity uses selection rates, equal opportunity uses $\\mathrm{TPR}$"
+  - "Combine for equalised odds and the ratio — the larger of the two gaps, and the lowest rate over the highest"
+  - "For an LLM, fill one template with each group term and score it — a gap above zero means the term changes the output"
+code: |
+  import numpy as np
+
+  def group_rates(y_true, y_pred, group):
+      out = {}
+      for g in sorted(set(group)):
+          m = group == g
+          yt, yp = y_true[m], y_pred[m]
+          out[g] = {"sel": yp.mean(),
+                    "tpr": yp[yt == 1].mean(),
+                    "fpr": yp[yt == 0].mean()}
+      return out
+
+  def spread(rates, key):
+      v = [r[key] for r in rates.values()]
+      return max(v) - min(v)
+
+  def demographic_parity_diff(y_true, y_pred, group):
+      return spread(group_rates(y_true, y_pred, group), "sel")
+
+  def equal_opportunity_diff(y_true, y_pred, group):
+      return spread(group_rates(y_true, y_pred, group), "tpr")
+
+  def equalized_odds_diff(y_true, y_pred, group):
+      r = group_rates(y_true, y_pred, group)
+      return max(spread(r, "tpr"), spread(r, "fpr"))
+
+  def disparate_impact(y_true, y_pred, group):
+      r = group_rates(y_true, y_pred, group)
+      s = [v["sel"] for v in r.values()]
+      return min(s) / max(s)
+
+  def group_calibration(y_true, p, group):
+      return {g: p[group == g].mean() - y_true[group == g].mean()
+              for g in sorted(set(group))}
+
+  def counterfactual_gap(score_fn, template, terms):
+      s = [score_fn(template.format(g=t)) for t in terms]
+      return max(s) - min(s)
+key_lines: [8, 9, 10]
+time: "O(n) to compute all group rates over $n$ examples"
+space: "O(number of groups) beyond the input arrays"
+when_to_use: |
+  Auditing a classifier or a model-assisted decision for gaps between
+  groups, before and after changes, with the group label held out of the
+  model's inputs but available for evaluation.
+when_not_to_use: |
+  As a proof that a system is fair. These are descriptive statistics on
+  one dataset; they depend on label quality, group definitions and sample
+  size, and small groups give noisy rates.
+why_it_works: |
+  Each metric reduces a group's confusion matrix to a rate and compares
+  rates. Equal rates make the chosen criterion hold on that data. When
+  base rates differ, a non-perfect classifier cannot satisfy calibration
+  and equal error rates together, so one criterion has to give way. This
+  is stated here, not proved.
+math:
+  - "Demographic parity: |P(ŷ=1 | A=a) − P(ŷ=1 | A=b)|"
+  - "Equal opportunity: |P(ŷ=1 | y=1, A=a) − P(ŷ=1 | y=1, A=b)|"
+  - "Equalised odds: max of the TPR gap and the FPR gap"
+  - "Disparate impact = min over groups of P(ŷ=1) / max over groups"
+  - "The 80% rule of thumb flags disparate impact below 0.8"
+  - "Counterfactual gap = max over terms g of s(x[g]) − min over g"
+math_tex:
+- $|P(\hat{y}=1 \mid A=a) - P(\hat{y}=1 \mid A=b)|$
+- Equal opportunity is the same gap on $y=1$
+- Equalised odds $= \max(\Delta_{\mathrm{TPR}}, \Delta_{\mathrm{FPR}})$
+- $\mathrm{DI} = \frac{\min_a P(\hat{y}=1 \mid a)}{\max_a P(\hat{y}=1 \mid a)}$
+- The 80% rule of thumb flags $\mathrm{DI} < 0.8$
+- $\max_g s(x[g]) - \min_g s(x[g])$
+interview_qa:
+  - q: "How do demographic parity and equal opportunity differ?"
+    a: "Demographic parity compares how often each group receives a positive prediction, ignoring the true label. Equal opportunity compares the true-positive rate, so it only looks at people who truly qualify."
+  - q: "Why can't all fairness criteria hold together?"
+    a: "When base rates differ between groups, a classifier that is not perfect cannot satisfy calibration and equal error rates at the same time. The result is known and is stated here without proof."
+  - q: "How do you test an LLM for group differences?"
+    a: "Build prompts that are identical except for a swapped group term, score each response with a fixed scorer, and report the spread. A scorer that ignores the term gives zero."
+  - q: "What does the 80% rule measure?"
+    a: "It is a rule of thumb on the ratio of the lowest to the highest selection rate; a ratio below 0.8 is treated as a flag for review, not a verdict."
+hyperparameters:
+  - "Decision threshold applied to scores"
+  - "Choice of criterion and the gap tolerance"
+  - "Minimum group size for a stable estimate"
+pitfalls:
+  - "Rates from very small groups are noisy; report counts or intervals"
+  - "A group with no positive labels makes the true-positive rate undefined"
+  - "Optimising one criterion can worsen another, so report several"
+  - "A counterfactual swap can change more than the group, such as names that carry other signals"
+related: [precision-recall-f1, roc-auc, probability-calibration]
+patterns: ["Classification metrics"]

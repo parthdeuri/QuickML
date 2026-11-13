@@ -544,6 +544,14 @@ EXTRA5 = {
 for _k, _v in EXTRA5.items():
     MEMBERS[_k] = MEMBERS[_k] + [x for x in _v if x not in MEMBERS[_k]]
 
+EXTRA6 = {
+ "attention-and-sequences": ["flash-attention-online-softmax"],
+ "text-evaluation-retrieval": ["llm-as-judge", "elo-pairwise-ranking", "benchmark-contamination"],
+ "classification-metrics": ["fairness-metrics", "content-safety-classifiers"],
+}
+for _k, _v in EXTRA6.items():
+    MEMBERS[_k] = MEMBERS[_k] + [x for x in _v if x not in MEMBERS[_k]]
+
 KEYS = ["id", "name", "order", "summary", "when_to_use", "key_idea",
         "template", "complexity", "pitfalls", "problems", "aliases"]
 

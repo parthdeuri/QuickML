@@ -1,0 +1,96 @@
+slug: continuous-batching
+title: Continuous Batching and Paged KV Cache
+url: https://arxiv.org/abs/2309.06180
+difficulty: Medium
+area: LLM
+topics: [Serving, Batching, KV Cache, Throughput]
+summary: |
+  Keep every batch slot busy by admitting new requests and evicting
+  finished ones at each decoding step, and store the KV cache in
+  fixed-size blocks so memory is not wasted.
+intuition: |
+  Generation lengths differ wildly, so a static batch runs as long as
+  its longest sequence while finished slots sit idle. Scheduling at the
+  granularity of one decoding step removes the wait: a slot freed this
+  step is refilled the next. Paging the cache the same way, in small
+  blocks looked up through a table, means no sequence reserves memory
+  for tokens it may never produce.
+  Flow: queue + free slots → admit each step → decode → evict finished → refill.
+approach:
+  - 'Keep a queue of waiting requests and a set of at most $B$ active ones — $B$ is the slot count'
+  - 'At each step, admit waiting requests into free slots — no slot idles while work waits'
+  - 'Decode one token for every active sequence — the whole batch moves one step together'
+  - 'Evict sequences that just finished — their slots and cache blocks are freed immediately'
+  - 'Allocate KV memory in blocks of $s$ tokens via a block table — a sequence wastes only its last partial block'
+code: |
+  import math
+
+  def simulate_static(lengths, batch_size):
+      steps = 0
+      for i in range(0, len(lengths), batch_size):
+          steps += max(lengths[i:i + batch_size])
+      return steps, sum(lengths) / (steps * batch_size)
+
+  def simulate_continuous(lengths, batch_size):
+      queue, active, steps = list(lengths)[::-1], [], 0
+      while queue or active:
+          while queue and len(active) < batch_size:
+              active.append(queue.pop())
+          active = [r - 1 for r in active]
+          active = [r for r in active if r > 0]
+          steps += 1
+      return steps, sum(lengths) / (steps * batch_size)
+
+  def blocks_needed(tokens, block_size):
+      blocks = math.ceil(tokens / block_size)
+      return blocks, blocks * block_size - tokens
+key_lines: [6, 13, 20]
+time: "O(total steps · B) for the simulation"
+space: "O(n) for the queue"
+when_to_use: |
+  Online serving of generation requests whose output lengths vary, where
+  throughput and GPU utilisation matter more than strict batch
+  alignment.
+when_not_to_use: |
+  Offline jobs with near-identical lengths, where static batching is as
+  good and simpler. It also adds scheduler complexity and needs
+  attention kernels that handle sequences at different positions.
+why_it_works: |
+  A static batch of $B$ takes $\max_i L_i$ steps but only uses
+  $\sum_i L_i$ slot-steps, so the gap is idle capacity. A scheduler
+  that refills slots every step never leaves a slot idle while requests
+  wait, so its total steps are close to the lower bound
+  $\sum_i L_i / B$. Fixed-size blocks bound the cache waste per
+  sequence by one partial block.
+math:
+  - "Static steps = Σ_b max_{i∈b} Lᵢ"
+  - "Utilisation U = Σ Lᵢ / (steps · B)"
+  - "Lower bound: steps ≥ max(Σ Lᵢ / B, max Lᵢ)"
+  - "Blocks n = ⌈T / s⌉"
+  - "Waste = n · s − T < s"
+interview_qa:
+  - q: "Why is static batching inefficient for generation?"
+    a: "Sequences stop at different lengths, but the batch runs until the longest one finishes, so finished slots do no useful work."
+  - q: "What does iteration-level scheduling change?"
+    a: "The scheduler runs at every decoding step, so finished sequences leave and waiting ones join immediately instead of at batch boundaries."
+  - q: "What problem does a paged KV cache solve?"
+    a: "Reserving contiguous space for the maximum length wastes memory through fragmentation, while fixed-size blocks with a block table allocate memory as tokens arrive and waste at most one partial block per sequence."
+  - q: "Does continuous batching change the output of a request?"
+    a: "No. Each sequence is decoded the same way; only when it runs, and with which neighbours, changes."
+hyperparameters:
+  - "Maximum number of concurrent sequences $B$"
+  - "KV block size $s$ in tokens"
+  - "Admission policy and queue order"
+  - "Total cache memory reserved for blocks"
+pitfalls:
+  - "Prompt prefill is far more expensive than one decode step, so admitting a long prompt can stall the running sequences"
+  - "Small blocks cut waste but enlarge the block table and slow attention lookups; large blocks do the reverse"
+  - "Slot utilisation is not throughput: a full batch can still be memory-bound"
+  - "This simulation assumes one token per step and known lengths; real lengths are unknown until generation ends"
+related: [kv-cache, autoregressive-decoding, context-window-limits]
+math_tex:
+- 'Static steps $= \sum_{b} \mathrm{max}_{i \in b} L_i$'
+- 'Utilisation $U = \frac{\sum_i L_i}{\mathrm{steps} \cdot B}$'
+- 'Bound $\mathrm{steps} \geq \frac{\sum_i L_i}{B}$'
+- 'Blocks $n = \lceil T / s \rceil$'
+- 'Waste $= n s - T < s$'

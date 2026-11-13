@@ -1,0 +1,96 @@
+slug: llm-as-judge
+title: LLM-as-a-Judge - Swap Consistency and Cohen's Kappa
+url: https://arxiv.org/abs/2306.05685
+difficulty: Medium
+area: LLM
+topics: [LLM, Evaluation, Judge Bias, Inter-Annotator Agreement]
+summary: |
+  Grade model outputs with another LLM, either by scoring one answer
+  against a rubric or by comparing two. Cancel position bias by judging
+  both orders, and validate the judge against human labels with
+  Cohen's kappa.
+intuition: |
+  A judge model is cheap and scalable but it has habits unrelated to
+  quality: it may favour whichever answer comes first, the longer answer,
+  or text written by itself. A verdict that flips when you swap the order
+  was driven by position, not content, so only count a win when both
+  orders agree and call the rest a tie. Then raw accuracy against humans
+  is not enough, since two raters who often say the same thing agree by
+  chance, so kappa subtracts the agreement expected from the label
+  frequencies alone.
+  Flow: pair of answers → judge in both orders → consistent verdict → agreement check.
+approach:
+  - "Pick the format, a rubric score for one answer or a pairwise choice — pairwise is usually more reliable than absolute scores"
+  - "Ask the judge about $(a, b)$ and then again about $(b, a)$ — the second call reverses the position"
+  - "Map both verdicts back to the same answer labels — otherwise the two calls are not comparable"
+  - "Count a win only if both orders pick the same answer, otherwise record a tie — position-driven verdicts become ties"
+  - "Collect human labels on a sample and the judge labels on the same items — a reference to validate against"
+  - "Compute observed agreement $p_o$ and chance agreement $p_e$ from the label frequencies — chance is the baseline to beat"
+  - "Report $\\kappa = (p_o - p_e)/(1 - p_e)$ with the tie rate — low kappa means do not trust the judge"
+code: |
+  import numpy as np
+
+  def pairwise_with_swap(judge_fn, a, b):
+      # judge_fn(x, y) -> "first" or "second"
+      v1 = "A" if judge_fn(a, b) == "first" else "B"
+      v2 = "B" if judge_fn(b, a) == "first" else "A"
+      return v1 if v1 == v2 else "tie"
+
+  def cohen_kappa(l1, l2):
+      l1, l2 = np.asarray(l1), np.asarray(l2)
+      po = (l1 == l2).mean()
+      pe = sum((l1 == c).mean() * (l2 == c).mean()
+               for c in np.union1d(l1, l2))
+      return 1.0 if pe == 1 else (po - pe) / (1 - pe)
+key_lines: [7, 11, 12]
+time: "Two judge calls per pair, so 2n calls for n pairs; kappa is O(n·C) for C label classes"
+space: "O(n) for the stored verdicts and labels"
+when_to_use: |
+  Open-ended outputs where no exact metric exists and human grading is
+  too slow, such as comparing two model versions on many prompts, as long
+  as you have a small human-labelled set to validate the judge.
+when_not_to_use: |
+  Tasks with a checkable answer such as code tests or exact match, and
+  high-stakes decisions where the judge's agreement with humans has not
+  been measured. Do not use a model to judge its own outputs without
+  controlling for self-preference.
+why_it_works: |
+  If the judge's preference for position is independent of content, then
+  swapping the order flips the position effect and leaves the content
+  effect, so agreement across both orders isolates the content signal.
+  Kappa rescales agreement to $0$ at the level expected if the two raters
+  labelled independently with their own frequencies, and to $1$ at
+  perfect agreement, so it is not inflated when one label dominates.
+math:
+  - "A wins ⇔ judge(a,b) = A and judge(b,a) = A, else tie"
+  - "p_o = (1/n) Σᵢ 1[l1ᵢ = l2ᵢ]"
+  - "p_e = Σ_c P1(c) · P2(c)"
+  - "κ = (p_o − p_e) / (1 − p_e)"
+  - "κ = 1 perfect agreement, κ = 0 chance level"
+interview_qa:
+  - q: "Why judge both orders?"
+    a: "Judges tend to favour the first or second slot regardless of content. Running both orders and requiring the same verdict turns position-driven answers into ties instead of fake wins."
+  - q: "Why use kappa instead of accuracy against human labels?"
+    a: "If one label is common, two raters agree often by chance. $\\kappa = (p_o - p_e)/(1 - p_e)$ removes the chance agreement implied by each rater's label frequencies."
+  - q: "What other biases does an LLM judge have?"
+    a: "It can prefer longer, more verbose answers and answers written by itself or a similar model. Control for length, use a different judge family, and check against human labels."
+  - q: "Pointwise or pairwise judging?"
+    a: "Pointwise rubric scores are cheap and give absolute numbers but drift and compress. Pairwise comparison is relative and usually agrees better with humans, but costs more calls as the number of systems grows."
+hyperparameters:
+  - "Judge model and prompt, including the rubric wording"
+  - "Pointwise or pairwise format"
+  - "Tie policy: count as half a win or exclude"
+  - "Size of the human-labelled validation set"
+pitfalls:
+  - "Swapping fixes position bias only; length and self-preference biases survive and need their own checks"
+  - "Kappa is undefined when both raters use a single identical label; the code returns $1$ in that degenerate case"
+  - "Kappa depends on label prevalence, so compare it across sets with similar class mixes"
+  - "A judge validated on one task or domain may disagree with humans on another"
+related: [finetune-evaluation, prompt-optimization, rag-evaluation-faithfulness]
+math_tex:
+- 'A wins iff both orders choose $A$, else tie'
+- 'Observed: $p_o = \frac{1}{n}\sum_{i} [l^1_i = l^2_i]$'
+- 'Chance: $p_e = \sum_{c} P_1(c)\,P_2(c)$'
+- 'Kappa: $\kappa = \frac{p_o - p_e}{1 - p_e}$'
+- 'Perfect: $\kappa = 1$, chance: $\kappa = 0$'
+patterns: ["Text evaluation and retrieval"]

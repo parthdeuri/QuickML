@@ -1,0 +1,101 @@
+slug: flash-attention-online-softmax
+title: FlashAttention and Online Softmax
+url: https://arxiv.org/abs/2205.14135
+difficulty: Hard
+area: LLM
+topics: [LLM, Attention, Inference, Efficiency]
+summary: |
+  Compute exact softmax attention one block of keys at a time, keeping
+  a running maximum, denominator and output per query row, so the full
+  $T \times T$ score matrix is never stored.
+intuition: |
+  Softmax needs a global maximum and a global sum, which seems to force
+  all scores to exist at once. But the sum can be corrected after the
+  fact: when a new block raises the running maximum, multiply the old
+  denominator and output by $\exp(m - m_{new})$ and carry on. The result
+  is identical to standard attention, not an approximation. The gain
+  is fewer slow GPU memory reads and writes, not fewer FLOPs.
+  Flow: load block → scores → update max → rescale → accumulate → divide.
+approach:
+  - 'Keep per row a running max $m$, denominator $\ell$ and output $o$ — all of size $O(T)$, not $O(T^2)$'
+  - 'Compute the score tile for one key block — only a $T \times$ block tile exists at a time'
+  - 'Update $m_{new} = \max(m, \max s)$ — new scores may dominate'
+  - 'Rescale $\ell$ and $o$ by $\exp(m - m_{new})$ and add this block''s terms — old terms re-expressed relative to the new max'
+  - 'After the last block return $o / \ell$ — the exact softmax-weighted average of $V$'
+code: |
+  import numpy as np
+
+  def online_softmax_attention(Q, K, V, block, causal=False,
+                               stats=None):
+      T, d = Q.shape
+      m = np.full(T, -np.inf)
+      l = np.zeros(T)
+      o = np.zeros((T, V.shape[1]))
+      for j in range(0, K.shape[0], block):
+          s = Q @ K[j:j + block].T / np.sqrt(d)
+          if causal:
+              cols = np.arange(j, j + s.shape[1])
+              future = cols[None, :] > np.arange(T)[:, None]
+              s = np.where(future, -np.inf, s)
+          if stats is not None:
+              stats.append(s.shape)
+          m_new = np.maximum(m, s.max(axis=1))
+          ms = np.where(np.isinf(m_new), 0.0, m_new)
+          a = np.exp(m - ms)
+          p = np.exp(s - ms[:, None])
+          l = l * a + p.sum(axis=1)
+          o = o * a[:, None] + p @ V[j:j + block]
+          m = m_new
+      return o / l[:, None]
+key_lines: [17, 21, 22]
+time: 'O(T^2 d) FLOPs, same as standard attention'
+space: 'O(T d) plus one $T \times$ block score tile, instead of an $O(T^2)$ score matrix'
+when_to_use: |
+  Long sequences in training or prefill, where the $T \times T$ score
+  matrix is too large or its memory traffic dominates runtime, and an
+  exact result is required.
+when_not_to_use: |
+  Very short sequences where the score matrix is tiny, or when you
+  need the full attention weights (for visualisation), since they are
+  never materialised. Plain NumPy gains no speed; the benefit needs a
+  fused GPU kernel.
+why_it_works: |
+  For one row with scores split into blocks, let $m$ be the max so far
+  and $\ell = \sum_i e^{s_i - m}$. If the max changes to $m'$, then
+  $\sum_i e^{s_i - m'} = e^{m - m'} \ell$ for the old terms, so
+  rescaling is exact. The same factor applies to the weighted sum of
+  values. After all blocks, $o/\ell$ equals the ordinary softmax-weighted
+  average, with the usual max subtraction for stability built in.
+math:
+  - "m' = max(m, max_j s_j)"
+  - "ℓ' = ℓ · exp(m − m') + Σ_j exp(s_j − m')"
+  - "o' = o · exp(m − m') + Σ_j exp(s_j − m') v_j"
+  - "attention(q) = o / ℓ = Σ_i softmax(s)_i v_i"
+  - "s_j = q·k_j / √d"
+interview_qa:
+  - q: "Is FlashAttention an approximation?"
+    a: 'No. It computes exactly the same $\mathrm{softmax}(QK^{\top}/\sqrt{d})V$ as standard attention, up to floating-point rounding.'
+  - q: "Where does the speed-up come from if FLOPs are the same?"
+    a: 'Attention is limited by memory traffic. Tiling keeps blocks in fast on-chip memory and avoids writing and reading the $T \times T$ matrix in slow GPU memory.'
+  - q: "Why is the rescaling factor needed?"
+    a: 'The softmax terms were computed relative to an older maximum. Multiplying by $\exp(m - m_{new})$ re-expresses them relative to the new maximum so the sums stay consistent.'
+  - q: "What does it do to memory?"
+    a: 'The extra memory per row is a few scalars and one output vector, so it grows linearly in $T$ rather than quadratically.'
+hyperparameters:
+  - "Key/value block size (set by on-chip memory size)"
+  - "Query block size in a real tiled kernel"
+  - "Causal masking on or off"
+  - "Accumulator precision (float32 or float64)"
+pitfalls:
+  - 'Initialising $m$ to $0$ instead of $-\infty$ gives wrong results when all scores are very negative'
+  - 'With a causal mask a block can be fully masked for a row, so $m_{new} = -\infty$ and $\exp(m - m_{new})$ is NaN unless handled'
+  - 'Forgetting to rescale $o$ as well as $\ell$ silently corrupts the output'
+  - 'This NumPy version shows the arithmetic only; it is not faster and still forms a $T \times$ block tile'
+related: [self-attention, kv-cache, causal-masking]
+math_tex:
+- 'New max: $m^{\prime} = \max(m, \max_j s_j)$'
+- 'Denominator: $\ell^{\prime} = \ell\, e^{m-m^{\prime}} + \sum_j e^{s_j-m^{\prime}}$'
+- 'Output: $o^{\prime} = o\, e^{m-m^{\prime}} + \sum_j e^{s_j-m^{\prime}} v_j$'
+- 'Result: $\frac{o}{\ell} = \sum_i \mathrm{softmax}(s)_i\, v_i$'
+- 'Scores: $s_j = \frac{q \cdot k_j}{\sqrt{d}}$'
+patterns: ["Attention and sequences"]

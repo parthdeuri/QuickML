@@ -1,0 +1,101 @@
+slug: content-safety-classifiers
+title: Content Safety Classifiers and Thresholds
+url: https://arxiv.org/abs/2208.03274
+difficulty: Medium
+area: LLM
+topics: [LLM, Safety, Moderation, Thresholds]
+summary: |
+  Moderate inputs and outputs with per-category classifier scores. Pick
+  the threshold from the precision-recall trade-off, run a cheap filter
+  first, escalate only the uncertain slice, and send the grey zone to
+  humans.
+intuition: |
+  A classifier gives a score, and the threshold turns it into an action
+  by trading missed harm against false alarms. For a severe category
+  you fix the recall you must reach and take the highest threshold that
+  still meets it, which keeps precision as high as that recall allows.
+  Most traffic is clearly fine, so an expensive model only needs to see
+  the band of scores the cheap one is unsure about.
+  Flow: text → cheap score → clear cases decided → uncertain band → big model or human.
+approach:
+  - "Score each item per category with a classifier — one threshold per category, not one global"
+  - "Fix a target recall for severe categories — a miss costs more than a false alarm"
+  - 'Take the $k$-th highest positive score with $k = \lceil r P \rceil$ — the highest threshold that reaches the recall'
+  - "Choose a band $[lo, hi)$ around the threshold for the second stage — only uncertain items pay the extra cost"
+  - 'Estimate cost as $c_1 + p\,c_2$ and route the grey zone to humans — keeps cost and review load predictable'
+code: |
+  import math
+
+  def confusion_at(scores, labels, thr):
+      tp = fp = fn = tn = 0
+      for s, y in zip(scores, labels):
+          pred = s >= thr
+          tp += pred and y == 1
+          fp += pred and y == 0
+          fn += (not pred) and y == 1
+          tn += (not pred) and y == 0
+      return tp, fp, fn, tn
+
+  def pick_threshold(scores, labels, target_recall):
+      pos = sorted((s for s, y in zip(scores, labels) if y == 1),
+                   reverse=True)
+      k = math.ceil(target_recall * len(pos) - 1e-9)
+      return pos[max(k, 1) - 1]
+
+  def cascade_cost(c1, c2, p_escalate):
+      return c1 + p_escalate * c2
+
+  def escalate_band(scores, lo, hi):
+      return [i for i, s in enumerate(scores) if lo <= s < hi]
+key_lines: [16, 17, 20]
+time: "O(n log n) to sort the positive scores; O(n) per confusion count or band"
+space: "O(n) for the sorted positive scores"
+when_to_use: |
+  Gating prompts and responses with moderation scores, especially for
+  severe categories where a target recall must be guaranteed on a
+  labelled validation set, and where a cheap model can pre-screen
+  traffic for a costly one.
+when_not_to_use: |
+  Do not use a recall target alone when the positive class is tiny, since
+  the threshold then rests on a handful of examples. Do not treat raw
+  scores as probabilities before checking calibration.
+why_it_works: |
+  Recall can only fall as the threshold rises, so the set of thresholds
+  that reach a target is an interval and its top end is the $k$-th
+  largest positive score with $k = \lceil r P \rceil$. A cascade pays
+  $c_1$ for every item and $c_2$ only for the escalated fraction $p$,
+  so it is cheaper than always using the large model exactly when
+  $c_1 + p\,c_2 < c_2$, that is $p < 1 - c_1/c_2$.
+math:
+  - "recall = TP / (TP + FN)"
+  - "precision = TP / (TP + FP)"
+  - "k = ⌈r · P⌉,  thr = k-th largest positive score"
+  - "E[cost] = c₁ + p · c₂"
+  - "Cheaper than always c₂  ⇔  p < 1 − c₁ / c₂"
+interview_qa:
+  - q: "How do you choose a threshold for a severe category?"
+    a: "Set the recall you must reach on a validation set and take the highest threshold that meets it. That keeps precision as high as the recall target permits."
+  - q: "When does a two-stage cascade save money?"
+    a: "When the expected cost $c_1 + p\\,c_2$ is below $c_2$, which means the escalated fraction satisfies $p < 1 - c_1/c_2$. A very cheap first stage allows escalating a large share."
+  - q: "Why are calibrated scores useful for moderation?"
+    a: "A calibrated score of 0.8 means about 80 percent of such items are truly positive, so thresholds and review bands can be set from costs, and they stay stable when scores are compared across categories."
+  - q: "What goes to human review?"
+    a: "The grey zone around the threshold, plus a random sample of confident decisions to audit for drift and silent errors."
+hyperparameters:
+  - "Target recall per category"
+  - "Band edges $lo$ and $hi$ for escalation"
+  - "Costs $c_1$ and $c_2$ of the two stages"
+  - "Size and refresh rate of the labelled validation set"
+pitfalls:
+  - "The threshold is tuned on one sample, so recall on new traffic can be lower; keep a margin and re-measure"
+  - "Scores shift when the data or classifier changes, so a stored threshold can silently stop meeting the target"
+  - "Ties in scores can push recall above the target or make the picked point jump; check the confusion counts"
+  - "A rare positive class makes precision at high recall very unstable; report it with an interval"
+related: [precision-recall-f1, probability-calibration, roc-auc]
+math_tex:
+- 'Recall: $\frac{TP}{TP + FN}$'
+- 'Precision: $\frac{TP}{TP + FP}$'
+- 'Rank: $k = \lceil r \cdot P \rceil$, thr = $k$-th top positive'
+- 'Cascade cost: $\mathbb{E}[C] = c_1 + p\,c_2$'
+- 'Cheaper than $c_2$ iff $p < 1 - \frac{c_1}{c_2}$'
+patterns: ["Classification metrics"]

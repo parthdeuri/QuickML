@@ -1,0 +1,91 @@
+slug: tensor-parallel-matmul
+title: Tensor Parallelism (Megatron-Style Sharded MLP)
+url: https://arxiv.org/abs/1909.08053
+difficulty: Hard
+area: LLM
+topics: [LLM, Distributed Training, Parallelism]
+summary: |
+  Split one layer's weight matrices across devices: the first linear by
+  columns, the second by rows, so the whole MLP needs a single
+  all-reduce (sum) of the partial outputs.
+intuition: |
+  A nonlinearity cannot be applied to partial sums, so the split must not
+  cut the contraction of the first matrix. Splitting $W_1$ by columns
+  gives each device complete hidden units, so the activation is local.
+  Splitting $W_2$ by rows then turns the output into a sum of per-device
+  terms, and one all-reduce adds them. Attention does the same with heads.
+  Flow: split weights → local compute → all-reduce → next layer.
+approach:
+  - "Split $W_1$ into column blocks, one per device — each device owns a slice of the hidden units"
+  - "Compute $x W_1^{(i)}$ on each device with the full input $x$ — needs no communication"
+  - "Apply the activation locally — each hidden unit is complete, so it is exact"
+  - "Multiply by the matching row block $W_2^{(i)}$ — gives a partial output of full width"
+  - "All-reduce (sum) the partial outputs — equals the unsplit result; one collective per MLP"
+code: |
+  import numpy as np
+
+  def gelu(x):
+      c = np.sqrt(2 / np.pi)
+      return 0.5 * x * (1 + np.tanh(c * (x + 0.044715 * x**3)))
+
+  def column_split(W, n):
+      return np.split(W, n, axis=1)
+
+  def row_split(W, n):
+      return np.split(W, n, axis=0)
+
+  def all_reduce_sum(parts):
+      total = parts[0]
+      for p in parts[1:]:
+          total = total + p
+      return total
+
+  def tp_mlp(x, W1, W2, n_devices):
+      A = column_split(W1, n_devices)
+      B = row_split(W2, n_devices)
+      parts = [gelu(x @ a) @ b for a, b in zip(A, B)]
+      return all_reduce_sum(parts)
+
+  def comm_bytes(B, T, d, nbytes):
+      return B * T * d * nbytes
+key_lines: [20, 22, 23]
+time: "Same total FLOPs as the unsplit MLP, divided over $n$ devices, plus one all-reduce"
+space: "Weights and hidden activations per device shrink by about $1/n$; the output stays $B \\times T \\times d$"
+when_to_use: |
+  A layer or model too large for one accelerator, on devices joined by a
+  fast interconnect, since the all-reduce sits on the critical path of
+  every layer.
+when_not_to_use: |
+  Across slow links, where the per-layer all-reduce dominates, or when the
+  model fits on one device and data parallelism is enough.
+why_it_works: |
+  Column blocks of $W_1$ give $xW_1 = [xW_1^{(1)}, \dots, xW_1^{(n)}]$, and
+  an elementwise activation acts on each block independently. Row blocks
+  of $W_2$ give $hW_2 = \sum_i h^{(i)} W_2^{(i)}$, a sum of local terms. So
+  the sharded computation equals the unsplit one, up to summation order.
+math:
+  - "xW₁ = [xW₁⁽¹⁾, …, xW₁⁽ⁿ⁾]   (column split of W₁)"
+  - "Y = Σᵢ gelu(xW₁⁽ⁱ⁾) W₂⁽ⁱ⁾   (row split of W₂)"
+  - "Wrong: Σᵢ gelu(xᵢW₁⁽ⁱ⁾) ≠ gelu(Σᵢ xᵢW₁⁽ⁱ⁾)"
+  - "Comm bytes per all-reduce = B · T · d · bytes per value"
+math_tex:
+- $xW_1 = [xW_1^{(1)}, \dots, xW_1^{(n)}]$
+- $Y = \sum_{i} \mathrm{gelu}(xW_1^{(i)})\, W_2^{(i)}$
+- $\sum_i \mathrm{gelu}(z_i) \neq \mathrm{gelu}(\sum_i z_i)$
+- Comm bytes $= B \cdot T \cdot d \cdot \mathrm{bytes}$
+interview_qa:
+  - q: "Why split the first linear by columns and the second by rows?"
+    a: "Column blocks give each device whole hidden units, so the nonlinearity needs no communication. Row blocks of the second matrix make the output a sum of partials, which one all-reduce combines."
+  - q: "How is attention split?"
+    a: "Heads are divided across devices; each device holds its heads' $Q$, $K$, $V$ slices and the matching rows of the output projection, then one all-reduce sums the partial outputs."
+  - q: "What does tensor parallelism cost in communication?"
+    a: "One all-reduce of a $B \\times T \\times d$ activation per sharded block in the forward pass, and another in the backward pass, so it needs a fast interconnect."
+hyperparameters:
+  - "Tensor-parallel degree $n$ (must divide the hidden width and the head count)"
+  - "Interconnect bandwidth between the devices"
+  - "Activation precision, which sets bytes per all-reduce"
+pitfalls:
+  - "Row-splitting the first matrix puts the activation on partial sums, which is wrong"
+  - "The degree must divide the number of heads and the hidden width evenly"
+  - "Tensor parallelism beyond one fast node usually loses to the communication cost"
+related: [feed-forward-gelu-swiglu, multi-head-attention, transformer-block]

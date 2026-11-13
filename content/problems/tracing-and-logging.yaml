@@ -1,0 +1,130 @@
+slug: tracing-and-logging
+title: Tracing, Logging and Cost Accounting for LLM Apps
+url: https://opentelemetry.io/docs/concepts/signals/traces/
+difficulty: Medium
+area: LLM
+topics: [LLM, Observability, Tracing, Monitoring]
+summary: |
+  Record each request as a tree of timed spans carrying model, token
+  and cost attributes, emit structured logs with sensitive fields
+  redacted, and summarise latency with percentiles.
+intuition: |
+  One user request fans out into retrieval, several model calls and
+  tool calls, so a single log line cannot say which step was slow or
+  expensive. A span records one step with its start, end, parent and
+  attributes; linking spans by parent id turns a request into a tree
+  where the time and the tokens add up. Averages hide the slow
+  requests users notice, so report percentiles such as $p_{95}$, and
+  because full volume is costly, sample traces and redact secrets
+  before anything is written.
+  Flow: request → spans → timings and tokens → logs → alerts.
+approach:
+  - "Open a span per step with a context manager, using the current top of a stack as parent — nesting in code becomes nesting in the tree"
+  - "Read an injected clock at enter and exit — tests can use a fake clock and stay deterministic"
+  - "Attach attributes such as model name and input and output token counts — latency and cost can then be sliced by model"
+  - 'Compute cost as $\sum_k n_k c_k$ over token kinds with per-token prices — spend is derived from counts, not guessed'
+  - "Redact configured keys recursively, then emit one JSON record per span — logs stay structured and safe to store"
+  - 'Summarise durations with $p_{50}$, $p_{95}$, $p_{99}$ and keep only a sampled fraction of traces — tail latency is visible and volume stays bounded'
+code: |
+  import zlib
+
+  class Tracer:
+      def __init__(self, clock, trace_id="t1"):
+          self.clock, self.trace_id = clock, trace_id
+          self.spans, self.stack = [], []
+
+      def span(self, name, **attrs):
+          return Span(self, name, attrs)
+
+  class Span:
+      def __init__(self, tracer, name, attrs):
+          self.tr, self.name, self.attrs = tracer, name, attrs
+
+      def __enter__(self):
+          tr = self.tr
+          self.id = len(tr.spans) + 1
+          self.parent = tr.stack[-1].id if tr.stack else None
+          self.start = tr.clock()
+          tr.spans.append(self)
+          tr.stack.append(self)
+          return self
+
+      def __exit__(self, *exc):
+          self.end = self.tr.clock()
+          self.tr.stack.pop()
+
+  def percentile(values, q):
+      v = sorted(values)
+      h = (len(v) - 1) * q / 100
+      j = int(h)
+      k = min(j + 1, len(v) - 1)
+      return v[j] + (h - j) * (v[k] - v[j])
+
+  def cost(usage, prices):
+      return sum(n * prices[k] for k, n in usage.items()) / 1000
+
+  def redact(rec, keys):
+      if isinstance(rec, dict):
+          return {k: redact(v, keys) for k, v in rec.items()
+                  if k not in keys}
+      if isinstance(rec, list):
+          return [redact(v, keys) for v in rec]
+      return rec
+
+  def sampled(trace_id, rate):
+      return zlib.crc32(trace_id.encode()) % 10000 < rate * 10000
+
+  def record(tr, s):
+      return {"trace": tr.trace_id, "span": s.id, "parent": s.parent,
+              "name": s.name, "dur": s.end - s.start, **s.attrs}
+key_lines: [17, 18, 19]
+time: "O(1) per span; O(n log n) to sort $n$ durations for a percentile"
+space: "O(spans) per trace, plus the attributes stored on each span"
+when_to_use: |
+  Any LLM application with more than one model or tool call per
+  request, where you need to explain latency and spend, debug a bad
+  answer by replaying its steps, and alert on tail latency or cost.
+when_not_to_use: |
+  A single-call prototype where a plain log line is enough. Do not log
+  raw prompts and outputs by default when they hold personal data;
+  log sizes, hashes or redacted fields instead.
+why_it_works: |
+  Because a child span starts after and ends before its parent, the
+  tree structure and the timestamps are consistent, so the time spent
+  inside any subtree can be read off directly. Cost is linear in token
+  counts, so summing per-span costs gives the cost of the whole trace.
+  A percentile is a sample estimate of the quantile of the latency
+  distribution, which stays informative when the mean is dominated by
+  a few outliers.
+math:
+  - "child inside parent:  s_p ≤ s_c  and  e_c ≤ e_p"
+  - "duration d = e − s"
+  - "h = (n − 1)·q / 100,   j = ⌊h⌋"
+  - "p_q = x₍ⱼ₎ + (h − j)·(x₍ⱼ₊₁₎ − x₍ⱼ₎)"
+  - "cost = Σₖ nₖ · cₖ / 1000"
+  - "keep a trace if  u(trace_id) < r,  u ∈ [0, 1) from a hash"
+math_tex:
+- 'Child inside parent: $s_p \leq s_c$ and $e_c \leq e_p$'
+- 'Duration $d = e - s$'
+- 'Percentile position $h = (n-1)\,q/100$, $j = \lfloor h \rfloor$'
+- '$p_q = x_{(j)} + (h-j)\,(x_{(j+1)} - x_{(j)})$'
+- 'Cost $= \sum_k n_k c_k / 1000$ (per 1000 tokens)'
+- 'Keep trace if $u(\mathrm{id}) < r$, $u \in [0,1)$'
+interview_qa:
+  - q: "Why report p95 and p99 instead of the mean latency?"
+    a: "LLM latency has a long tail from long outputs, retries and tool calls. The mean hides it, while the tail percentiles show what the slowest users experience."
+  - q: "What is the relation between a trace and a span?"
+    a: "A trace is the whole request, identified by one trace id. It is a tree of spans, each with its own span id, a parent id (none for the root), start and end times and attributes."
+  - q: "How do you control tracing cost and privacy?"
+    a: "Sample a fraction of traces, deterministically from the trace id so a trace is kept or dropped as a whole. Redact or hash sensitive fields before writing, and keep token counts rather than raw text where possible."
+hyperparameters:
+  - "Sampling rate, possibly higher for errors and slow requests"
+  - "Percentiles to report (p50, p95, p99)"
+  - "Set of redacted keys"
+  - "Price per token for each token kind and model"
+pitfalls:
+  - "Percentiles of per-request latency cannot be averaged across machines; merge the raw values or histograms instead"
+  - "Sampling each span independently breaks trees; decide once per trace from the trace id"
+  - "Streaming responses need both time to first token and total time, or the span hides the wait users feel"
+  - "A redact list misses new field names; prefer logging an allow-list of fields for sensitive paths"
+related: [context-window-limits, hallucination-detection]

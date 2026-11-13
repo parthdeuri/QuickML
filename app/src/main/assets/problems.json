@@ -1,5 +1,5 @@
 {
- "contentVersion": 11,
+ "contentVersion": 12,
  "problems": [
   {
    "slug": "ab-test-significance",
@@ -1280,6 +1280,91 @@
    "diagram": []
   },
   {
+   "slug": "benchmark-contamination",
+   "title": "Benchmark Contamination - N-gram Overlap and Memorisation Test",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2311.09783",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Evaluation",
+    "Data Contamination",
+    "Memorisation"
+   ],
+   "patterns": [
+    "Text evaluation and retrieval"
+   ],
+   "summary": "Check whether benchmark items leaked into training data. Flag verbatim overlap with long n-grams, compare the model's loss on an item against paraphrases of it, and report accuracy on contaminated and clean subsets separately.",
+   "bruteForce": "As a proof of cleanliness: no flag only means no verbatim overlap was found. Items that are short, paraphrased or translated escape n-gram matching, and the loss test is only a signal when good perturbations exist.",
+   "intuition": "A benchmark score only measures generalisation if the model has not seen the answers. Long n-grams almost never repeat by chance, so a shared 13-gram between a test item and the training text is strong evidence of a leak, but it misses paraphrases and cannot be run when the training data is hidden. For those cases ask the model itself: if the original item gets a much lower loss than equivalent rewordings, it has probably seen that exact wording. Finally, split results by flag, since the gap between the two subsets is the inflation. Flow: benchmark items → n-gram overlap and loss test → contaminated flag → clean vs contaminated accuracy.",
+   "whyItWorks": "The chance that a specific long word sequence appears by accident in unrelated text falls quickly with its length, so a shared 13-gram is almost always a copy rather than coincidence. The loss ratio compares the model on the exact wording with the same content in new wording: a model that generalises treats them alike, so a ratio far below $1$ points to memorised surface form. The subset accuracy gap estimates the inflation, assuming contaminated and clean items are of similar difficulty.",
+   "approach": [
+    "Tokenise and build the set of $n$-grams of the training text — a fast membership table",
+    "Flag a benchmark item if any of its $n$-grams appears in that set — verbatim leaks share long spans",
+    "Compute the contamination rate, the flagged fraction of items — the size of the problem",
+    "When training data is unavailable, make paraphrases or perturbations of an item — equivalent text the model could not have memorised",
+    "Compute $\\rho = L(\\mathrm{item}) / \\overline{L(\\mathrm{perturbed})}$ — values well below $1$ suggest memorisation",
+    "Compute accuracy on contaminated and clean subsets and their gap — shows how much the score is inflated",
+    "Prefer private or regularly refreshed held-out sets for new claims — unseen items cannot have leaked"
+   ],
+   "time": "O(T) to index $T$ training tokens, then O(L) per item of length $L$; the memorisation test costs one model pass per variant",
+   "space": "O(T) for the training n-gram set, which is why real pipelines use hashing or suffix arrays",
+   "solution": "import numpy as np\n\ndef ngram_set(tokens, n):\n    return {tuple(tokens[i:i + n])\n            for i in range(len(tokens) - n + 1)}\n\ndef contamination_rate(train_docs, bench_items, n=13):\n    seen = set()\n    for doc in train_docs:\n        seen |= ngram_set(doc, n)\n    flags = [bool(ngram_set(it, n) & seen) for it in bench_items]\n    return float(np.mean(flags)), flags\n\ndef memorisation_ratio(loss_fn, item, perturbations):\n    base = np.mean([loss_fn(p) for p in perturbations])\n    return loss_fn(item) / base\n\ndef accuracy_gap(correct, contaminated):\n    c = np.asarray(correct, float)\n    m = np.asarray(contaminated, bool)\n    return c[m].mean() - c[~m].mean()",
+   "keyLines": [
+    10,
+    11,
+    16
+   ],
+   "dryRun": [
+    "$G(x) = \\{(x_i, \\ldots, x_{i+n-1})\\}$",
+    "Flag: $G(b) \\cap G(\\mathrm{train}) \\neq \\emptyset$",
+    "Rate: $\\frac{1}{N}\\sum_{b} \\mathrm{flag}(b)$",
+    "Ratio: $\\rho = \\frac{L(\\mathrm{item})}{\\overline{L}(\\mathrm{perturbed})}$",
+    "Gap: $\\mathrm{acc}_{cont} - \\mathrm{acc}_{clean}$"
+   ],
+   "description": "Before trusting or publishing a benchmark number for a model trained on web-scale or unknown data, and when building a new evaluation from public text.",
+   "examples": [
+    {
+     "input": "Why use long n-grams such as 13 for decontamination?",
+     "output": "Short n-grams match common phrases and give false alarms. A long shared span almost never happens by chance, so a match is strong evidence of a copy, though paraphrases still slip through.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you test contamination without the training data?",
+     "output": "Compare the model's loss on the original item with its loss on paraphrases or perturbations. A ratio $\\rho$ much below $1$ means the exact wording is unusually easy, which suggests memorisation. A canary string planted in the data gives a similar check.",
+     "explanation": ""
+    },
+    {
+     "input": "What do you report once you find contamination?",
+     "output": "Accuracy on the clean and contaminated subsets separately and their gap, plus the contamination rate. A large positive gap means the headline score is inflated.",
+     "explanation": ""
+    },
+    {
+     "input": "How can future benchmarks avoid this?",
+     "output": "Keep test items private, refresh them dynamically, or build them from text newer than the training cutoff, so the items cannot be in the training corpus.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "N-gram length $n$ and the tokeniser or normalisation used",
+    "Minimum overlap needed to flag an item",
+    "Number and type of perturbations, such as paraphrase or option shuffling",
+    "Threshold on the loss ratio $\\rho$"
+   ],
+   "edgeCases": [
+    "An item shorter than $n$ tokens has no n-grams and can never be flagged; lower $n$ or match whole items",
+    "Tokenise training and benchmark text identically, or the n-gram sets will not line up",
+    "Contaminated items may be easier or harder than clean ones, so the accuracy gap is suggestive, not exact",
+    "A low loss ratio can also come from an item that is simply easy or common; compare against several paraphrases"
+   ],
+   "related": [
+    "finetune-dataset-prep",
+    "data-leakage",
+    "perplexity"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "bert-masked-lm",
    "title": "BERT Masked Language Modelling",
    "platform": "NLP",
@@ -2072,6 +2157,89 @@
    "diagram": []
   },
   {
+   "slug": "content-safety-classifiers",
+   "title": "Content Safety Classifiers and Thresholds",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2208.03274",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Safety",
+    "Moderation",
+    "Thresholds"
+   ],
+   "patterns": [
+    "Classification metrics"
+   ],
+   "summary": "Moderate inputs and outputs with per-category classifier scores. Pick the threshold from the precision-recall trade-off, run a cheap filter first, escalate only the uncertain slice, and send the grey zone to humans.",
+   "bruteForce": "Do not use a recall target alone when the positive class is tiny, since the threshold then rests on a handful of examples. Do not treat raw scores as probabilities before checking calibration.",
+   "intuition": "A classifier gives a score, and the threshold turns it into an action by trading missed harm against false alarms. For a severe category you fix the recall you must reach and take the highest threshold that still meets it, which keeps precision as high as that recall allows. Most traffic is clearly fine, so an expensive model only needs to see the band of scores the cheap one is unsure about. Flow: text → cheap score → clear cases decided → uncertain band → big model or human.",
+   "whyItWorks": "Recall can only fall as the threshold rises, so the set of thresholds that reach a target is an interval and its top end is the $k$-th largest positive score with $k = \\lceil r P \\rceil$. A cascade pays $c_1$ for every item and $c_2$ only for the escalated fraction $p$, so it is cheaper than always using the large model exactly when $c_1 + p\\,c_2 < c_2$, that is $p < 1 - c_1/c_2$.",
+   "approach": [
+    "Score each item per category with a classifier — one threshold per category, not one global",
+    "Fix a target recall for severe categories — a miss costs more than a false alarm",
+    "Take the $k$-th highest positive score with $k = \\lceil r P \\rceil$ — the highest threshold that reaches the recall",
+    "Choose a band $[lo, hi)$ around the threshold for the second stage — only uncertain items pay the extra cost",
+    "Estimate cost as $c_1 + p\\,c_2$ and route the grey zone to humans — keeps cost and review load predictable"
+   ],
+   "time": "O(n log n) to sort the positive scores; O(n) per confusion count or band",
+   "space": "O(n) for the sorted positive scores",
+   "solution": "import math\n\ndef confusion_at(scores, labels, thr):\n    tp = fp = fn = tn = 0\n    for s, y in zip(scores, labels):\n        pred = s >= thr\n        tp += pred and y == 1\n        fp += pred and y == 0\n        fn += (not pred) and y == 1\n        tn += (not pred) and y == 0\n    return tp, fp, fn, tn\n\ndef pick_threshold(scores, labels, target_recall):\n    pos = sorted((s for s, y in zip(scores, labels) if y == 1),\n                 reverse=True)\n    k = math.ceil(target_recall * len(pos) - 1e-9)\n    return pos[max(k, 1) - 1]\n\ndef cascade_cost(c1, c2, p_escalate):\n    return c1 + p_escalate * c2\n\ndef escalate_band(scores, lo, hi):\n    return [i for i, s in enumerate(scores) if lo <= s < hi]",
+   "keyLines": [
+    16,
+    17,
+    20
+   ],
+   "dryRun": [
+    "Recall: $\\frac{TP}{TP + FN}$",
+    "Precision: $\\frac{TP}{TP + FP}$",
+    "Rank: $k = \\lceil r \\cdot P \\rceil$, thr = $k$-th top positive",
+    "Cascade cost: $\\mathbb{E}[C] = c_1 + p\\,c_2$",
+    "Cheaper than $c_2$ iff $p < 1 - \\frac{c_1}{c_2}$"
+   ],
+   "description": "Gating prompts and responses with moderation scores, especially for severe categories where a target recall must be guaranteed on a labelled validation set, and where a cheap model can pre-screen traffic for a costly one.",
+   "examples": [
+    {
+     "input": "How do you choose a threshold for a severe category?",
+     "output": "Set the recall you must reach on a validation set and take the highest threshold that meets it. That keeps precision as high as the recall target permits.",
+     "explanation": ""
+    },
+    {
+     "input": "When does a two-stage cascade save money?",
+     "output": "When the expected cost $c_1 + p\\,c_2$ is below $c_2$, which means the escalated fraction satisfies $p < 1 - c_1/c_2$. A very cheap first stage allows escalating a large share.",
+     "explanation": ""
+    },
+    {
+     "input": "Why are calibrated scores useful for moderation?",
+     "output": "A calibrated score of 0.8 means about 80 percent of such items are truly positive, so thresholds and review bands can be set from costs, and they stay stable when scores are compared across categories.",
+     "explanation": ""
+    },
+    {
+     "input": "What goes to human review?",
+     "output": "The grey zone around the threshold, plus a random sample of confident decisions to audit for drift and silent errors.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Target recall per category",
+    "Band edges $lo$ and $hi$ for escalation",
+    "Costs $c_1$ and $c_2$ of the two stages",
+    "Size and refresh rate of the labelled validation set"
+   ],
+   "edgeCases": [
+    "The threshold is tuned on one sample, so recall on new traffic can be lower; keep a margin and re-measure",
+    "Scores shift when the data or classifier changes, so a stored threshold can silently stop meeting the target",
+    "Ties in scores can push recall above the target or make the picked point jump; check the confusion counts",
+    "A rare positive class makes precision at high recall very unstable; report it with an interval"
+   ],
+   "related": [
+    "precision-recall-f1",
+    "probability-calibration",
+    "roc-auc"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "context-engineering",
    "title": "Context Engineering and Token Budgeting",
    "platform": "LLM",
@@ -2312,6 +2480,87 @@
     "self-attention",
     "word2vec-skipgram",
     "positional-encoding"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "continuous-batching",
+   "title": "Continuous Batching and Paged KV Cache",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2309.06180",
+   "difficulty": "Medium",
+   "topics": [
+    "Serving",
+    "Batching",
+    "KV Cache",
+    "Throughput"
+   ],
+   "patterns": [],
+   "summary": "Keep every batch slot busy by admitting new requests and evicting finished ones at each decoding step, and store the KV cache in fixed-size blocks so memory is not wasted.",
+   "bruteForce": "Offline jobs with near-identical lengths, where static batching is as good and simpler. It also adds scheduler complexity and needs attention kernels that handle sequences at different positions.",
+   "intuition": "Generation lengths differ wildly, so a static batch runs as long as its longest sequence while finished slots sit idle. Scheduling at the granularity of one decoding step removes the wait: a slot freed this step is refilled the next. Paging the cache the same way, in small blocks looked up through a table, means no sequence reserves memory for tokens it may never produce. Flow: queue + free slots → admit each step → decode → evict finished → refill.",
+   "whyItWorks": "A static batch of $B$ takes $\\max_i L_i$ steps but only uses $\\sum_i L_i$ slot-steps, so the gap is idle capacity. A scheduler that refills slots every step never leaves a slot idle while requests wait, so its total steps are close to the lower bound $\\sum_i L_i / B$. Fixed-size blocks bound the cache waste per sequence by one partial block.",
+   "approach": [
+    "Keep a queue of waiting requests and a set of at most $B$ active ones — $B$ is the slot count",
+    "At each step, admit waiting requests into free slots — no slot idles while work waits",
+    "Decode one token for every active sequence — the whole batch moves one step together",
+    "Evict sequences that just finished — their slots and cache blocks are freed immediately",
+    "Allocate KV memory in blocks of $s$ tokens via a block table — a sequence wastes only its last partial block"
+   ],
+   "time": "O(total steps · B) for the simulation",
+   "space": "O(n) for the queue",
+   "solution": "import math\n\ndef simulate_static(lengths, batch_size):\n    steps = 0\n    for i in range(0, len(lengths), batch_size):\n        steps += max(lengths[i:i + batch_size])\n    return steps, sum(lengths) / (steps * batch_size)\n\ndef simulate_continuous(lengths, batch_size):\n    queue, active, steps = list(lengths)[::-1], [], 0\n    while queue or active:\n        while queue and len(active) < batch_size:\n            active.append(queue.pop())\n        active = [r - 1 for r in active]\n        active = [r for r in active if r > 0]\n        steps += 1\n    return steps, sum(lengths) / (steps * batch_size)\n\ndef blocks_needed(tokens, block_size):\n    blocks = math.ceil(tokens / block_size)\n    return blocks, blocks * block_size - tokens",
+   "keyLines": [
+    6,
+    13,
+    20
+   ],
+   "dryRun": [
+    "Static steps $= \\sum_{b} \\mathrm{max}_{i \\in b} L_i$",
+    "Utilisation $U = \\frac{\\sum_i L_i}{\\mathrm{steps} \\cdot B}$",
+    "Bound $\\mathrm{steps} \\geq \\frac{\\sum_i L_i}{B}$",
+    "Blocks $n = \\lceil T / s \\rceil$",
+    "Waste $= n s - T < s$"
+   ],
+   "description": "Online serving of generation requests whose output lengths vary, where throughput and GPU utilisation matter more than strict batch alignment.",
+   "examples": [
+    {
+     "input": "Why is static batching inefficient for generation?",
+     "output": "Sequences stop at different lengths, but the batch runs until the longest one finishes, so finished slots do no useful work.",
+     "explanation": ""
+    },
+    {
+     "input": "What does iteration-level scheduling change?",
+     "output": "The scheduler runs at every decoding step, so finished sequences leave and waiting ones join immediately instead of at batch boundaries.",
+     "explanation": ""
+    },
+    {
+     "input": "What problem does a paged KV cache solve?",
+     "output": "Reserving contiguous space for the maximum length wastes memory through fragmentation, while fixed-size blocks with a block table allocate memory as tokens arrive and waste at most one partial block per sequence.",
+     "explanation": ""
+    },
+    {
+     "input": "Does continuous batching change the output of a request?",
+     "output": "No. Each sequence is decoded the same way; only when it runs, and with which neighbours, changes.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Maximum number of concurrent sequences $B$",
+    "KV block size $s$ in tokens",
+    "Admission policy and queue order",
+    "Total cache memory reserved for blocks"
+   ],
+   "edgeCases": [
+    "Prompt prefill is far more expensive than one decode step, so admitting a long prompt can stall the running sequences",
+    "Small blocks cut waste but enlarge the block table and slow attention lookups; large blocks do the reverse",
+    "Slot utilisation is not throughput: a full batch can still be memory-bound",
+    "This simulation assumes one token per step and known lengths; real lengths are unknown until generation ends"
+   ],
+   "related": [
+    "kv-cache",
+    "autoregressive-decoding",
+    "context-window-limits"
    ],
    "diagram": []
   },
@@ -3635,6 +3884,94 @@
    "diagram": []
   },
   {
+   "slug": "elo-pairwise-ranking",
+   "title": "Ranking Models from Pairwise Comparisons - Elo and Bradley-Terry",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2403.04132",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Evaluation",
+    "Ranking",
+    "Bradley-Terry",
+    "Elo"
+   ],
+   "patterns": [
+    "Text evaluation and retrieval"
+   ],
+   "summary": "Turn many head-to-head votes between models into a leaderboard. Elo updates ratings game by game, while Bradley-Terry fits one strength per model by maximum likelihood over all games at once.",
+   "bruteForce": "When each model has an absolute score on a fixed test set, where averaging is simpler. Also when comparisons are not transitive, for example rock-paper-scissors style matchups, or when the match graph is disconnected so strengths cannot be compared.",
+   "intuition": "A vote only says which of two answers was better, so a ranking has to be inferred from who beats whom. Both methods assume the chance that $A$ wins depends on the rating gap alone. Elo nudges ratings after every game, so the final numbers depend on the order of the games, while Bradley-Terry looks at the whole win table and finds the strengths that make the observed wins most likely, with no order dependence. Elo is the same logistic model, just fitted by online stochastic updates. Flow: pairwise votes → win table → fit strengths → rating scale → leaderboard.",
+   "whyItWorks": "Under $P(A \\succ B) = p_A/(p_A + p_B)$ the log-likelihood is $\\sum_{ij} W_{ij}\\left[\\log p_i - \\log(p_i + p_j)\\right]$. Setting its gradient to zero gives the fixed point $p_i = W_i / \\sum_j n_{ij}/(p_i + p_j)$, and iterating it is a minorisation-maximisation scheme that increases the likelihood monotonically. Elo is a stochastic gradient step on the same logistic likelihood with step size $K$, so it tracks a moving target and depends on the order of games.",
+   "approach": [
+    "Collect votes as a win matrix $W_{ij}$, the times $i$ beat $j$ — the sufficient statistic for the model",
+    "For Elo, compute $E_A = 1/(1 + 10^{(R_B - R_A)/400})$ — the predicted win probability from the rating gap",
+    "Update $R_A \\leftarrow R_A + K(S_A - E_A)$ and subtract the same from $R_B$ — a surprise moves ratings, and total rating is conserved",
+    "For Bradley-Terry, start with all strengths equal — a neutral starting point",
+    "Set $p_i = W_i / \\sum_j n_{ij}/(p_i + p_j)$, with $W_i$ total wins — the minorisation-maximisation step that never decreases the likelihood",
+    "Renormalise strengths to geometric mean $1$ — only ratios are identifiable",
+    "Convert with rating $= 400\\log_{10} p + c$ — puts Bradley-Terry on the familiar Elo scale"
+   ],
+   "time": "Elo is O(1) per game; each Bradley-Terry iteration is O(M²) for M models, with a few hundred iterations at most",
+   "space": "O(M) ratings for Elo, O(M²) for the win matrix",
+   "solution": "import numpy as np\n\ndef expected(ra, rb):\n    return 1 / (1 + 10 ** ((rb - ra) / 400))\n\ndef elo_update(ra, rb, score_a, k=32):\n    d = k * (score_a - expected(ra, rb))\n    return ra + d, rb - d\n\ndef bt_fit(W, iters=200):\n    # W[i, j] = times i beat j; returns strengths, geomean 1\n    n = W + W.T\n    p = np.ones(len(W))\n    for _ in range(iters):\n        denom = (n / (p[:, None] + p[None, :])).sum(1)\n        p = W.sum(1) / denom\n        p = p / np.exp(np.log(p).mean())\n    return p\n\ndef bt_to_elo(p):\n    return 400 * np.log10(p)",
+   "keyLines": [
+    7,
+    15,
+    16
+   ],
+   "dryRun": [
+    "$E_A = \\frac{1}{1 + 10^{(R_B - R_A)/400}},\\;\\; E_A + E_B = 1$",
+    "$R_A^{\\prime} = R_A + K(S_A - E_A)$",
+    "and $R_B^{\\prime} = R_B - K(S_A - E_A)$",
+    "$P(A \\succ B) = \\frac{p_A}{p_A + p_B}$",
+    "$\\log L = \\sum_{ij} W_{ij}\\left[\\log p_i - \\log(p_i + p_j)\\right]$",
+    "$p_i \\leftarrow \\frac{W_i}{\\sum_{j} n_{ij}/(p_i + p_j)}$",
+    "Rating: $R_i = 400\\log_{10} p_i + c$"
+   ],
+   "description": "Ranking systems from crowdsourced or LLM-judged head-to-head comparisons, where scores are relative and models are not all compared on a shared absolute metric.",
+   "examples": [
+    {
+     "input": "How do Elo and Bradley-Terry differ?",
+     "output": "Both use a logistic win probability from a strength gap. Elo updates online after each game, so results depend on game order and on $K$. Bradley-Terry fits all games jointly by maximum likelihood and is order independent.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does the Elo update conserve total rating?",
+     "output": "The winner gains $K(S_A - E_A)$ and the loser loses exactly the same amount, so the sum of ratings never changes. A $400$ point gap means odds of $10$ to $1$.",
+     "explanation": ""
+    },
+    {
+     "input": "Why can strengths only be found up to scale?",
+     "output": "The probability $p_A/(p_A + p_B)$ is unchanged if every $p$ is multiplied by a constant. So the fit fixes the scale, for example geometric mean $1$, and only ratios matter.",
+     "explanation": ""
+    },
+    {
+     "input": "How is this related to a reward model?",
+     "output": "It is the same Bradley-Terry likelihood, but here each item has a free strength in a table rather than a score predicted from text features.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Elo step size $K$ and initial rating",
+    "Number of Bradley-Terry iterations or a convergence tolerance",
+    "Tie handling, for example counting a tie as half a win to each side",
+    "Which matchups to sample, since uneven coverage widens intervals"
+   ],
+   "edgeCases": [
+    "A model with no wins, or no losses, has an unbounded maximum-likelihood strength; add a small prior or pseudo-counts",
+    "Elo with a large $K$ is noisy and order dependent; shuffle games or prefer Bradley-Terry for a final leaderboard",
+    "Ratings are only meaningful relative to the compared set and prompt distribution, and a point estimate needs bootstrap intervals",
+    "The matchup graph must be connected, or models in separate groups cannot be compared"
+   ],
+   "related": [
+    "reward-model-bradley-terry",
+    "finetune-evaluation",
+    "logistic-regression"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "entropy-kl-divergence",
    "title": "Entropy, Cross-Entropy and KL Divergence",
    "platform": "Math",
@@ -3786,6 +4123,88 @@
    "related": [
     "linear-regression",
     "bias-variance-tradeoff"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "fairness-metrics",
+   "title": "Group Fairness Metrics and Counterfactual Tests",
+   "platform": "MLOps",
+   "url": "https://fairmlbook.org/",
+   "difficulty": "Medium",
+   "topics": [
+    "Fairness",
+    "Evaluation",
+    "LLM"
+   ],
+   "patterns": [
+    "Classification metrics"
+   ],
+   "summary": "Compare a model's decisions across groups: selection rates, true and false positive rates, calibration, and for language models the change in output when only a group term in the prompt is swapped.",
+   "bruteForce": "As a proof that a system is fair. These are descriptive statistics on one dataset; they depend on label quality, group definitions and sample size, and small groups give noisy rates.",
+   "intuition": "Each criterion fixes a different quantity to be equal across groups: selection rate (demographic parity), true-positive rate (equal opportunity), both error rates (equalised odds), or calibration. They are different questions, and when base rates differ they cannot all hold at once, so the choice is a decision about the application. Flow: predictions + group → per-group rates → gaps → compare to a threshold.",
+   "whyItWorks": "Each metric reduces a group's confusion matrix to a rate and compares rates. Equal rates make the chosen criterion hold on that data. When base rates differ, a non-perfect classifier cannot satisfy calibration and equal error rates together, so one criterion has to give way. This is stated here, not proved.",
+   "approach": [
+    "Split predictions by group — every metric is computed within a group",
+    "Compute selection rate, $\\mathrm{TPR}$ and $\\mathrm{FPR}$ per group — the building blocks of all the gaps",
+    "Take the spread across groups — demographic parity uses selection rates, equal opportunity uses $\\mathrm{TPR}$",
+    "Combine for equalised odds and the ratio — the larger of the two gaps, and the lowest rate over the highest",
+    "For an LLM, fill one template with each group term and score it — a gap above zero means the term changes the output"
+   ],
+   "time": "O(n) to compute all group rates over $n$ examples",
+   "space": "O(number of groups) beyond the input arrays",
+   "solution": "import numpy as np\n\ndef group_rates(y_true, y_pred, group):\n    out = {}\n    for g in sorted(set(group)):\n        m = group == g\n        yt, yp = y_true[m], y_pred[m]\n        out[g] = {\"sel\": yp.mean(),\n                  \"tpr\": yp[yt == 1].mean(),\n                  \"fpr\": yp[yt == 0].mean()}\n    return out\n\ndef spread(rates, key):\n    v = [r[key] for r in rates.values()]\n    return max(v) - min(v)\n\ndef demographic_parity_diff(y_true, y_pred, group):\n    return spread(group_rates(y_true, y_pred, group), \"sel\")\n\ndef equal_opportunity_diff(y_true, y_pred, group):\n    return spread(group_rates(y_true, y_pred, group), \"tpr\")\n\ndef equalized_odds_diff(y_true, y_pred, group):\n    r = group_rates(y_true, y_pred, group)\n    return max(spread(r, \"tpr\"), spread(r, \"fpr\"))\n\ndef disparate_impact(y_true, y_pred, group):\n    r = group_rates(y_true, y_pred, group)\n    s = [v[\"sel\"] for v in r.values()]\n    return min(s) / max(s)\n\ndef group_calibration(y_true, p, group):\n    return {g: p[group == g].mean() - y_true[group == g].mean()\n            for g in sorted(set(group))}\n\ndef counterfactual_gap(score_fn, template, terms):\n    s = [score_fn(template.format(g=t)) for t in terms]\n    return max(s) - min(s)",
+   "keyLines": [
+    8,
+    9,
+    10
+   ],
+   "dryRun": [
+    "$|P(\\hat{y}=1 \\mid A=a) - P(\\hat{y}=1 \\mid A=b)|$",
+    "Equal opportunity is the same gap on $y=1$",
+    "Equalised odds $= \\max(\\Delta_{\\mathrm{TPR}}, \\Delta_{\\mathrm{FPR}})$",
+    "$\\mathrm{DI} = \\frac{\\min_a P(\\hat{y}=1 \\mid a)}{\\max_a P(\\hat{y}=1 \\mid a)}$",
+    "The 80% rule of thumb flags $\\mathrm{DI} < 0.8$",
+    "$\\max_g s(x[g]) - \\min_g s(x[g])$"
+   ],
+   "description": "Auditing a classifier or a model-assisted decision for gaps between groups, before and after changes, with the group label held out of the model's inputs but available for evaluation.",
+   "examples": [
+    {
+     "input": "How do demographic parity and equal opportunity differ?",
+     "output": "Demographic parity compares how often each group receives a positive prediction, ignoring the true label. Equal opportunity compares the true-positive rate, so it only looks at people who truly qualify.",
+     "explanation": ""
+    },
+    {
+     "input": "Why can't all fairness criteria hold together?",
+     "output": "When base rates differ between groups, a classifier that is not perfect cannot satisfy calibration and equal error rates at the same time. The result is known and is stated here without proof.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you test an LLM for group differences?",
+     "output": "Build prompts that are identical except for a swapped group term, score each response with a fixed scorer, and report the spread. A scorer that ignores the term gives zero.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the 80% rule measure?",
+     "output": "It is a rule of thumb on the ratio of the lowest to the highest selection rate; a ratio below 0.8 is treated as a flag for review, not a verdict.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Decision threshold applied to scores",
+    "Choice of criterion and the gap tolerance",
+    "Minimum group size for a stable estimate"
+   ],
+   "edgeCases": [
+    "Rates from very small groups are noisy; report counts or intervals",
+    "A group with no positive labels makes the true-positive rate undefined",
+    "Optimising one criterion can worsen another, so report several",
+    "A counterfactual swap can change more than the group, such as names that carry other signals"
+   ],
+   "related": [
+    "precision-recall-f1",
+    "roc-auc",
+    "probability-calibration"
    ],
    "diagram": []
   },
@@ -4189,6 +4608,89 @@
     "prompt-optimization",
     "transfer-learning-fine-tuning",
     "perplexity"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "flash-attention-online-softmax",
+   "title": "FlashAttention and Online Softmax",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2205.14135",
+   "difficulty": "Hard",
+   "topics": [
+    "LLM",
+    "Attention",
+    "Inference",
+    "Efficiency"
+   ],
+   "patterns": [
+    "Attention and sequences"
+   ],
+   "summary": "Compute exact softmax attention one block of keys at a time, keeping a running maximum, denominator and output per query row, so the full $T \\times T$ score matrix is never stored.",
+   "bruteForce": "Very short sequences where the score matrix is tiny, or when you need the full attention weights (for visualisation), since they are never materialised. Plain NumPy gains no speed; the benefit needs a fused GPU kernel.",
+   "intuition": "Softmax needs a global maximum and a global sum, which seems to force all scores to exist at once. But the sum can be corrected after the fact: when a new block raises the running maximum, multiply the old denominator and output by $\\exp(m - m_{new})$ and carry on. The result is identical to standard attention, not an approximation. The gain is fewer slow GPU memory reads and writes, not fewer FLOPs. Flow: load block → scores → update max → rescale → accumulate → divide.",
+   "whyItWorks": "For one row with scores split into blocks, let $m$ be the max so far and $\\ell = \\sum_i e^{s_i - m}$. If the max changes to $m'$, then $\\sum_i e^{s_i - m'} = e^{m - m'} \\ell$ for the old terms, so rescaling is exact. The same factor applies to the weighted sum of values. After all blocks, $o/\\ell$ equals the ordinary softmax-weighted average, with the usual max subtraction for stability built in.",
+   "approach": [
+    "Keep per row a running max $m$, denominator $\\ell$ and output $o$ — all of size $O(T)$, not $O(T^2)$",
+    "Compute the score tile for one key block — only a $T \\times$ block tile exists at a time",
+    "Update $m_{new} = \\max(m, \\max s)$ — new scores may dominate",
+    "Rescale $\\ell$ and $o$ by $\\exp(m - m_{new})$ and add this block's terms — old terms re-expressed relative to the new max",
+    "After the last block return $o / \\ell$ — the exact softmax-weighted average of $V$"
+   ],
+   "time": "O(T^2 d) FLOPs, same as standard attention",
+   "space": "O(T d) plus one $T \\times$ block score tile, instead of an $O(T^2)$ score matrix",
+   "solution": "import numpy as np\n\ndef online_softmax_attention(Q, K, V, block, causal=False,\n                             stats=None):\n    T, d = Q.shape\n    m = np.full(T, -np.inf)\n    l = np.zeros(T)\n    o = np.zeros((T, V.shape[1]))\n    for j in range(0, K.shape[0], block):\n        s = Q @ K[j:j + block].T / np.sqrt(d)\n        if causal:\n            cols = np.arange(j, j + s.shape[1])\n            future = cols[None, :] > np.arange(T)[:, None]\n            s = np.where(future, -np.inf, s)\n        if stats is not None:\n            stats.append(s.shape)\n        m_new = np.maximum(m, s.max(axis=1))\n        ms = np.where(np.isinf(m_new), 0.0, m_new)\n        a = np.exp(m - ms)\n        p = np.exp(s - ms[:, None])\n        l = l * a + p.sum(axis=1)\n        o = o * a[:, None] + p @ V[j:j + block]\n        m = m_new\n    return o / l[:, None]",
+   "keyLines": [
+    17,
+    21,
+    22
+   ],
+   "dryRun": [
+    "New max: $m^{\\prime} = \\max(m, \\max_j s_j)$",
+    "Denominator: $\\ell^{\\prime} = \\ell\\, e^{m-m^{\\prime}} + \\sum_j e^{s_j-m^{\\prime}}$",
+    "Output: $o^{\\prime} = o\\, e^{m-m^{\\prime}} + \\sum_j e^{s_j-m^{\\prime}} v_j$",
+    "Result: $\\frac{o}{\\ell} = \\sum_i \\mathrm{softmax}(s)_i\\, v_i$",
+    "Scores: $s_j = \\frac{q \\cdot k_j}{\\sqrt{d}}$"
+   ],
+   "description": "Long sequences in training or prefill, where the $T \\times T$ score matrix is too large or its memory traffic dominates runtime, and an exact result is required.",
+   "examples": [
+    {
+     "input": "Is FlashAttention an approximation?",
+     "output": "No. It computes exactly the same $\\mathrm{softmax}(QK^{\\top}/\\sqrt{d})V$ as standard attention, up to floating-point rounding.",
+     "explanation": ""
+    },
+    {
+     "input": "Where does the speed-up come from if FLOPs are the same?",
+     "output": "Attention is limited by memory traffic. Tiling keeps blocks in fast on-chip memory and avoids writing and reading the $T \\times T$ matrix in slow GPU memory.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is the rescaling factor needed?",
+     "output": "The softmax terms were computed relative to an older maximum. Multiplying by $\\exp(m - m_{new})$ re-expresses them relative to the new maximum so the sums stay consistent.",
+     "explanation": ""
+    },
+    {
+     "input": "What does it do to memory?",
+     "output": "The extra memory per row is a few scalars and one output vector, so it grows linearly in $T$ rather than quadratically.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Key/value block size (set by on-chip memory size)",
+    "Query block size in a real tiled kernel",
+    "Causal masking on or off",
+    "Accumulator precision (float32 or float64)"
+   ],
+   "edgeCases": [
+    "Initialising $m$ to $0$ instead of $-\\infty$ gives wrong results when all scores are very negative",
+    "With a causal mask a block can be fully masked for a row, so $m_{new} = -\\infty$ and $\\exp(m - m_{new})$ is NaN unless handled",
+    "Forgetting to rescale $o$ as well as $\\ell$ silently corrupts the output",
+    "This NumPy version shows the arithmetic only; it is not faster and still forms a $T \\times$ block tile"
+   ],
+   "related": [
+    "self-attention",
+    "kv-cache",
+    "causal-masking"
    ],
    "diagram": []
   },
@@ -4834,6 +5336,90 @@
     "decoder-only-block",
     "bert-masked-lm",
     "next-token-prediction-loss"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "gpu-memory-estimation",
+   "title": "Will It Fit? GPU Memory Estimation",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/1910.02054",
+   "difficulty": "Medium",
+   "topics": [
+    "Inference",
+    "Training",
+    "Memory",
+    "Distributed Training"
+   ],
+   "patterns": [],
+   "summary": "Add up weights, KV cache, gradients, optimiser states and activations in bytes and compare with the GPU budget, to find the largest batch or context that fits and how sharding across $G$ GPUs changes the bill.",
+   "bruteForce": "As a replacement for measuring. Fragmentation, framework workspace, communication buffers and activation memory vary by implementation, so treat the estimate as a lower bound and confirm with a profiler.",
+   "intuition": "Memory is a sum of a few terms with simple units: parameters times bytes for weights, tokens times a per-token constant for the KV cache, and a fixed multiple of the parameter count for training state. The terms scale differently, so the dominant one flips: weights decide whether a model loads at all, while the cache or the activations decide how much batch and context you get on top. Flow: model size + cache + batch → bytes → compare with GPU memory.",
+   "whyItWorks": "Every large tensor in the run has a known shape and dtype, so its size is exact. Weights, gradients and optimiser states are one number per parameter, so they scale with $P$; the KV cache holds a fixed number of values per token, so it scales with $T B$. Sharding splits a tensor across devices without changing its total, so a sharded term costs its size divided by $G$ per GPU.",
+   "approach": [
+    "Weights are $P \\cdot b_w$ bytes — fixed cost paid before any request arrives",
+    "KV cache is $2 L h_{kv} d_{head} T B\\, b_{kv}$ — grows with context and batch",
+    "Add a fractional overhead for activations and workspace — real runs never hit the clean sum",
+    "Training with Adam in mixed precision costs $16P$ bytes of state — weights, grads, master copy, two moments",
+    "ZeRO stage 1, 2, 3 shard optimiser states, then gradients, then weights by $G$ — each stage divides more terms",
+    "Solve for the largest batch whose total stays under the budget — the cache is the only term that grows with it"
+   ],
+   "time": "O(1) arithmetic per query; no model is run",
+   "space": "O(1)",
+   "solution": "def inference_bytes(params, layers, kv_heads, d_head, ctx, batch,\n                    w_bytes=2, kv_bytes=2, overhead=0.0):\n    weights = params * w_bytes\n    kv = 2 * layers * kv_heads * d_head * ctx * batch * kv_bytes\n    return (weights + kv) * (1 + overhead)\n\ndef training_bytes(params, mode=\"mixed\", act_bytes=0):\n    if mode == \"mixed\":   # fp16 weights/grads, fp32 master + Adam\n        t = dict(weights=2, grads=2, master=4, optim=8)\n    else:                 # plain fp32 training with Adam\n        t = dict(weights=4, grads=4, master=0, optim=8)\n    t = {k: v * params for k, v in t.items()}\n    t[\"activations\"] = act_bytes\n    return t\n\ndef zero_bytes_per_gpu(stage, G, params, act_bytes=0):\n    t = training_bytes(params, \"mixed\", act_bytes)\n    shard = {0: [], 1: [\"master\", \"optim\"],\n             2: [\"master\", \"optim\", \"grads\"],\n             3: [\"master\", \"optim\", \"grads\", \"weights\"]}[stage]\n    return sum(v / G if k in shard else v for k, v in t.items())\n\ndef max_batch(budget, params, layers, kv_heads, d_head, ctx,\n              w_bytes=2, kv_bytes=2, overhead=0.0):\n    one = inference_bytes(params, layers, kv_heads, d_head, ctx, 1,\n                          w_bytes, kv_bytes, overhead)\n    fixed = inference_bytes(params, layers, kv_heads, d_head, ctx, 0,\n                            w_bytes, kv_bytes, overhead)\n    return max(0, int((budget - fixed) // (one - fixed)))",
+   "keyLines": [
+    4,
+    21,
+    29
+   ],
+   "dryRun": [
+    "Weights $= P \\cdot b_w$",
+    "KV cache $= 2 L h_{kv} d_{head} T B\\, b_{kv}$",
+    "Inference $\\approx (\\mathrm{weights} + \\mathrm{KV})(1 + \\epsilon)$",
+    "Bytes per parameter $2 + 2 + 4 + 4 + 4 = 16$",
+    "ZeRO-1 $4P + \\frac{12P}{G}$, ZeRO-2 $2P + \\frac{14P}{G}$",
+    "ZeRO-3 per GPU $\\frac{16P}{G}$",
+    "Largest $B$ with $\\mathrm{mem}(B) \\leq$ budget"
+   ],
+   "description": "Before renting hardware or launching a job: to pick the GPU count, precision, sharding stage, or the batch and context a server can safely accept.",
+   "examples": [
+    {
+     "input": "How much memory does a model need for inference?",
+     "output": "Parameters times bytes per parameter for the weights, plus the KV cache, which is $2 L h_{kv} d_{head} T B$ values, plus some overhead for activations and workspace.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does Adam training need about $16P$ bytes in mixed precision?",
+     "output": "Half-precision weights and gradients take $2P$ each, and the optimiser keeps a float32 master copy plus two float32 moments, $4P$ each, for $16P$ in total before activations.",
+     "explanation": ""
+    },
+    {
+     "input": "What do ZeRO stages 1, 2 and 3 shard?",
+     "output": "Stage 1 shards optimiser states across the $G$ data-parallel GPUs, stage 2 also shards gradients, and stage 3 also shards the parameters, so every state term becomes its size divided by $G$.",
+     "explanation": ""
+    },
+    {
+     "input": "What reduces activation memory?",
+     "output": "Gradient checkpointing stores only some layer inputs and recomputes the rest during the backward pass, trading extra compute for less memory.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Bytes per weight and per cache value (float32, float16, int8, ...)",
+    "Number of GPUs $G$ and ZeRO stage",
+    "Batch size and context length",
+    "Overhead fraction for activations and workspace"
+   ],
+   "edgeCases": [
+    "Counting only weights for serving; at long context or large batch the KV cache can exceed them",
+    "Forgetting the float32 master copy and the two Adam moments, which are most of the training state",
+    "Sharding does not shrink activations unless they are partitioned too, and stage 3 adds communication",
+    "Using attention heads instead of KV heads in the cache formula overstates grouped-query models"
+   ],
+   "related": [
+    "kv-cache",
+    "parameter-count-flops",
+    "context-window-limits"
    ],
    "diagram": []
   },
@@ -5959,6 +6545,88 @@
    "diagram": []
   },
   {
+   "slug": "jailbreak-and-red-teaming",
+   "title": "Jailbreaks and Red-Team Evaluation",
+   "platform": "LLM",
+   "url": "https://genai.owasp.org/llm-top-10/",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Safety",
+    "Evaluation",
+    "Red Teaming"
+   ],
+   "patterns": [],
+   "summary": "A jailbreak is user input crafted to make a model break its own policy. Red teaming measures that risk with a taxonomy of attacks, a seed test set, benign mutations and an attack success rate with a confidence interval, repeated after every change.",
+   "bruteForce": "Do not treat a low rate as proof of safety: the seeds and mutations only sample the space of attacks. It also says nothing about injection through retrieved data, which needs its own tests.",
+   "intuition": "A jailbreak is aimed at the model's policy by the user, whereas prompt injection hides instructions in untrusted data. You cannot list every bad phrasing, so you measure instead: take a fixed set of seed tests per category, rewrite each in cheap ways, and count how often the target misbehaves. A keyword filter blocks the plain seed but a trivial rewrite slips past, which is why the rate, not any one example, is the signal. With few attempts the rate is noisy, so report an interval. Flow: test prompts → mutations → target → success rate with interval.",
+   "whyItWorks": "Each attempt is a Bernoulli trial, so the success count $k$ out of $n$ estimates a rate, and the Wilson interval stays valid for small $n$ and for rates near $0$ or $1$ where the plain normal interval fails. A fixed seed set with deterministic mutations makes two model versions comparable on identical inputs, so a change in rate or in a single seed is a regression signal. The interval shows when a difference is within noise.",
+   "approach": [
+    "Define a taxonomy of attack categories and a seed per case — coverage says what was never tested",
+    "Use only a harmless stand-in as the forbidden behaviour — the evaluation stays safe and reproducible",
+    "Apply deterministic benign mutations (casing, wrapper, spacing) — same inputs give the same results every run",
+    "Run each variant against the target and record success per category — a success is the forbidden stand-in appearing",
+    "Compute $\\mathrm{ASR} = k/n$ with a Wilson interval and compare model versions — small $n$ makes raw rates misleading"
+   ],
+   "time": "O(S·M) target calls for S seeds and M mutations; the statistics are O(1)",
+   "space": "O(S·M) result records",
+   "solution": "import math\nimport re\n\nBLOCK = [\"secret word\"]  # toy keyword filter\n\ndef stub_target(text):\n    low = text.lower()\n    if any(w in low for w in BLOCK):\n        return \"REFUSED\"\n    norm = re.sub(\"[^a-z]\", \"\", low)\n    return \"pineapple\" if \"secretword\" in norm else \"ok\"\n\nOPS = {\n    \"identity\": lambda s: s,\n    \"upper\": lambda s: s.upper(),\n    \"wrap\": lambda s: \"Please help with this: \" + s,\n    \"lang\": lambda s: \"[lang=xx] \" + s,\n    \"dashed\": lambda s: \" \".join(\"-\".join(w) for w in s.split()),\n}\n\ndef mutate(seed, ops):\n    return [(op, OPS[op](seed)) for op in ops]\n\ndef run_suite(target_fn, seeds, ops):\n    out = []\n    for cat, seed in seeds:\n        for op, text in mutate(seed, ops):\n            ok = \"pineapple\" in target_fn(text)\n            out.append({\"cat\": cat, \"op\": op, \"success\": ok})\n    return out\n\ndef asr_with_ci(k, n, z=1.959963984540054):\n    p = k / n\n    d = 1 + z * z / n\n    c = (p + z * z / (2 * n)) / d\n    h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d\n    return p, c - h, c + h\n\ndef coverage(results, categories):\n    return {c: sum(r[\"cat\"] == c for r in results)\n            for c in categories}",
+   "keyLines": [
+    8,
+    28,
+    36
+   ],
+   "dryRun": [
+    "Rate: $\\mathrm{ASR} = k / n$",
+    "Estimate: $\\hat{p} = k / n$",
+    "Wilson centre: $\\frac{\\hat{p} + z^2/2n}{1 + z^2/n}$",
+    "Half-width: $\\frac{z\\sqrt{\\hat{p}(1-\\hat{p})/n + z^2/4n^2}}{1 + z^2/n}$",
+    "Interval: centre $\\pm$ half-width",
+    "Zero successes: upper $\\approx 3 / n$ (95%)"
+   ],
+   "description": "Before shipping a model or system prompt, and after every change to the model, prompt, filter or tool set, to compare robustness across versions and to find categories with no coverage.",
+   "examples": [
+    {
+     "input": "How does a jailbreak differ from prompt injection?",
+     "output": "A jailbreak is the user's own input trying to push the model past its policy. Prompt injection smuggles instructions inside untrusted data such as a web page, and the user may be innocent.",
+     "explanation": ""
+    },
+    {
+     "input": "Why report an interval and not just the attack success rate?",
+     "output": "With few attempts the rate is noisy, so a drop from one run to the next may be chance. The Wilson interval shows the plausible range and behaves sensibly near zero.",
+     "explanation": ""
+    },
+    {
+     "input": "Why do keyword filters fail?",
+     "output": "They match surface strings, and a rewrite with different spacing, casing or language keeps the meaning but removes the match. The model understands the rewrite while the filter does not.",
+     "explanation": ""
+    },
+    {
+     "input": "When must you re-run the evaluation?",
+     "output": "After every change to the model, system prompt, filters or tools, since any of them can reopen a gap, and keep the seed set fixed so versions compare.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Attack categories in the taxonomy and seeds per category",
+    "Set of mutation operators",
+    "Confidence level $z$ of the interval",
+    "Success criterion used to judge a response"
+   ],
+   "edgeCases": [
+    "A low attack success rate only bounds the tested attacks; it is not a proof of safety",
+    "Mutations of the same seed are correlated, so $n$ overstates the independent evidence and the interval is too narrow",
+    "A fixed public seed set can be overfitted by tuning the system to it, so refresh it and keep a held-out part",
+    "Categories with zero attempts look safe in the average; always report coverage next to the rate"
+   ],
+   "related": [
+    "prompt-injection-defense",
+    "hallucination-detection",
+    "precision-recall-f1"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "k-means",
    "title": "K-Means Clustering",
    "platform": "Classical ML",
@@ -6803,6 +7471,91 @@
    "diagram": []
   },
   {
+   "slug": "llm-as-judge",
+   "title": "LLM-as-a-Judge - Swap Consistency and Cohen's Kappa",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2306.05685",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Evaluation",
+    "Judge Bias",
+    "Inter-Annotator Agreement"
+   ],
+   "patterns": [
+    "Text evaluation and retrieval"
+   ],
+   "summary": "Grade model outputs with another LLM, either by scoring one answer against a rubric or by comparing two. Cancel position bias by judging both orders, and validate the judge against human labels with Cohen's kappa.",
+   "bruteForce": "Tasks with a checkable answer such as code tests or exact match, and high-stakes decisions where the judge's agreement with humans has not been measured. Do not use a model to judge its own outputs without controlling for self-preference.",
+   "intuition": "A judge model is cheap and scalable but it has habits unrelated to quality: it may favour whichever answer comes first, the longer answer, or text written by itself. A verdict that flips when you swap the order was driven by position, not content, so only count a win when both orders agree and call the rest a tie. Then raw accuracy against humans is not enough, since two raters who often say the same thing agree by chance, so kappa subtracts the agreement expected from the label frequencies alone. Flow: pair of answers → judge in both orders → consistent verdict → agreement check.",
+   "whyItWorks": "If the judge's preference for position is independent of content, then swapping the order flips the position effect and leaves the content effect, so agreement across both orders isolates the content signal. Kappa rescales agreement to $0$ at the level expected if the two raters labelled independently with their own frequencies, and to $1$ at perfect agreement, so it is not inflated when one label dominates.",
+   "approach": [
+    "Pick the format, a rubric score for one answer or a pairwise choice — pairwise is usually more reliable than absolute scores",
+    "Ask the judge about $(a, b)$ and then again about $(b, a)$ — the second call reverses the position",
+    "Map both verdicts back to the same answer labels — otherwise the two calls are not comparable",
+    "Count a win only if both orders pick the same answer, otherwise record a tie — position-driven verdicts become ties",
+    "Collect human labels on a sample and the judge labels on the same items — a reference to validate against",
+    "Compute observed agreement $p_o$ and chance agreement $p_e$ from the label frequencies — chance is the baseline to beat",
+    "Report $\\kappa = (p_o - p_e)/(1 - p_e)$ with the tie rate — low kappa means do not trust the judge"
+   ],
+   "time": "Two judge calls per pair, so 2n calls for n pairs; kappa is O(n·C) for C label classes",
+   "space": "O(n) for the stored verdicts and labels",
+   "solution": "import numpy as np\n\ndef pairwise_with_swap(judge_fn, a, b):\n    # judge_fn(x, y) -> \"first\" or \"second\"\n    v1 = \"A\" if judge_fn(a, b) == \"first\" else \"B\"\n    v2 = \"B\" if judge_fn(b, a) == \"first\" else \"A\"\n    return v1 if v1 == v2 else \"tie\"\n\ndef cohen_kappa(l1, l2):\n    l1, l2 = np.asarray(l1), np.asarray(l2)\n    po = (l1 == l2).mean()\n    pe = sum((l1 == c).mean() * (l2 == c).mean()\n             for c in np.union1d(l1, l2))\n    return 1.0 if pe == 1 else (po - pe) / (1 - pe)",
+   "keyLines": [
+    7,
+    11,
+    12
+   ],
+   "dryRun": [
+    "A wins iff both orders choose $A$, else tie",
+    "Observed: $p_o = \\frac{1}{n}\\sum_{i} [l^1_i = l^2_i]$",
+    "Chance: $p_e = \\sum_{c} P_1(c)\\,P_2(c)$",
+    "Kappa: $\\kappa = \\frac{p_o - p_e}{1 - p_e}$",
+    "Perfect: $\\kappa = 1$, chance: $\\kappa = 0$"
+   ],
+   "description": "Open-ended outputs where no exact metric exists and human grading is too slow, such as comparing two model versions on many prompts, as long as you have a small human-labelled set to validate the judge.",
+   "examples": [
+    {
+     "input": "Why judge both orders?",
+     "output": "Judges tend to favour the first or second slot regardless of content. Running both orders and requiring the same verdict turns position-driven answers into ties instead of fake wins.",
+     "explanation": ""
+    },
+    {
+     "input": "Why use kappa instead of accuracy against human labels?",
+     "output": "If one label is common, two raters agree often by chance. $\\kappa = (p_o - p_e)/(1 - p_e)$ removes the chance agreement implied by each rater's label frequencies.",
+     "explanation": ""
+    },
+    {
+     "input": "What other biases does an LLM judge have?",
+     "output": "It can prefer longer, more verbose answers and answers written by itself or a similar model. Control for length, use a different judge family, and check against human labels.",
+     "explanation": ""
+    },
+    {
+     "input": "Pointwise or pairwise judging?",
+     "output": "Pointwise rubric scores are cheap and give absolute numbers but drift and compress. Pairwise comparison is relative and usually agrees better with humans, but costs more calls as the number of systems grows.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Judge model and prompt, including the rubric wording",
+    "Pointwise or pairwise format",
+    "Tie policy: count as half a win or exclude",
+    "Size of the human-labelled validation set"
+   ],
+   "edgeCases": [
+    "Swapping fixes position bias only; length and self-preference biases survive and need their own checks",
+    "Kappa is undefined when both raters use a single identical label; the code returns $1$ in that degenerate case",
+    "Kappa depends on label prevalence, so compare it across sets with similar class mixes",
+    "A judge validated on one task or domain may disagree with humans on another"
+   ],
+   "related": [
+    "finetune-evaluation",
+    "prompt-optimization",
+    "rag-evaluation-faithfulness"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "local-outlier-factor",
    "title": "Local Outlier Factor",
    "platform": "Classical ML",
@@ -7113,6 +7866,88 @@
    "diagram": [
     "lstm-cell"
    ]
+  },
+  {
+   "slug": "magnitude-pruning",
+   "title": "Magnitude Pruning (Unstructured and Structured)",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/1506.02626",
+   "difficulty": "Medium",
+   "topics": [
+    "Compression",
+    "Pruning",
+    "Sparsity",
+    "Inference"
+   ],
+   "patterns": [],
+   "summary": "Zero the weights with the smallest magnitude to hit a sparsity target, or drop whole rows and channels to get a genuinely smaller dense layer.",
+   "bruteForce": "Expecting unstructured zeros to speed up dense GPU matrix multiplies; without sparse kernels or hardware support the zeros are still computed. Also unsuited when accuracy cannot be re-checked after pruning.",
+   "intuition": "A trained network is over-parameterised, and a weight near zero contributes almost nothing to the output, so removing it barely changes predictions. Where the zeros sit decides the payoff: scattered zeros save storage but dense hardware still multiplies them, while removing whole channels shrinks the matrices themselves. Flow: weights → rank by magnitude → zero lowest → fine-tune → sparse model.",
+   "whyItWorks": "Near a trained solution, loss is flat in most weight directions, so small weights can be set to zero with little loss increase. Fine-tuning then lets the remaining weights compensate. Pruning gradually lets each step stay in that flat region, which is why iterative prune and fine-tune beats one-shot at high sparsity.",
+   "approach": [
+    "Pick a sparsity target $s$ — the fraction of weights to remove",
+    "Rank weights by $|w|$ and find the threshold for $k = sN$ of them — small weights matter least",
+    "Zero everything below it with a mask and keep the rest unchanged — the mask is stored with the weights",
+    "For global pruning, rank across all layers together — layers with small weights lose more",
+    "For structured pruning, score each row by its norm and keep the top rows — a smaller dense matrix",
+    "Fine-tune with the mask fixed, and repeat in small steps — recovers accuracy at high sparsity"
+   ],
+   "time": "O(N log N) to sort $N$ weights; $O(N)$ with a selection algorithm",
+   "space": "O(N) for the mask",
+   "solution": "import numpy as np\n\ndef magnitude_mask(W, sparsity):\n    k = int(round(sparsity * W.size))\n    mask = np.ones(W.shape, bool)\n    if k > 0:\n        order = np.argsort(np.abs(W), axis=None, kind=\"stable\")\n        mask.flat[order[:k]] = False\n    return mask\n\ndef global_masks(Ws, sparsity):\n    flat = np.concatenate([np.abs(W).ravel() for W in Ws])\n    k = int(round(sparsity * flat.size))\n    keep = np.ones(flat.size, bool)\n    keep[np.argsort(flat, kind=\"stable\")[:k]] = False\n    out, i = [], 0\n    for W in Ws:\n        out.append(keep[i:i + W.size].reshape(W.shape))\n        i += W.size\n    return out\n\ndef prune_channels(W, keep_fraction, norm=2):\n    n = max(1, int(np.ceil(keep_fraction * W.shape[0])))\n    score = np.linalg.norm(W, ord=norm, axis=1)\n    keep = np.sort(np.argsort(-score, kind=\"stable\")[:n])\n    return W[keep], keep",
+   "keyLines": [
+    7,
+    14,
+    24
+   ],
+   "dryRun": [
+    "Mask: $m_i = 1$ if $|w_i| > \\tau$ else $0$",
+    "$W' = M \\odot W$",
+    "Sparsity $s = 1 - \\frac{\\mathrm{nnz}(W)}{\\mathrm{numel}(W)}$",
+    "Threshold $\\tau$ is the $k$-th smallest $|w|$",
+    "Channel score $\\|W_{i,:}\\|_p$, keep top $\\lceil f n \\rceil$"
+   ],
+   "description": "To shrink checkpoints or reduce memory traffic when a small accuracy loss is acceptable, using structured pruning when the target hardware runs dense kernels.",
+   "examples": [
+    {
+     "input": "Why does unstructured pruning not speed up inference by itself?",
+     "output": "Dense kernels multiply every entry whether it is zero or not, so speed-ups need sparse kernels or hardware support for a sparsity pattern.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the difference between global and layer-wise pruning?",
+     "output": "Layer-wise pruning removes the same fraction in every layer, while global pruning uses one threshold, so layers with smaller weights end up sparser.",
+     "explanation": ""
+    },
+    {
+     "input": "Why prune iteratively?",
+     "output": "Removing a few weights and fine-tuning in between keeps the network near a good solution, while removing most weights at once can cause damage that fine-tuning cannot repair.",
+     "explanation": ""
+    },
+    {
+     "input": "When is structured pruning preferred?",
+     "output": "When you want real speed-ups on dense hardware, because removing whole rows, channels or heads produces smaller dense matrices.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Target sparsity $s$ and its schedule across rounds",
+    "Global or per-layer thresholding",
+    "Norm used to score channels ($L_1$ or $L_2$)",
+    "Fine-tuning steps between pruning rounds"
+   ],
+   "edgeCases": [
+    "Counting zeros as saved compute or memory when the model is still stored and multiplied densely",
+    "Pruning the weights but letting fine-tuning regrow them; the mask must be applied after every update",
+    "Global pruning can wipe out an entire layer whose weights are small in scale",
+    "Removing a channel also requires removing the matching input columns of the next layer"
+   ],
+   "related": [
+    "int8-quantization",
+    "knowledge-distillation",
+    "lora-low-rank-adaptation"
+   ],
+   "diagram": []
   },
   {
    "slug": "matrix-factorization-recommender",
@@ -8318,6 +9153,83 @@
    "diagram": []
   },
   {
+   "slug": "output-validation-guardrails",
+   "title": "Output Validation and Guardrails",
+   "platform": "LLM",
+   "url": "https://genai.owasp.org/llmrisk/llm052025-improper-output-handling/",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Safety",
+    "Validation",
+    "Guardrails"
+   ],
+   "patterns": [],
+   "summary": "Run model output through layered checks before it reaches a user or a tool, report every failure, retry with feedback or fall back, and decide whether a broken check blocks or lets the output through.",
+   "bruteForce": "Do not treat validators as a replacement for least-privilege tools and human approval of dangerous actions. Regex rules are brittle against paraphrase, and extra layers also add latency and false rejections.",
+   "intuition": "Treat the model as an untrusted producer: whatever it writes will be rendered, executed or acted on, so each destination deserves its own checks. Cheap checks (length, patterns, PII) run first and catch different failures than slow ones (grounding), so stacking them in series trades more false rejections for fewer misses. Each check also needs a policy for when it crashes: fail closed blocks safely, fail open keeps the product up. Flow: model output → validators → pass, retry with feedback or fallback.",
+   "whyItWorks": "A bad output has to get past every checker in series. If the checkers fail independently, the chance that all of them miss is the product of the miss rates, so each added layer multiplies the miss rate down. The price is that a good output must also pass every checker, so the false-reject rate climbs as $1-\\prod_i(1-f_i)$. Independence is an assumption: checkers built on similar rules tend to miss the same outputs, so the real miss rate is higher.",
+   "approach": [
+    "Write each checker as a function returning ok and a reason — checkers stay small, testable and composable",
+    "Run all checkers and collect every failing reason — one pass tells the retry everything that was wrong",
+    "Treat a checker exception by the policy, closed blocks and open skips — a crash must not silently decide the outcome",
+    "On failure, retry with the reasons added to the prompt, up to a limit — the model can fix specific problems",
+    "After the retries use a safe fallback response — the user never sees the rejected output",
+    "Estimate series rates as $1-\\prod_i(1-f_i)$ false rejects and $\\prod_i m_i$ misses — shows what each extra layer costs and buys"
+   ],
+   "time": "O(sum of checker costs) per attempt, times at most retries + 1 attempts",
+   "space": "O(1) beyond the output and the collected reasons",
+   "solution": "import json, re\n\ndef length(n):\n    return lambda o: (len(o) <= n, f\"over {n} chars\")\n\ndef banned(patterns):\n    def check(o):\n        bad = [p for p in patterns if re.search(p, o, re.I)]\n        return not bad, f\"banned: {bad}\"\n    return check\n\ndef no_pii(o):\n    pat = r\"[\\w.]+@[\\w.]+\\.\\w+|\\b\\d{3}[- ]\\d{3}[- ]\\d{4}\\b\"\n    return not re.search(pat, o), \"contains email or phone\"\n\ndef valid_json(o):\n    try:\n        json.loads(o)\n        return True, \"\"\n    except ValueError:\n        return False, \"invalid json\"\n\ndef grounded(sources, thresh=0.8):\n    vocab = set(\" \".join(sources).lower().split())\n    def check(o):\n        w = [x for x in o.lower().split() if len(x) > 3]\n        hit = sum(x in vocab for x in w) / max(len(w), 1)\n        return hit >= thresh, f\"grounded {hit:.2f} < {thresh}\"\n    return check\n\ndef run_guards(output, guards, mode=\"closed\"):\n    reasons = []\n    for g in guards:\n        try:\n            ok, why = g(output)\n        except Exception as e:\n            ok, why = mode == \"open\", f\"checker error: {e}\"\n        if not ok:\n            reasons.append(why)\n    return not reasons, reasons\n\ndef guarded(generate, guards, mode, retries, fallback):\n    feedback = []\n    for _ in range(retries + 1):\n        out = generate(feedback)\n        ok, feedback = run_guards(out, guards, mode)\n        if ok:\n            return out\n    return fallback\n\ndef series_rates(fpr_list, miss_list):\n    keep = pass_all = 1.0\n    for f in fpr_list:\n        keep *= 1 - f\n    for m in miss_list:\n        pass_all *= m\n    return 1 - keep, pass_all",
+   "keyLines": [
+    37,
+    38,
+    39
+   ],
+   "dryRun": [
+    "False reject of good output $F = 1 - \\prod_i (1 - f_i)$",
+    "Bad output slips through $M = \\prod_i m_i$",
+    "Assumes checks err independently",
+    "$\\mathrm{grounded} = \\frac{\\mathrm{content\\ words\\ in\\ sources}}{\\mathrm{content\\ words}}$",
+    "Attempts $\\leq \\mathrm{retries} + 1$"
+   ],
+   "description": "Whenever model text is shown to users, parsed by code, or turned into a tool call, especially in regulated or customer-facing settings where a bad output has a real cost.",
+   "examples": [
+    {
+     "input": "When would you fail open instead of fail closed?",
+     "output": "Fail closed when a bad output is costly, such as a tool call or a regulated answer. Fail open when availability matters more and the check is advisory, but log every skipped check so the gap is visible.",
+     "explanation": ""
+    },
+    {
+     "input": "How is this different from schema validation or injection defence?",
+     "output": "Schema validation checks only shape, and injection defence protects the input side and the tools. Output guardrails add content policy, privacy and grounding checks on whatever the model produced, whatever the cause.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does adding more validators not always help?",
+     "output": "Each one raises the false-reject rate and latency. If validators share blind spots they miss the same outputs, so the gain is smaller than the independent product suggests.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Fail-closed or fail-open per checker",
+    "Maximum number of retries",
+    "Grounding threshold and minimum word length",
+    "Order of checkers, cheap ones first"
+   ],
+   "edgeCases": [
+    "Rates multiply only under independence; measure the combined rates on labelled data instead of trusting the formula",
+    "Retry feedback that quotes the offending text can leak it back into the prompt; give reasons, not content",
+    "Word-overlap grounding passes fluent but unsupported claims; use entailment checks for high stakes",
+    "Validate for the destination, for example escape text before putting it in HTML or SQL, not only for content"
+   ],
+   "related": [
+    "structured-outputs-json-schema",
+    "prompt-injection-defense",
+    "hallucination-detection"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "parameter-count-flops",
    "title": "Parameter Count, FLOPs and Memory of a Transformer",
    "platform": "LLM",
@@ -8548,6 +9460,160 @@
     "softmax-cross-entropy",
     "entropy-kl-divergence",
     "maximum-likelihood"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "pii-redaction",
+   "title": "PII Detection and Redaction",
+   "platform": "LLM",
+   "url": "https://csrc.nist.gov/pubs/sp/800/122/final",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Privacy",
+    "Data Cleaning",
+    "Safety"
+   ],
+   "patterns": [],
+   "summary": "Find personal data with pattern detectors, validate card numbers with a checksum, replace each value with a typed, consistent placeholder, and measure the detector with precision and recall.",
+   "bruteForce": "Do not rely on patterns alone for names, addresses or identifiers that depend on context; those need a named-entity model and human review. Redaction is also not anonymisation, since remaining text can still identify a person.",
+   "intuition": "Text sent to a model, a log or a training set can carry identifiers that should not travel with it. Fixed formats such as emails and card numbers are easy to match, and a checksum rejects most random digit runs. A typed placeholder keeps the sentence useful, and giving the same value the same placeholder keeps references intact. Names and context-dependent facts have no fixed format, so patterns miss them. Flow: raw text → detect spans → drop overlaps → placeholders → redacted text.",
+   "whyItWorks": "Emails, phones and IPs have regular structure that regexes capture, and a payment-card number carries a check digit, so about one random digit run in ten passes the Luhn test, which removes most false matches. Keying placeholders on the normalised value makes the map a function from value to token, so repeats stay linked without revealing the value. Precision $TP/(TP+FP)$ and recall $TP/(TP+FN)$ expose both over-redaction and leaks.",
+   "approach": [
+    "Run one regex per type (email, phone, IPv4, card) — each format has a recognisable shape",
+    "Validate candidates, Luhn for cards and range for IP octets — cuts false positives from random digits",
+    "Resolve overlaps by priority — one character must belong to at most one span",
+    "Map each distinct value to <TYPE_n> in order of first appearance — the same value gets the same placeholder",
+    "Score detectors on labelled text with $P = TP/(TP+FP)$ and $R = TP/(TP+FN)$ — recall is the privacy risk"
+   ],
+   "time": "O(L) per pattern over L characters, plus O(m log m) to sort m matches",
+   "space": "O(m) for spans and the placeholder map",
+   "solution": "import re\n\ndef luhn_valid(number):\n    d = [int(c) for c in number if c.isdigit()]\n    if len(d) < 13:\n        return False\n    tot = 0\n    for i, x in enumerate(reversed(d)):\n        if i % 2:\n            x *= 2\n            if x > 9:\n                x -= 9\n        tot += x\n    return tot % 10 == 0\n\nRX = [\n    (\"CARD\", r\"(?<!\\d)\\d(?:[ -]?\\d){12,18}(?!\\d)\"),\n    (\"EMAIL\", r\"[\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+\"),\n    (\"IP\", r\"(?<![\\d.])(?:\\d{1,3}\\.){3}\\d{1,3}(?![\\d.])\"),\n    (\"PHONE\", r\"(?<!\\d)(?:\\(\\d{3}\\) ?|\\d{3}[-. ])\\d{3}[-. ]\\d{4}\"\n              r\"(?!\\d)\"),\n]\n\ndef ok(kind, s):\n    if kind == \"CARD\":\n        return luhn_valid(s)\n    if kind == \"IP\":\n        return all(int(x) <= 255 for x in s.split(\".\"))\n    return True\n\ndef detect(text):\n    taken, out = [], []\n    for kind, pat in RX:\n        for m in re.finditer(pat, text):\n            a, b = m.span()\n            if ok(kind, m.group()) and not any(\n                    a < y and x < b for x, y in taken):\n                taken.append((a, b))\n                out.append((kind, (a, b)))\n    return sorted(out, key=lambda t: t[1])\n\ndef redact(text):\n    names, count, parts, pos = {}, {}, [], 0\n    for kind, (a, b) in detect(text):\n        val = text[a:b].lower()\n        if (kind, val) not in names:\n            count[kind] = count.get(kind, 0) + 1\n            names[(kind, val)] = f\"<{kind}_{count[kind]}>\"\n        parts += [text[pos:a], names[(kind, val)]]\n        pos = b\n    return \"\".join(parts) + text[pos:]\n\ndef precision_recall(pred, true):\n    pred, true = set(pred), set(true)\n    tp = len(pred & true)\n    p = tp / len(pred) if pred else 1.0\n    r = tp / len(true) if true else 1.0\n    return p, r",
+   "keyLines": [
+    10,
+    36,
+    45
+   ],
+   "dryRun": [
+    "Luhn: $S \\,\\mathrm{mod}\\, 10 = 0$ for digit sum $S$",
+    "Precision: $P = \\frac{TP}{TP + FP}$",
+    "Recall: $R = \\frac{TP}{TP + FN}$",
+    "F1: $\\frac{2PR}{P + R}$",
+    "Random digits pass Luhn: $\\approx 1/10$"
+   ],
+   "description": "Cleaning text before logging, analytics, fine-tuning data or calls to an external model, where structured identifiers such as emails, phone numbers, IP addresses and card numbers must not leave the system.",
+   "examples": [
+    {
+     "input": "Why use a Luhn check on card numbers?",
+     "output": "Any long digit run matches a card regex, but real card numbers satisfy a checksum. About nine in ten random runs fail it, so false positives drop sharply.",
+     "explanation": ""
+    },
+    {
+     "input": "Why map the same value to the same placeholder?",
+     "output": "It keeps references and counts intact, so a model can still tell that two mentions are one person or address, without seeing the value.",
+     "explanation": ""
+    },
+    {
+     "input": "Which metric matters more for a redactor, precision or recall?",
+     "output": "Usually recall, because a missed identifier is a leak, while a false positive only removes some context. Track both and choose the trade-off per data type.",
+     "explanation": ""
+    },
+    {
+     "input": "Is redacted text anonymous?",
+     "output": "No. Names, rare facts or combinations of details can still re-identify someone, and the placeholder map is itself sensitive. Redaction lowers risk but does not guarantee anonymity.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Set of entity types and their regexes",
+    "Overlap priority between types",
+    "Placeholder format and whether values are normalised before keying",
+    "Minimum digit count for the card detector"
+   ],
+   "edgeCases": [
+    "Regexes miss names, street addresses and free-form identifiers, so recall on the unchecked classes is unknown",
+    "A phone or ID number can pass the card regex, so run the checksum and resolve overlaps",
+    "Keeping the value-to-placeholder map next to the redacted text defeats the purpose; store it separately or drop it",
+    "Evaluate on labelled synthetic or consented text, never on real people's data, and re-check when formats change"
+   ],
+   "related": [
+    "precision-recall-f1",
+    "data-leakage",
+    "prompt-injection-defense"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "pipeline-parallel-schedule",
+   "title": "Pipeline Parallelism (GPipe Bubble and 1F1B)",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/1811.06965",
+   "difficulty": "Hard",
+   "topics": [
+    "LLM",
+    "Distributed Training",
+    "Parallelism"
+   ],
+   "patterns": [],
+   "summary": "Cut the model into $p$ stages of consecutive layers and stream $m$ microbatches through them; the idle warm-up and cool-down form a bubble of fraction $(p-1)/(m+p-1)$, and 1F1B bounds activation memory.",
+   "bruteForce": "When $m$ is small compared with $p$ (the bubble is large), when stages cannot be balanced, or when the model already fits in memory.",
+   "intuition": "With one batch, stage $s$ must wait for stage $s-1$, so only one stage works at a time. Splitting the batch into microbatches lets stage $s$ start microbatch 0 while stage $s-1$ moves to microbatch 1. The pipeline still fills and drains, which costs $p-1$ idle steps per stage. 1F1B starts backward passes early so activations are freed sooner. Flow: split layers → feed microbatches → fill, steady state, drain → flush.",
+   "whyItWorks": "Stage $s$ can process microbatch $j$ once stage $s-1$ has finished it, giving start time $j+s$ and a total of $m+p-1$ steps. Each stage works on $m$ of them, so it idles $p-1$ steps, and the idle fraction is $(p-1)/(m+p-1)$, which shrinks as $m$ grows.",
+   "approach": [
+    "Assign consecutive layers to $p$ stages — each device holds only its slice",
+    "Split the batch into $m$ microbatches — creates work that can overlap across stages",
+    "Run microbatch $j$ on stage $s$ at step $j+s$ — respects the dependency on stage $s-1$",
+    "Count the idle slots — each stage idles $p-1$ of $m+p-1$ steps, the bubble",
+    "Reorder with 1F1B: warm-up forwards, alternate forward and backward, cool-down — frees activations early"
+   ],
+   "time": "$m+p-1$ steps for $m$ microbatches instead of $m \\cdot p$ if run one stage at a time",
+   "space": "GPipe stores activations for up to $m$ microbatches per stage; 1F1B for about $p$",
+   "solution": "def gpipe_forward_schedule(p, m):\n    steps = m + p - 1\n    return [[t - s if 0 <= t - s < m else None\n             for t in range(steps)] for s in range(p)]\n\ndef bubble_fraction(p, m):\n    return (p - 1) / (m + p - 1)\n\ndef one_f_one_b(stage, p, m):\n    warm = min(p - stage - 1, m)\n    order = [(\"F\", j) for j in range(warm)]\n    for i in range(m - warm):\n        order.append((\"F\", warm + i))\n        order.append((\"B\", i))\n    order += [(\"B\", j) for j in range(m - warm, m)]\n    return order",
+   "keyLines": [
+    3,
+    10,
+    13
+   ],
+   "dryRun": [
+    "Steps $= m + p - 1$",
+    "Microbatch $j$ on stage $s$ at step $t = j + s$",
+    "Idle slots $= p\\,(p - 1)$",
+    "Bubble $= \\frac{p-1}{m+p-1}$",
+    "1F1B warm-up on stage $s$ $= p - s - 1$"
+   ],
+   "description": "Models too deep for one device, where layers can be cut into balanced stages and the link between stages only carries activations, which is cheap compared with a per-layer all-reduce.",
+   "examples": [
+    {
+     "input": "Why does a pipeline have a bubble?",
+     "output": "The first microbatch must traverse the earlier stages before later stages can start, and the last stages sit idle while the pipeline drains. That is $p-1$ idle steps per stage.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you shrink the bubble?",
+     "output": "Use more microbatches, since the fraction is $(p-1)/(m+p-1)$, at the price of smaller microbatches and lower per-step efficiency.",
+     "explanation": ""
+    },
+    {
+     "input": "What does 1F1B improve over GPipe?",
+     "output": "The bubble is the same, but backward passes start early, so a stage holds activations for at most about $p$ microbatches instead of all $m$.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of pipeline stages $p$",
+    "Number of microbatches $m$",
+    "Layer-to-stage assignment (balance of compute per stage)"
+   ],
+   "edgeCases": [
+    "Unbalanced stages make the slowest stage set the pace for the whole pipeline",
+    "Batch normalisation statistics change when the batch is split into microbatches",
+    "Gradients from all microbatches must be accumulated before one optimiser step"
+   ],
+   "related": [
+    "transformer-block",
+    "decoder-only-block",
+    "parameter-count-flops"
    ],
    "diagram": []
   },
@@ -9088,6 +10154,84 @@
     "context-window-limits",
     "autoregressive-decoding",
     "structured-outputs-json-schema"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "prompt-versioning",
+   "title": "Prompt Versioning, Regression Gates and Canary Rollout",
+   "platform": "LLM",
+   "url": "https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.binomtest.html",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Prompting",
+    "Release Engineering",
+    "Evaluation"
+   ],
+   "patterns": [],
+   "summary": "Treat prompts like code: store immutable content-hashed versions in a registry, gate each release on a paired comparison against the old prompt, and roll out to a small hashed slice of users first.",
+   "bruteForce": "One-off scripts or notebooks. A significance gate on a tiny eval set has almost no power, so with few examples rely on review of the failures instead of a p-value.",
+   "intuition": "A prompt edit changes behaviour as surely as a code edit, but it is easy to tweak in place and lose track of what is live. Hashing the normalised text gives every version an identity that cannot drift, so a log line names exactly what ran. To release, run old and new on the same fixed examples and look only at the examples where they disagree: if the new prompt loses far more of those than it wins, the sign test says the drop is not luck. Canary routing by user hash then limits the damage of anything the eval set missed. Flow: edit → hash → register → eval gate → canary → full rollout.",
+   "whyItWorks": "A cryptographic hash makes accidental collisions between different texts negligible, so the id identifies the text. For the gate, under the null hypothesis that old and new are equally good, each disagreement is equally likely to favour either prompt, so the number favouring old is $\\mathrm{Binomial}(b+c, 1/2)$ and the exact tail gives a valid p-value without a normal approximation. A uniform hash sends each user to the canary independently with probability close to the chosen fraction, and always to the same side.",
+   "approach": [
+    "Normalise the template and hash it — the same text always gets the same id, any edit changes it",
+    "Register name, version label and note; refuse to overwrite a label — versions stay immutable and the changelog is the notes",
+    "Score old and new prompts on the same fixed eval set — paired results remove example difficulty from the comparison",
+    "Count $b$ examples only new gets right and $c$ only old gets right, drop ties — only disagreements carry information",
+    "Fail the gate if the one-sided sign test on $c$ out of $b+c$ gives $p < \\alpha$ — blocks a prompt that is significantly worse",
+    "Route a user to the new prompt if a hash of the user id mapped to $[0,1)$ is below the fraction — each user sees one version consistently"
+   ],
+   "time": "O(len(prompt)) to hash; O(n) pairs plus an exact binomial tail for the gate",
+   "space": "O(number of versions) in the registry; O(n) for the eval results",
+   "solution": "import hashlib\nfrom scipy.stats import binomtest\n\ndef normalise(t):\n    lines = t.strip().splitlines()\n    return \"\\n\".join(l.rstrip() for l in lines)\n\ndef prompt_hash(template):\n    data = normalise(template).encode()\n    return hashlib.sha256(data).hexdigest()[:12]\n\nclass Registry:\n    def __init__(self):\n        self.items = {}\n\n    def register(self, name, version, template, note=\"\"):\n        if (name, version) in self.items:\n            raise ValueError(\"versions are immutable\")\n        h = prompt_hash(template)\n        self.items[(name, version)] = (template, h, note)\n        return h\n\n    def get(self, name, version):\n        return self.items[(name, version)][0]\n\n    def latest(self, name):\n        key = lambda v: tuple(map(int, v.split(\".\")))\n        vs = [v for n, v in self.items if n == name]\n        best = max(vs, key=key)\n        return best, self.get(name, best)\n\ndef regression_gate(old_correct, new_correct, alpha=0.05):\n    pairs = list(zip(old_correct, new_correct))\n    b = sum(1 for o, n in pairs if n and not o)\n    c = sum(1 for o, n in pairs if o and not n)\n    if b + c == 0:\n        return True, 1.0, b, c\n    p = binomtest(c, b + c, 0.5, alternative=\"greater\").pvalue\n    return p >= alpha, p, b, c\n\ndef route_canary(user_id, fraction, salt=\"v2\"):\n    h = hashlib.sha256((salt + user_id).encode()).hexdigest()\n    return \"new\" if int(h[:8], 16) / 2**32 < fraction else \"old\"",
+   "keyLines": [
+    35,
+    38,
+    43
+   ],
+   "dryRun": [
+    "$\\mathrm{id} = \\mathrm{hash}(\\mathrm{normalise}(\\mathrm{template}))$",
+    "$b$ = new right only, $c$ = old right only",
+    "Null: $c \\sim \\mathrm{Binomial}(b+c,\\, 1/2)$",
+    "$p = \\sum_{k=c}^{b+c} \\binom{b+c}{k}\\, 2^{-(b+c)}$",
+    "Block release if $p < \\alpha$",
+    "Canary if $\\mathrm{hash}(u)/2^{32} < f$"
+   ],
+   "description": "Any product where prompts change over time and several people edit them, so you need to know which text produced which answer, to roll back quickly, and to stop a change that quietly lowers quality.",
+   "examples": [
+    {
+     "input": "Why use a paired test instead of comparing the two accuracies?",
+     "output": "Both prompts see the same examples, so most of the variation comes from example difficulty. Pairing cancels it, and only the examples where the prompts disagree decide the result.",
+     "explanation": ""
+    },
+    {
+     "input": "Why hash the user id for canary routing instead of random choice per request?",
+     "output": "Hashing keeps each user on one version across requests, so their experience is consistent and results are comparable, and the assignment can be reproduced from logs.",
+     "explanation": ""
+    },
+    {
+     "input": "Is a passing gate proof that the new prompt is as good?",
+     "output": "No. Failing to detect a drop is not evidence of no drop, especially with a small eval set. Use a tolerance or confidence bound, keep the eval set representative, and still monitor the canary.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Significance level $\\alpha$ of the gate",
+    "Size and coverage of the fixed eval set",
+    "Canary fraction and the ramp schedule",
+    "Normalisation rules applied before hashing"
+   ],
+   "edgeCases": [
+    "Reusing the eval set while tuning the prompt overfits it; keep a held-out set for the gate",
+    "Many releases each tested at $\\alpha$ will sometimes pass a worse prompt by chance, so track results over time",
+    "Changing the salt reshuffles every user between old and new, which breaks comparisons",
+    "Versioning the template alone misses model, temperature and tool changes that also alter behaviour"
+   ],
+   "related": [
+    "prompt-optimization",
+    "prompt-templates",
+    "ab-test-significance"
    ],
    "diagram": []
   },
@@ -11315,6 +12459,86 @@
    "diagram": []
   },
   {
+   "slug": "speculative-decoding",
+   "title": "Speculative Decoding",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2211.17192",
+   "difficulty": "Hard",
+   "topics": [
+    "LLM",
+    "Inference",
+    "Sampling"
+   ],
+   "patterns": [],
+   "summary": "A small draft model proposes $\\gamma$ tokens, the large target model scores them in one parallel pass, and a rejection rule keeps the output distribution exactly the target's while emitting several tokens per target pass.",
+   "bruteForce": "Large-batch throughput serving where the target is already compute-bound, or when no draft model tracks the target well, since a low acceptance rate $\\alpha$ makes the draft overhead a net loss.",
+   "intuition": "Generation is slow because each target pass yields one token, yet checking many proposed tokens costs about the same as one step, since the pass is memory-bound. The rejection rule fixes any draft error: a draft token $x$ survives with probability $\\min(1, p(x)/q(x))$, and a rejection is replaced by a draw from the leftover mass, so the output is distributed as the target alone. A bad draft only costs speed, never correctness. Flow: draft proposes → target verifies → accept or resample → emit.",
+   "whyItWorks": "A token $x$ is emitted either by acceptance, with probability $\\min(p(x), q(x))$, or after a rejection by a residual draw. The residual draw contributes exactly $\\max(0, p(x)-q(x))$, because the rejection probability $1-\\sum_y \\min(p(y), q(y))$ cancels with the residual normaliser. Adding them gives $p(x)$. Each position is therefore exact, and by induction so is the whole sequence.",
+   "approach": [
+    "Sample $\\gamma$ tokens from the draft $q$ autoregressively — cheap because the draft is small",
+    "Run the target once over the prefix plus drafts to get $p$ at every position — one parallel pass",
+    "Accept draft token $x$ with probability $\\min(1, p(x)/q(x))$ — keeps tokens the target likes at least as much",
+    "On the first rejection, resample from $\\mathrm{norm}(\\max(0, p-q))$ and stop — restores exactly the target distribution",
+    "If all are accepted, draw one bonus token from the target — the pass already computed it"
+   ],
+   "time": "One target pass plus $\\gamma$ draft passes per step; about $\\frac{1-\\alpha^{\\gamma+1}}{1-\\alpha}$ tokens emitted",
+   "space": "Both models weights and two KV caches, plus $O(\\gamma)$ extra positions per step",
+   "solution": "import numpy as np\n\ndef accept_or_resample(p, q, x, rng):\n    if rng.random() < min(1.0, p[x] / q[x]):\n        return x, True\n    r = np.maximum(p - q, 0.0)\n    return rng.choice(len(p), p=r / r.sum()), False\n\ndef speculative_step(p_fn, q_fn, prefix, gamma, rng):\n    seq, draft = list(prefix), []\n    for _ in range(gamma):\n        q = q_fn(seq)\n        x = rng.choice(len(q), p=q)\n        draft.append((x, q))\n        seq.append(x)\n    out = []\n    for x, q in draft:\n        p = p_fn(list(prefix) + out)\n        t, ok = accept_or_resample(p, q, x, rng)\n        out.append(t)\n        if not ok:\n            return out\n    p = p_fn(list(prefix) + out)\n    return out + [rng.choice(len(p), p=p)]\n\ndef expected_tokens(alpha, gamma):\n    if alpha >= 1.0:\n        return gamma + 1.0\n    return (1 - alpha ** (gamma + 1)) / (1 - alpha)",
+   "keyLines": [
+    4,
+    6,
+    7
+   ],
+   "dryRun": [
+    "accept $x \\sim q$ with prob $\\min(1, \\frac{p(x)}{q(x)})$",
+    "Residual $p^{\\prime}(x) = \\frac{\\max(0, p(x)-q(x))}{\\sum_y \\max(0, p(y)-q(y))}$",
+    "$P(\\mathrm{emit}\\ x) = \\min(p,q) + \\max(0, p-q) = p(x)$",
+    "$\\alpha = 1 - \\mathrm{TV}(p, q) = \\sum_x \\min(p(x), q(x))$",
+    "Tokens per pass $= \\frac{1-\\alpha^{\\gamma+1}}{1-\\alpha}$"
+   ],
+   "description": "Latency-bound generation where a much cheaper draft model agrees with the target on many tokens, and exact sampling from the target distribution must be preserved.",
+   "examples": [
+    {
+     "input": "Why is the output distribution unchanged?",
+     "output": "The accept-or-resample rule emits $x$ with total probability $\\min(p,q) + \\max(0,p-q) = p(x)$, so each token is an exact draw from the target.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the acceptance rate depend on?",
+     "output": "On how close the draft is to the target, $\\alpha = \\sum_x \\min(p(x), q(x))$, under an i.i.d. assumption across positions. Real acceptance varies by context.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does it speed up decoding at all?",
+     "output": "Autoregressive decoding is memory-bound, so scoring $\\gamma+1$ positions in one pass costs about the same as one position, and each pass yields more than one token on average.",
+     "explanation": ""
+    },
+    {
+     "input": "What happens with a terrible draft?",
+     "output": "Most tokens are rejected, so each step emits about one token and the draft work is wasted, but the output is still exactly the target's.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Speculation length $\\gamma$ (drafted tokens per step)",
+    "Choice and size of the draft model",
+    "Sampling temperature, applied identically to target and draft",
+    "Cost ratio of a draft pass to a target pass"
+   ],
+   "edgeCases": [
+    "Rejection sampling compares $p$ and $q$ after the same temperature and truncation; mismatched processing breaks exactness",
+    "Larger $\\gamma$ is not always better: gains saturate as $\\alpha^{\\gamma}$ shrinks while draft cost grows linearly",
+    "The formula $\\frac{1-\\alpha^{\\gamma+1}}{1-\\alpha}$ assumes the same $\\alpha$ at every position, which real text violates",
+    "Both models need their KV caches rolled back to the last accepted position after a rejection"
+   ],
+   "related": [
+    "autoregressive-decoding",
+    "kv-cache",
+    "temperature-sampling"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "stratified-split",
    "title": "Stratified Train/Test Split",
    "platform": "MLOps",
@@ -11793,6 +13017,78 @@
    "diagram": []
   },
   {
+   "slug": "tensor-parallel-matmul",
+   "title": "Tensor Parallelism (Megatron-Style Sharded MLP)",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/1909.08053",
+   "difficulty": "Hard",
+   "topics": [
+    "LLM",
+    "Distributed Training",
+    "Parallelism"
+   ],
+   "patterns": [],
+   "summary": "Split one layer's weight matrices across devices: the first linear by columns, the second by rows, so the whole MLP needs a single all-reduce (sum) of the partial outputs.",
+   "bruteForce": "Across slow links, where the per-layer all-reduce dominates, or when the model fits on one device and data parallelism is enough.",
+   "intuition": "A nonlinearity cannot be applied to partial sums, so the split must not cut the contraction of the first matrix. Splitting $W_1$ by columns gives each device complete hidden units, so the activation is local. Splitting $W_2$ by rows then turns the output into a sum of per-device terms, and one all-reduce adds them. Attention does the same with heads. Flow: split weights → local compute → all-reduce → next layer.",
+   "whyItWorks": "Column blocks of $W_1$ give $xW_1 = [xW_1^{(1)}, \\dots, xW_1^{(n)}]$, and an elementwise activation acts on each block independently. Row blocks of $W_2$ give $hW_2 = \\sum_i h^{(i)} W_2^{(i)}$, a sum of local terms. So the sharded computation equals the unsplit one, up to summation order.",
+   "approach": [
+    "Split $W_1$ into column blocks, one per device — each device owns a slice of the hidden units",
+    "Compute $x W_1^{(i)}$ on each device with the full input $x$ — needs no communication",
+    "Apply the activation locally — each hidden unit is complete, so it is exact",
+    "Multiply by the matching row block $W_2^{(i)}$ — gives a partial output of full width",
+    "All-reduce (sum) the partial outputs — equals the unsplit result; one collective per MLP"
+   ],
+   "time": "Same total FLOPs as the unsplit MLP, divided over $n$ devices, plus one all-reduce",
+   "space": "Weights and hidden activations per device shrink by about $1/n$; the output stays $B \\times T \\times d$",
+   "solution": "import numpy as np\n\ndef gelu(x):\n    c = np.sqrt(2 / np.pi)\n    return 0.5 * x * (1 + np.tanh(c * (x + 0.044715 * x**3)))\n\ndef column_split(W, n):\n    return np.split(W, n, axis=1)\n\ndef row_split(W, n):\n    return np.split(W, n, axis=0)\n\ndef all_reduce_sum(parts):\n    total = parts[0]\n    for p in parts[1:]:\n        total = total + p\n    return total\n\ndef tp_mlp(x, W1, W2, n_devices):\n    A = column_split(W1, n_devices)\n    B = row_split(W2, n_devices)\n    parts = [gelu(x @ a) @ b for a, b in zip(A, B)]\n    return all_reduce_sum(parts)\n\ndef comm_bytes(B, T, d, nbytes):\n    return B * T * d * nbytes",
+   "keyLines": [
+    20,
+    22,
+    23
+   ],
+   "dryRun": [
+    "$xW_1 = [xW_1^{(1)}, \\dots, xW_1^{(n)}]$",
+    "$Y = \\sum_{i} \\mathrm{gelu}(xW_1^{(i)})\\, W_2^{(i)}$",
+    "$\\sum_i \\mathrm{gelu}(z_i) \\neq \\mathrm{gelu}(\\sum_i z_i)$",
+    "Comm bytes $= B \\cdot T \\cdot d \\cdot \\mathrm{bytes}$"
+   ],
+   "description": "A layer or model too large for one accelerator, on devices joined by a fast interconnect, since the all-reduce sits on the critical path of every layer.",
+   "examples": [
+    {
+     "input": "Why split the first linear by columns and the second by rows?",
+     "output": "Column blocks give each device whole hidden units, so the nonlinearity needs no communication. Row blocks of the second matrix make the output a sum of partials, which one all-reduce combines.",
+     "explanation": ""
+    },
+    {
+     "input": "How is attention split?",
+     "output": "Heads are divided across devices; each device holds its heads' $Q$, $K$, $V$ slices and the matching rows of the output projection, then one all-reduce sums the partial outputs.",
+     "explanation": ""
+    },
+    {
+     "input": "What does tensor parallelism cost in communication?",
+     "output": "One all-reduce of a $B \\times T \\times d$ activation per sharded block in the forward pass, and another in the backward pass, so it needs a fast interconnect.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Tensor-parallel degree $n$ (must divide the hidden width and the head count)",
+    "Interconnect bandwidth between the devices",
+    "Activation precision, which sets bytes per all-reduce"
+   ],
+   "edgeCases": [
+    "Row-splitting the first matrix puts the activation on partial sums, which is wrong",
+    "The degree must divide the number of heads and the hidden width evenly",
+    "Tensor parallelism beyond one fast node usually loses to the communication cost"
+   ],
+   "related": [
+    "feed-forward-gelu-swiglu",
+    "multi-head-attention",
+    "transformer-block"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "text-preprocessing-stemming",
    "title": "Text Preprocessing, Stemming and Lemmatisation",
    "platform": "NLP",
@@ -12020,6 +13316,83 @@
     "beam-search",
     "softmax-cross-entropy",
     "entropy-kl-divergence"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "tracing-and-logging",
+   "title": "Tracing, Logging and Cost Accounting for LLM Apps",
+   "platform": "LLM",
+   "url": "https://opentelemetry.io/docs/concepts/signals/traces/",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Observability",
+    "Tracing",
+    "Monitoring"
+   ],
+   "patterns": [],
+   "summary": "Record each request as a tree of timed spans carrying model, token and cost attributes, emit structured logs with sensitive fields redacted, and summarise latency with percentiles.",
+   "bruteForce": "A single-call prototype where a plain log line is enough. Do not log raw prompts and outputs by default when they hold personal data; log sizes, hashes or redacted fields instead.",
+   "intuition": "One user request fans out into retrieval, several model calls and tool calls, so a single log line cannot say which step was slow or expensive. A span records one step with its start, end, parent and attributes; linking spans by parent id turns a request into a tree where the time and the tokens add up. Averages hide the slow requests users notice, so report percentiles such as $p_{95}$, and because full volume is costly, sample traces and redact secrets before anything is written. Flow: request → spans → timings and tokens → logs → alerts.",
+   "whyItWorks": "Because a child span starts after and ends before its parent, the tree structure and the timestamps are consistent, so the time spent inside any subtree can be read off directly. Cost is linear in token counts, so summing per-span costs gives the cost of the whole trace. A percentile is a sample estimate of the quantile of the latency distribution, which stays informative when the mean is dominated by a few outliers.",
+   "approach": [
+    "Open a span per step with a context manager, using the current top of a stack as parent — nesting in code becomes nesting in the tree",
+    "Read an injected clock at enter and exit — tests can use a fake clock and stay deterministic",
+    "Attach attributes such as model name and input and output token counts — latency and cost can then be sliced by model",
+    "Compute cost as $\\sum_k n_k c_k$ over token kinds with per-token prices — spend is derived from counts, not guessed",
+    "Redact configured keys recursively, then emit one JSON record per span — logs stay structured and safe to store",
+    "Summarise durations with $p_{50}$, $p_{95}$, $p_{99}$ and keep only a sampled fraction of traces — tail latency is visible and volume stays bounded"
+   ],
+   "time": "O(1) per span; O(n log n) to sort $n$ durations for a percentile",
+   "space": "O(spans) per trace, plus the attributes stored on each span",
+   "solution": "import zlib\n\nclass Tracer:\n    def __init__(self, clock, trace_id=\"t1\"):\n        self.clock, self.trace_id = clock, trace_id\n        self.spans, self.stack = [], []\n\n    def span(self, name, **attrs):\n        return Span(self, name, attrs)\n\nclass Span:\n    def __init__(self, tracer, name, attrs):\n        self.tr, self.name, self.attrs = tracer, name, attrs\n\n    def __enter__(self):\n        tr = self.tr\n        self.id = len(tr.spans) + 1\n        self.parent = tr.stack[-1].id if tr.stack else None\n        self.start = tr.clock()\n        tr.spans.append(self)\n        tr.stack.append(self)\n        return self\n\n    def __exit__(self, *exc):\n        self.end = self.tr.clock()\n        self.tr.stack.pop()\n\ndef percentile(values, q):\n    v = sorted(values)\n    h = (len(v) - 1) * q / 100\n    j = int(h)\n    k = min(j + 1, len(v) - 1)\n    return v[j] + (h - j) * (v[k] - v[j])\n\ndef cost(usage, prices):\n    return sum(n * prices[k] for k, n in usage.items()) / 1000\n\ndef redact(rec, keys):\n    if isinstance(rec, dict):\n        return {k: redact(v, keys) for k, v in rec.items()\n                if k not in keys}\n    if isinstance(rec, list):\n        return [redact(v, keys) for v in rec]\n    return rec\n\ndef sampled(trace_id, rate):\n    return zlib.crc32(trace_id.encode()) % 10000 < rate * 10000\n\ndef record(tr, s):\n    return {\"trace\": tr.trace_id, \"span\": s.id, \"parent\": s.parent,\n            \"name\": s.name, \"dur\": s.end - s.start, **s.attrs}",
+   "keyLines": [
+    17,
+    18,
+    19
+   ],
+   "dryRun": [
+    "Child inside parent: $s_p \\leq s_c$ and $e_c \\leq e_p$",
+    "Duration $d = e - s$",
+    "Percentile position $h = (n-1)\\,q/100$, $j = \\lfloor h \\rfloor$",
+    "$p_q = x_{(j)} + (h-j)\\,(x_{(j+1)} - x_{(j)})$",
+    "Cost $= \\sum_k n_k c_k / 1000$ (per 1000 tokens)",
+    "Keep trace if $u(\\mathrm{id}) < r$, $u \\in [0,1)$"
+   ],
+   "description": "Any LLM application with more than one model or tool call per request, where you need to explain latency and spend, debug a bad answer by replaying its steps, and alert on tail latency or cost.",
+   "examples": [
+    {
+     "input": "Why report p95 and p99 instead of the mean latency?",
+     "output": "LLM latency has a long tail from long outputs, retries and tool calls. The mean hides it, while the tail percentiles show what the slowest users experience.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the relation between a trace and a span?",
+     "output": "A trace is the whole request, identified by one trace id. It is a tree of spans, each with its own span id, a parent id (none for the root), start and end times and attributes.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you control tracing cost and privacy?",
+     "output": "Sample a fraction of traces, deterministically from the trace id so a trace is kept or dropped as a whole. Redact or hash sensitive fields before writing, and keep token counts rather than raw text where possible.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Sampling rate, possibly higher for errors and slow requests",
+    "Percentiles to report (p50, p95, p99)",
+    "Set of redacted keys",
+    "Price per token for each token kind and model"
+   ],
+   "edgeCases": [
+    "Percentiles of per-request latency cannot be averaged across machines; merge the raw values or histograms instead",
+    "Sampling each span independently breaks trees; decide once per trace from the trace id",
+    "Streaming responses need both time to first token and total time, or the span hides the wait users feel",
+    "A redact list misses new field names; prefer logging an allow-list of fields for sensitive paths"
+   ],
+   "related": [
+    "context-window-limits",
+    "hallucination-detection"
    ],
    "diagram": []
   },
@@ -13305,6 +14678,106 @@
      "slug": "rag-evaluation-faithfulness",
      "section": "13. Retrieval-augmented generation",
      "order": 72
+    },
+    {
+     "slug": "bleu-score",
+     "section": "16. Evaluation and observability",
+     "order": 73
+    },
+    {
+     "slug": "rouge-score",
+     "section": "16. Evaluation and observability",
+     "order": 74
+    },
+    {
+     "slug": "llm-as-judge",
+     "section": "16. Evaluation and observability",
+     "order": 75
+    },
+    {
+     "slug": "elo-pairwise-ranking",
+     "section": "16. Evaluation and observability",
+     "order": 76
+    },
+    {
+     "slug": "benchmark-contamination",
+     "section": "16. Evaluation and observability",
+     "order": 77
+    },
+    {
+     "slug": "tracing-and-logging",
+     "section": "16. Evaluation and observability",
+     "order": 78
+    },
+    {
+     "slug": "prompt-versioning",
+     "section": "16. Evaluation and observability",
+     "order": 79
+    },
+    {
+     "slug": "concept-drift",
+     "section": "16. Evaluation and observability",
+     "order": 80
+    },
+    {
+     "slug": "magnitude-pruning",
+     "section": "17. Inference and optimisation",
+     "order": 81
+    },
+    {
+     "slug": "gpu-memory-estimation",
+     "section": "17. Inference and optimisation",
+     "order": 82
+    },
+    {
+     "slug": "continuous-batching",
+     "section": "17. Inference and optimisation",
+     "order": 83
+    },
+    {
+     "slug": "speculative-decoding",
+     "section": "17. Inference and optimisation",
+     "order": 84
+    },
+    {
+     "slug": "flash-attention-online-softmax",
+     "section": "17. Inference and optimisation",
+     "order": 85
+    },
+    {
+     "slug": "tensor-parallel-matmul",
+     "section": "17. Inference and optimisation",
+     "order": 86
+    },
+    {
+     "slug": "pipeline-parallel-schedule",
+     "section": "17. Inference and optimisation",
+     "order": 87
+    },
+    {
+     "slug": "jailbreak-and-red-teaming",
+     "section": "18. Security and responsible AI",
+     "order": 88
+    },
+    {
+     "slug": "pii-redaction",
+     "section": "18. Security and responsible AI",
+     "order": 89
+    },
+    {
+     "slug": "output-validation-guardrails",
+     "section": "18. Security and responsible AI",
+     "order": 90
+    },
+    {
+     "slug": "content-safety-classifiers",
+     "section": "18. Security and responsible AI",
+     "order": 91
+    },
+    {
+     "slug": "fairness-metrics",
+     "section": "18. Security and responsible AI",
+     "order": 92
     }
    ]
   },
@@ -13942,7 +15415,9 @@
     "probability-calibration",
     "class-imbalance",
     "multiclass-metrics",
-    "isotonic-regression-pava"
+    "isotonic-regression-pava",
+    "fairness-metrics",
+    "content-safety-classifiers"
    ],
    "aliases": [
     "Classification metrics"
@@ -14039,7 +15514,8 @@
     "autoregressive-decoding",
     "gpt-decoder-only",
     "llama-rmsnorm-gqa",
-    "sliding-window-attention"
+    "sliding-window-attention",
+    "flash-attention-online-softmax"
    ],
    "aliases": [
     "Attention and sequences"
@@ -14383,7 +15859,10 @@
     "reranking-mmr",
     "query-transformation-hyde",
     "document-chunking",
-    "ann-vector-index"
+    "ann-vector-index",
+    "llm-as-judge",
+    "elo-pairwise-ranking",
+    "benchmark-contamination"
    ],
    "aliases": [
     "Text evaluation and retrieval"

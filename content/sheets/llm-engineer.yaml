@@ -90,3 +90,29 @@ sections:
   - query-transformation-hyde
   - retrieval-metrics-recall-at-k
   - rag-evaluation-faithfulness
+- name: 16. Evaluation and observability
+  problems:
+  - bleu-score
+  - rouge-score
+  - llm-as-judge
+  - elo-pairwise-ranking
+  - benchmark-contamination
+  - tracing-and-logging
+  - prompt-versioning
+  - concept-drift
+- name: 17. Inference and optimisation
+  problems:
+  - magnitude-pruning
+  - gpu-memory-estimation
+  - continuous-batching
+  - speculative-decoding
+  - flash-attention-online-softmax
+  - tensor-parallel-matmul
+  - pipeline-parallel-schedule
+- name: 18. Security and responsible AI
+  problems:
+  - jailbreak-and-red-teaming
+  - pii-redaction
+  - output-validation-guardrails
+  - content-safety-classifiers
+  - fairness-metrics

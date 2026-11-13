@@ -38,5 +38,8 @@ problems:
 - query-transformation-hyde
 - document-chunking
 - ann-vector-index
+- llm-as-judge
+- elo-pairwise-ranking
+- benchmark-contamination
 aliases:
 - Text evaluation and retrieval

@@ -132,6 +132,20 @@ SHEETS["llm-engineer"][2].extend([
                                           "rag-evaluation-faithfulness"]),
 ])
 
+SHEETS["llm-engineer"][2].extend([
+  ("16. Evaluation and observability", ["bleu-score", "rouge-score", "llm-as-judge",
+                                        "elo-pairwise-ranking", "benchmark-contamination",
+                                        "tracing-and-logging",
+                                        "prompt-versioning", "concept-drift"]),
+  ("17. Inference and optimisation", ["magnitude-pruning", "gpu-memory-estimation",
+                                      "continuous-batching", "speculative-decoding",
+                                      "flash-attention-online-softmax", "tensor-parallel-matmul",
+                                      "pipeline-parallel-schedule"]),
+  ("18. Security and responsible AI", ["jailbreak-and-red-teaming",
+                                       "pii-redaction", "output-validation-guardrails",
+                                       "content-safety-classifiers", "fairness-metrics"]),
+])
+
 def main():
     have = {p.stem for p in PROBLEMS.glob("*.yaml")}
     used = set()

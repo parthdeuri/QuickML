@@ -31,18 +31,19 @@ names were renamed from Problem to Concept; table and column names were not.
 
 ## Done
 - Skeleton, CI, signing, stable-key builds; logo (flash cards with a bolt).
-- 161 concept cards with all code tests passing; 22 families, 12 compare cards, 4 sheets.
+- 178 concept cards with all code tests passing; 22 families, 12 compare cards, 4 sheets.
 - Card wording (card / learned / implementation), Ask prompt includes math.
 - Reference links all return HTTP 200 (`tools/check_links.py`).
 - 17 diagrams as pre-drawn light/dark images (replaced the text art that broke on phones).
 - Typeset maths: LaTeX inline in all card text and in the Math box, rendered live in the app.
   The APK stays small (assets about 1.1 MB).
 
-## In progress: LLM Engineer roadmap (new sheet `llm-engineer`, 72 entries so far)
-Waves 1-3 done (roadmap sections 5-10, 12, 13; 45 new cards). Wave 4 to do: sections 16-18 (evaluation,
-inference, safety). New cards use area `LLM` where LLM-specific, no image diagram yet (an arrow-flow line
-ends the Intuition text); real diagrams come in a later run. Later: sections 14-15, 11, 19; foundations,
-projects and career are not revision material.
+## Done: LLM Engineer roadmap, concepts and techniques (sheet `llm-engineer`, 92 entries)
+Roadmap sections 5-10, 12, 13, 16-18 are in (62 new cards, area `LLM`; fairness-metrics is `MLOps`).
+New cards have no image diagram yet (an arrow-flow line ends the Intuition text); real diagrams come in a
+later run. Not covered yet: sections 14-15 (agents, multimodal), 11 and 19 (tools, LLMOps); foundations,
+projects and career are not revision material. Several cards cite abstract pages only; facts beyond the
+abstracts were checked by the card's own tests, not by the cited page.
 
 ## Next: flash cards (planned, nothing started)
 Auto-generated from the existing cards, spaced repetition, new bottom tab.

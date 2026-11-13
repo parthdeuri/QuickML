@@ -1,0 +1,109 @@
+slug: gpu-memory-estimation
+title: Will It Fit? GPU Memory Estimation
+url: https://arxiv.org/abs/1910.02054
+difficulty: Medium
+area: LLM
+topics: [Inference, Training, Memory, Distributed Training]
+summary: |
+  Add up weights, KV cache, gradients, optimiser states and activations
+  in bytes and compare with the GPU budget, to find the largest batch or
+  context that fits and how sharding across $G$ GPUs changes the bill.
+intuition: |
+  Memory is a sum of a few terms with simple units: parameters times
+  bytes for weights, tokens times a per-token constant for the KV cache,
+  and a fixed multiple of the parameter count for training state. The
+  terms scale differently, so the dominant one flips: weights decide
+  whether a model loads at all, while the cache or the activations
+  decide how much batch and context you get on top.
+  Flow: model size + cache + batch → bytes → compare with GPU memory.
+approach:
+  - 'Weights are $P \cdot b_w$ bytes — fixed cost paid before any request arrives'
+  - 'KV cache is $2 L h_{kv} d_{head} T B\, b_{kv}$ — grows with context and batch'
+  - 'Add a fractional overhead for activations and workspace — real runs never hit the clean sum'
+  - 'Training with Adam in mixed precision costs $16P$ bytes of state — weights, grads, master copy, two moments'
+  - 'ZeRO stage 1, 2, 3 shard optimiser states, then gradients, then weights by $G$ — each stage divides more terms'
+  - 'Solve for the largest batch whose total stays under the budget — the cache is the only term that grows with it'
+code: |
+  def inference_bytes(params, layers, kv_heads, d_head, ctx, batch,
+                      w_bytes=2, kv_bytes=2, overhead=0.0):
+      weights = params * w_bytes
+      kv = 2 * layers * kv_heads * d_head * ctx * batch * kv_bytes
+      return (weights + kv) * (1 + overhead)
+
+  def training_bytes(params, mode="mixed", act_bytes=0):
+      if mode == "mixed":   # fp16 weights/grads, fp32 master + Adam
+          t = dict(weights=2, grads=2, master=4, optim=8)
+      else:                 # plain fp32 training with Adam
+          t = dict(weights=4, grads=4, master=0, optim=8)
+      t = {k: v * params for k, v in t.items()}
+      t["activations"] = act_bytes
+      return t
+
+  def zero_bytes_per_gpu(stage, G, params, act_bytes=0):
+      t = training_bytes(params, "mixed", act_bytes)
+      shard = {0: [], 1: ["master", "optim"],
+               2: ["master", "optim", "grads"],
+               3: ["master", "optim", "grads", "weights"]}[stage]
+      return sum(v / G if k in shard else v for k, v in t.items())
+
+  def max_batch(budget, params, layers, kv_heads, d_head, ctx,
+                w_bytes=2, kv_bytes=2, overhead=0.0):
+      one = inference_bytes(params, layers, kv_heads, d_head, ctx, 1,
+                            w_bytes, kv_bytes, overhead)
+      fixed = inference_bytes(params, layers, kv_heads, d_head, ctx, 0,
+                              w_bytes, kv_bytes, overhead)
+      return max(0, int((budget - fixed) // (one - fixed)))
+key_lines: [4, 21, 29]
+time: "O(1) arithmetic per query; no model is run"
+space: "O(1)"
+when_to_use: |
+  Before renting hardware or launching a job: to pick the GPU count,
+  precision, sharding stage, or the batch and context a server can
+  safely accept.
+when_not_to_use: |
+  As a replacement for measuring. Fragmentation, framework workspace,
+  communication buffers and activation memory vary by implementation,
+  so treat the estimate as a lower bound and confirm with a profiler.
+why_it_works: |
+  Every large tensor in the run has a known shape and dtype, so its size
+  is exact. Weights, gradients and optimiser states are one number per
+  parameter, so they scale with $P$; the KV cache holds a fixed number
+  of values per token, so it scales with $T B$. Sharding splits a tensor
+  across devices without changing its total, so a sharded term costs
+  its size divided by $G$ per GPU.
+math:
+  - "Weights = P · b_w"
+  - "KV cache = 2 · L · h_kv · d_head · T · B · b_kv"
+  - "Inference memory ≈ (weights + KV) · (1 + overhead)"
+  - "Bytes per parameter: 2 + 2 + 4 + 4 + 4 = 16 (w, g, master, m, v)"
+  - "ZeRO-1: 4P + 12P/G;  ZeRO-2: 2P + 14P/G"
+  - "ZeRO-3: 16P/G per GPU"
+  - "Largest B with memory(B) ≤ budget"
+interview_qa:
+  - q: "How much memory does a model need for inference?"
+    a: "Parameters times bytes per parameter for the weights, plus the KV cache, which is $2 L h_{kv} d_{head} T B$ values, plus some overhead for activations and workspace."
+  - q: "Why does Adam training need about $16P$ bytes in mixed precision?"
+    a: "Half-precision weights and gradients take $2P$ each, and the optimiser keeps a float32 master copy plus two float32 moments, $4P$ each, for $16P$ in total before activations."
+  - q: "What do ZeRO stages 1, 2 and 3 shard?"
+    a: "Stage 1 shards optimiser states across the $G$ data-parallel GPUs, stage 2 also shards gradients, and stage 3 also shards the parameters, so every state term becomes its size divided by $G$."
+  - q: "What reduces activation memory?"
+    a: "Gradient checkpointing stores only some layer inputs and recomputes the rest during the backward pass, trading extra compute for less memory."
+hyperparameters:
+  - "Bytes per weight and per cache value (float32, float16, int8, ...)"
+  - "Number of GPUs $G$ and ZeRO stage"
+  - "Batch size and context length"
+  - "Overhead fraction for activations and workspace"
+pitfalls:
+  - "Counting only weights for serving; at long context or large batch the KV cache can exceed them"
+  - "Forgetting the float32 master copy and the two Adam moments, which are most of the training state"
+  - "Sharding does not shrink activations unless they are partitioned too, and stage 3 adds communication"
+  - "Using attention heads instead of KV heads in the cache formula overstates grouped-query models"
+related: [kv-cache, parameter-count-flops, context-window-limits]
+math_tex:
+- Weights $= P \cdot b_w$
+- KV cache $= 2 L h_{kv} d_{head} T B\, b_{kv}$
+- Inference $\approx (\mathrm{weights} + \mathrm{KV})(1 + \epsilon)$
+- 'Bytes per parameter $2 + 2 + 4 + 4 + 4 = 16$'
+- 'ZeRO-1 $4P + \frac{12P}{G}$, ZeRO-2 $2P + \frac{14P}{G}$'
+- 'ZeRO-3 per GPU $\frac{16P}{G}$'
+- 'Largest $B$ with $\mathrm{mem}(B) \leq$ budget'

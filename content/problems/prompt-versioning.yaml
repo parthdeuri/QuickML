@@ -1,0 +1,123 @@
+slug: prompt-versioning
+title: Prompt Versioning, Regression Gates and Canary Rollout
+url: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.binomtest.html
+difficulty: Medium
+area: LLM
+topics: [LLM, Prompting, Release Engineering, Evaluation]
+summary: |
+  Treat prompts like code: store immutable content-hashed versions in a
+  registry, gate each release on a paired comparison against the old
+  prompt, and roll out to a small hashed slice of users first.
+intuition: |
+  A prompt edit changes behaviour as surely as a code edit, but it is
+  easy to tweak in place and lose track of what is live. Hashing the
+  normalised text gives every version an identity that cannot drift,
+  so a log line names exactly what ran. To release, run old and new on
+  the same fixed examples and look only at the examples where they
+  disagree: if the new prompt loses far more of those than it wins,
+  the sign test says the drop is not luck. Canary routing by user hash
+  then limits the damage of anything the eval set missed.
+  Flow: edit → hash → register → eval gate → canary → full rollout.
+approach:
+  - "Normalise the template and hash it — the same text always gets the same id, any edit changes it"
+  - "Register name, version label and note; refuse to overwrite a label — versions stay immutable and the changelog is the notes"
+  - 'Score old and new prompts on the same fixed eval set — paired results remove example difficulty from the comparison'
+  - 'Count $b$ examples only new gets right and $c$ only old gets right, drop ties — only disagreements carry information'
+  - 'Fail the gate if the one-sided sign test on $c$ out of $b+c$ gives $p < \alpha$ — blocks a prompt that is significantly worse'
+  - 'Route a user to the new prompt if a hash of the user id mapped to $[0,1)$ is below the fraction — each user sees one version consistently'
+code: |
+  import hashlib
+  from scipy.stats import binomtest
+
+  def normalise(t):
+      lines = t.strip().splitlines()
+      return "\n".join(l.rstrip() for l in lines)
+
+  def prompt_hash(template):
+      data = normalise(template).encode()
+      return hashlib.sha256(data).hexdigest()[:12]
+
+  class Registry:
+      def __init__(self):
+          self.items = {}
+
+      def register(self, name, version, template, note=""):
+          if (name, version) in self.items:
+              raise ValueError("versions are immutable")
+          h = prompt_hash(template)
+          self.items[(name, version)] = (template, h, note)
+          return h
+
+      def get(self, name, version):
+          return self.items[(name, version)][0]
+
+      def latest(self, name):
+          key = lambda v: tuple(map(int, v.split(".")))
+          vs = [v for n, v in self.items if n == name]
+          best = max(vs, key=key)
+          return best, self.get(name, best)
+
+  def regression_gate(old_correct, new_correct, alpha=0.05):
+      pairs = list(zip(old_correct, new_correct))
+      b = sum(1 for o, n in pairs if n and not o)
+      c = sum(1 for o, n in pairs if o and not n)
+      if b + c == 0:
+          return True, 1.0, b, c
+      p = binomtest(c, b + c, 0.5, alternative="greater").pvalue
+      return p >= alpha, p, b, c
+
+  def route_canary(user_id, fraction, salt="v2"):
+      h = hashlib.sha256((salt + user_id).encode()).hexdigest()
+      return "new" if int(h[:8], 16) / 2**32 < fraction else "old"
+key_lines: [35, 38, 43]
+time: "O(len(prompt)) to hash; O(n) pairs plus an exact binomial tail for the gate"
+space: "O(number of versions) in the registry; O(n) for the eval results"
+when_to_use: |
+  Any product where prompts change over time and several people edit
+  them, so you need to know which text produced which answer, to roll
+  back quickly, and to stop a change that quietly lowers quality.
+when_not_to_use: |
+  One-off scripts or notebooks. A significance gate on a tiny eval set
+  has almost no power, so with few examples rely on review of the
+  failures instead of a p-value.
+why_it_works: |
+  A cryptographic hash makes accidental collisions between different
+  texts negligible, so the id identifies the text. For the gate, under
+  the null hypothesis that old and new are equally good, each
+  disagreement is equally likely to favour either prompt, so the number
+  favouring old is $\mathrm{Binomial}(b+c, 1/2)$ and the exact tail
+  gives a valid p-value without a normal approximation. A uniform hash
+  sends each user to the canary independently with probability close to
+  the chosen fraction, and always to the same side.
+math:
+  - "id = hash(normalise(template))"
+  - "b = #{new right, old wrong},   c = #{old right, new wrong}"
+  - "under H₀:  c ~ Binomial(b + c, 1/2)"
+  - "p = P(C ≥ c) = Σₖ₌c..b+c  C(b+c, k) / 2^(b+c)"
+  - "reject (block release) if p < α"
+  - "canary if  hash(user) / 2³² < f,   so  P(canary) ≈ f"
+math_tex:
+- '$\mathrm{id} = \mathrm{hash}(\mathrm{normalise}(\mathrm{template}))$'
+- '$b$ = new right only, $c$ = old right only'
+- 'Null: $c \sim \mathrm{Binomial}(b+c,\, 1/2)$'
+- '$p = \sum_{k=c}^{b+c} \binom{b+c}{k}\, 2^{-(b+c)}$'
+- 'Block release if $p < \alpha$'
+- 'Canary if $\mathrm{hash}(u)/2^{32} < f$'
+interview_qa:
+  - q: "Why use a paired test instead of comparing the two accuracies?"
+    a: "Both prompts see the same examples, so most of the variation comes from example difficulty. Pairing cancels it, and only the examples where the prompts disagree decide the result."
+  - q: "Why hash the user id for canary routing instead of random choice per request?"
+    a: "Hashing keeps each user on one version across requests, so their experience is consistent and results are comparable, and the assignment can be reproduced from logs."
+  - q: "Is a passing gate proof that the new prompt is as good?"
+    a: "No. Failing to detect a drop is not evidence of no drop, especially with a small eval set. Use a tolerance or confidence bound, keep the eval set representative, and still monitor the canary."
+hyperparameters:
+  - 'Significance level $\alpha$ of the gate'
+  - "Size and coverage of the fixed eval set"
+  - "Canary fraction and the ramp schedule"
+  - "Normalisation rules applied before hashing"
+pitfalls:
+  - "Reusing the eval set while tuning the prompt overfits it; keep a held-out set for the gate"
+  - 'Many releases each tested at $\alpha$ will sometimes pass a worse prompt by chance, so track results over time'
+  - "Changing the salt reshuffles every user between old and new, which breaks comparisons"
+  - "Versioning the template alone misses model, temperature and tool changes that also alter behaviour"
+related: [prompt-optimization, prompt-templates, ab-test-significance]

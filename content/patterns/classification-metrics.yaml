@@ -31,5 +31,7 @@ problems:
 - class-imbalance
 - multiclass-metrics
 - isotonic-regression-pava
+- fairness-metrics
+- content-safety-classifiers
 aliases:
 - Classification metrics

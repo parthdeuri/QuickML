@@ -1,0 +1,105 @@
+slug: benchmark-contamination
+title: Benchmark Contamination - N-gram Overlap and Memorisation Test
+url: https://arxiv.org/abs/2311.09783
+difficulty: Medium
+area: LLM
+topics: [LLM, Evaluation, Data Contamination, Memorisation]
+summary: |
+  Check whether benchmark items leaked into training data. Flag verbatim
+  overlap with long n-grams, compare the model's loss on an item against
+  paraphrases of it, and report accuracy on contaminated and clean
+  subsets separately.
+intuition: |
+  A benchmark score only measures generalisation if the model has not
+  seen the answers. Long n-grams almost never repeat by chance, so a
+  shared 13-gram between a test item and the training text is strong
+  evidence of a leak, but it misses paraphrases and cannot be run when
+  the training data is hidden. For those cases ask the model itself: if
+  the original item gets a much lower loss than equivalent rewordings,
+  it has probably seen that exact wording. Finally, split results by
+  flag, since the gap between the two subsets is the inflation.
+  Flow: benchmark items → n-gram overlap and loss test → contaminated flag → clean vs contaminated accuracy.
+approach:
+  - "Tokenise and build the set of $n$-grams of the training text — a fast membership table"
+  - "Flag a benchmark item if any of its $n$-grams appears in that set — verbatim leaks share long spans"
+  - "Compute the contamination rate, the flagged fraction of items — the size of the problem"
+  - "When training data is unavailable, make paraphrases or perturbations of an item — equivalent text the model could not have memorised"
+  - "Compute $\\rho = L(\\mathrm{item}) / \\overline{L(\\mathrm{perturbed})}$ — values well below $1$ suggest memorisation"
+  - "Compute accuracy on contaminated and clean subsets and their gap — shows how much the score is inflated"
+  - "Prefer private or regularly refreshed held-out sets for new claims — unseen items cannot have leaked"
+code: |
+  import numpy as np
+
+  def ngram_set(tokens, n):
+      return {tuple(tokens[i:i + n])
+              for i in range(len(tokens) - n + 1)}
+
+  def contamination_rate(train_docs, bench_items, n=13):
+      seen = set()
+      for doc in train_docs:
+          seen |= ngram_set(doc, n)
+      flags = [bool(ngram_set(it, n) & seen) for it in bench_items]
+      return float(np.mean(flags)), flags
+
+  def memorisation_ratio(loss_fn, item, perturbations):
+      base = np.mean([loss_fn(p) for p in perturbations])
+      return loss_fn(item) / base
+
+  def accuracy_gap(correct, contaminated):
+      c = np.asarray(correct, float)
+      m = np.asarray(contaminated, bool)
+      return c[m].mean() - c[~m].mean()
+key_lines: [10, 11, 16]
+time: "O(T) to index $T$ training tokens, then O(L) per item of length $L$; the memorisation test costs one model pass per variant"
+space: "O(T) for the training n-gram set, which is why real pipelines use hashing or suffix arrays"
+when_to_use: |
+  Before trusting or publishing a benchmark number for a model trained on
+  web-scale or unknown data, and when building a new evaluation from
+  public text.
+when_not_to_use: |
+  As a proof of cleanliness: no flag only means no verbatim overlap was
+  found. Items that are short, paraphrased or translated escape n-gram
+  matching, and the loss test is only a signal when good perturbations
+  exist.
+why_it_works: |
+  The chance that a specific long word sequence appears by accident in
+  unrelated text falls quickly with its length, so a shared 13-gram is
+  almost always a copy rather than coincidence. The loss ratio compares
+  the model on the exact wording with the same content in new wording:
+  a model that generalises treats them alike, so a ratio far below $1$
+  points to memorised surface form. The subset accuracy gap estimates the
+  inflation, assuming contaminated and clean items are of similar
+  difficulty.
+math:
+  - "G(x) = { (x_i, …, x_{i+n−1}) : 1 ≤ i ≤ |x| − n + 1 }"
+  - "flag(b) = 1 if G(b) ∩ G(train) ≠ ∅, else 0"
+  - "rate = (1/N) Σ_b flag(b)"
+  - "ρ = L(item) / mean_k L(perturbation_k)"
+  - "gap = acc(contaminated) − acc(clean)"
+interview_qa:
+  - q: "Why use long n-grams such as 13 for decontamination?"
+    a: "Short n-grams match common phrases and give false alarms. A long shared span almost never happens by chance, so a match is strong evidence of a copy, though paraphrases still slip through."
+  - q: "How do you test contamination without the training data?"
+    a: "Compare the model's loss on the original item with its loss on paraphrases or perturbations. A ratio $\\rho$ much below $1$ means the exact wording is unusually easy, which suggests memorisation. A canary string planted in the data gives a similar check."
+  - q: "What do you report once you find contamination?"
+    a: "Accuracy on the clean and contaminated subsets separately and their gap, plus the contamination rate. A large positive gap means the headline score is inflated."
+  - q: "How can future benchmarks avoid this?"
+    a: "Keep test items private, refresh them dynamically, or build them from text newer than the training cutoff, so the items cannot be in the training corpus."
+hyperparameters:
+  - "N-gram length $n$ and the tokeniser or normalisation used"
+  - "Minimum overlap needed to flag an item"
+  - "Number and type of perturbations, such as paraphrase or option shuffling"
+  - "Threshold on the loss ratio $\\rho$"
+pitfalls:
+  - "An item shorter than $n$ tokens has no n-grams and can never be flagged; lower $n$ or match whole items"
+  - "Tokenise training and benchmark text identically, or the n-gram sets will not line up"
+  - "Contaminated items may be easier or harder than clean ones, so the accuracy gap is suggestive, not exact"
+  - "A low loss ratio can also come from an item that is simply easy or common; compare against several paraphrases"
+related: [finetune-dataset-prep, data-leakage, perplexity]
+math_tex:
+- '$G(x) = \{(x_i, \ldots, x_{i+n-1})\}$'
+- 'Flag: $G(b) \cap G(\mathrm{train}) \neq \emptyset$'
+- 'Rate: $\frac{1}{N}\sum_{b} \mathrm{flag}(b)$'
+- 'Ratio: $\rho = \frac{L(\mathrm{item})}{\overline{L}(\mathrm{perturbed})}$'
+- 'Gap: $\mathrm{acc}_{cont} - \mathrm{acc}_{clean}$'
+patterns: ["Text evaluation and retrieval"]

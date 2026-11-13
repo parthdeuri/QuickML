@@ -1,0 +1,83 @@
+slug: pipeline-parallel-schedule
+title: Pipeline Parallelism (GPipe Bubble and 1F1B)
+url: https://arxiv.org/abs/1811.06965
+difficulty: Hard
+area: LLM
+topics: [LLM, Distributed Training, Parallelism]
+summary: |
+  Cut the model into $p$ stages of consecutive layers and stream $m$
+  microbatches through them; the idle warm-up and cool-down form a bubble
+  of fraction $(p-1)/(m+p-1)$, and 1F1B bounds activation memory.
+intuition: |
+  With one batch, stage $s$ must wait for stage $s-1$, so only one stage
+  works at a time. Splitting the batch into microbatches lets stage $s$
+  start microbatch 0 while stage $s-1$ moves to microbatch 1. The
+  pipeline still fills and drains, which costs $p-1$ idle steps per
+  stage. 1F1B starts backward passes early so activations are freed sooner.
+  Flow: split layers → feed microbatches → fill, steady state, drain → flush.
+approach:
+  - "Assign consecutive layers to $p$ stages — each device holds only its slice"
+  - "Split the batch into $m$ microbatches — creates work that can overlap across stages"
+  - "Run microbatch $j$ on stage $s$ at step $j+s$ — respects the dependency on stage $s-1$"
+  - "Count the idle slots — each stage idles $p-1$ of $m+p-1$ steps, the bubble"
+  - "Reorder with 1F1B: warm-up forwards, alternate forward and backward, cool-down — frees activations early"
+code: |
+  def gpipe_forward_schedule(p, m):
+      steps = m + p - 1
+      return [[t - s if 0 <= t - s < m else None
+               for t in range(steps)] for s in range(p)]
+
+  def bubble_fraction(p, m):
+      return (p - 1) / (m + p - 1)
+
+  def one_f_one_b(stage, p, m):
+      warm = min(p - stage - 1, m)
+      order = [("F", j) for j in range(warm)]
+      for i in range(m - warm):
+          order.append(("F", warm + i))
+          order.append(("B", i))
+      order += [("B", j) for j in range(m - warm, m)]
+      return order
+key_lines: [3, 10, 13]
+time: "$m+p-1$ steps for $m$ microbatches instead of $m \\cdot p$ if run one stage at a time"
+space: "GPipe stores activations for up to $m$ microbatches per stage; 1F1B for about $p$"
+when_to_use: |
+  Models too deep for one device, where layers can be cut into balanced
+  stages and the link between stages only carries activations, which is
+  cheap compared with a per-layer all-reduce.
+when_not_to_use: |
+  When $m$ is small compared with $p$ (the bubble is large), when stages
+  cannot be balanced, or when the model already fits in memory.
+why_it_works: |
+  Stage $s$ can process microbatch $j$ once stage $s-1$ has finished it,
+  giving start time $j+s$ and a total of $m+p-1$ steps. Each stage works
+  on $m$ of them, so it idles $p-1$ steps, and the idle fraction is
+  $(p-1)/(m+p-1)$, which shrinks as $m$ grows.
+math:
+  - "Steps = m + p − 1"
+  - "Microbatch j runs on stage s at step t = j + s"
+  - "Idle slots = p · (p − 1)"
+  - "Bubble fraction = (p − 1) / (m + p − 1)"
+  - "1F1B warm-up forwards on stage s (0-based) = p − s − 1"
+math_tex:
+- Steps $= m + p - 1$
+- Microbatch $j$ on stage $s$ at step $t = j + s$
+- Idle slots $= p\,(p - 1)$
+- Bubble $= \frac{p-1}{m+p-1}$
+- 1F1B warm-up on stage $s$ $= p - s - 1$
+interview_qa:
+  - q: "Why does a pipeline have a bubble?"
+    a: "The first microbatch must traverse the earlier stages before later stages can start, and the last stages sit idle while the pipeline drains. That is $p-1$ idle steps per stage."
+  - q: "How do you shrink the bubble?"
+    a: "Use more microbatches, since the fraction is $(p-1)/(m+p-1)$, at the price of smaller microbatches and lower per-step efficiency."
+  - q: "What does 1F1B improve over GPipe?"
+    a: "The bubble is the same, but backward passes start early, so a stage holds activations for at most about $p$ microbatches instead of all $m$."
+hyperparameters:
+  - "Number of pipeline stages $p$"
+  - "Number of microbatches $m$"
+  - "Layer-to-stage assignment (balance of compute per stage)"
+pitfalls:
+  - "Unbalanced stages make the slowest stage set the pace for the whole pipeline"
+  - "Batch normalisation statistics change when the batch is split into microbatches"
+  - "Gradients from all microbatches must be accumulated before one optimiser step"
+related: [transformer-block, decoder-only-block, parameter-count-flops]

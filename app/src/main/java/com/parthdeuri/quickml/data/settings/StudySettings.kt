@@ -71,6 +71,19 @@ class StudySettings(private val prefs: SharedPreferences) {
     /** Read-aloud speed, one of [SPEECH_RATE_CHOICES]. */
     val speechRate: StateFlow<Float> = rate.asStateFlow()
 
+    private val flashNew = MutableStateFlow(
+        prefs.getInt(KEY_FLASH_NEW, DEFAULT_FLASH_NEW).coerceIn(0, MAX_FLASH_NEW)
+    )
+
+    /** New flash cards introduced per day (the rest of the queue is due reviews). */
+    val flashNewPerDay: StateFlow<Int> = flashNew.asStateFlow()
+
+    fun setFlashNewPerDay(value: Int) {
+        val clean = value.coerceIn(0, MAX_FLASH_NEW)
+        prefs.edit().putInt(KEY_FLASH_NEW, clean).apply()
+        flashNew.value = clean
+    }
+
     fun selectSheet(id: String) {
         if (id == selectedSheet.value) return
         prefs.edit().putString(KEY_SHEET, id).apply()
@@ -128,6 +141,12 @@ class StudySettings(private val prefs: SharedPreferences) {
 
         /** Choices offered in Settings (0 = off). */
         val THINK_TIMER_CHOICES = listOf(0, 1, 2, 5)
+
+        /** Daily new-card choices offered on the Flash tab. */
+        val FLASH_NEW_CHOICES = listOf(10, 20, 30, 50)
+        const val DEFAULT_FLASH_NEW = 20
+        private const val MAX_FLASH_NEW = 200
+        private const val KEY_FLASH_NEW = "flash_new_per_day"
 
         private const val KEY_SHEET = "selected_sheet_id"
         private const val KEY_QUIZ_BEFORE_REVEAL = "quiz_before_reveal"

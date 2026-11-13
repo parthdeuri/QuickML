@@ -538,7 +538,7 @@ private fun lookupPattern(index: Map<String, PatternRef>, pattern: String): Patt
     index[pattern.trim().lowercase()]
 
 @Composable
-private fun RatingRow(preview: Map<Rating, Int>, onRate: (Rating) -> Unit) {
+internal fun RatingRow(preview: Map<Rating, Int>, onRate: (Rating) -> Unit) {
     val colors = QuickMLTheme.colors
     Column(
         modifier = Modifier

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -44,6 +45,9 @@ import com.parthdeuri.quickml.speech.Speaker
 import com.parthdeuri.quickml.ui.dashboard.DashboardScreen
 import com.parthdeuri.quickml.ui.dashboard.DashboardViewModel
 import com.parthdeuri.quickml.ui.dashboard.DashboardViewModelFactory
+import com.parthdeuri.quickml.ui.flash.FlashScreen
+import com.parthdeuri.quickml.ui.flash.FlashViewModel
+import com.parthdeuri.quickml.ui.flash.FlashViewModelFactory
 import com.parthdeuri.quickml.ui.feed.FeedScreen
 import com.parthdeuri.quickml.ui.feed.FeedViewModel
 import com.parthdeuri.quickml.ui.feed.FeedViewModelFactory
@@ -57,6 +61,7 @@ import com.parthdeuri.quickml.widget.QuickMLWidgetProvider
 private const val TAB_FEED = 0
 private const val TAB_SHEET = 1
 private const val TAB_DASHBOARD = 2
+private const val TAB_FLASH = 3
 
 /** Whether [mode] resolves to the dark theme, given the system's current setting. */
 private fun isDarkTheme(mode: ThemeMode, systemDark: Boolean): Boolean = when (mode) {
@@ -158,6 +163,13 @@ class MainActivity : ComponentActivity() {
                                         colors = itemColors
                                     )
                                     NavigationBarItem(
+                                        selected = tab == TAB_FLASH,
+                                        onClick = { selectTab(TAB_FLASH) },
+                                        icon = { Icon(Icons.Filled.Bolt, contentDescription = null) },
+                                        label = { Text("Flash") },
+                                        colors = itemColors
+                                    )
+                                    NavigationBarItem(
                                         selected = tab == TAB_DASHBOARD,
                                         onClick = { selectTab(TAB_DASHBOARD) },
                                         icon = { Icon(Icons.Filled.BarChart, contentDescription = null) },
@@ -189,6 +201,18 @@ class MainActivity : ComponentActivity() {
                                             viewModel = sheetViewModel,
                                             onOpenConcept = { slug ->
                                                 // Learn mode, filters cleared, scrolled to the problem.
+                                                feedViewModel.openConcept(slug)
+                                                tab = TAB_FEED
+                                            }
+                                        )
+                                    }
+
+                                    TAB_FLASH -> {
+                                        val flashViewModel: FlashViewModel =
+                                            viewModel(factory = FlashViewModelFactory(container))
+                                        FlashScreen(
+                                            viewModel = flashViewModel,
+                                            onOpenConcept = { slug ->
                                                 feedViewModel.openConcept(slug)
                                                 tab = TAB_FEED
                                             }

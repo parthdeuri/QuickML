@@ -1,0 +1,139 @@
+slug: loss-functions-regression-classification
+title: Loss Functions for Regression and Classification
+url: https://en.wikipedia.org/wiki/Huber_loss
+difficulty: Medium
+area: Deep Learning
+topics: [Loss Functions, Regression, Classification, Maximum Likelihood]
+summary: |
+  MSE, MAE, Huber, pinball, hinge, binary and categorical cross-entropy,
+  each with its gradient, and why each one is a likelihood in disguise.
+intuition: |
+  A loss is a belief about the noise. Squared error is the negative
+  log-likelihood of Gaussian noise, so it chases the mean and a single
+  outlier drags it far. Absolute error is Laplace noise, so it chases the
+  median and the pull of an outlier is capped. Huber is quadratic near
+  zero and linear far away, taking the smooth gradient of MSE for small
+  residuals and the robustness of MAE for large ones. Cross-entropy is
+  the Bernoulli or categorical log-likelihood. The gradient tells the
+  story: it is the residual (MSE), its sign (MAE), or the clipped
+  residual (Huber), and for cross-entropy with logits it is simply
+  prediction minus target.
+  Flow: noise assumption → likelihood → loss → gradient on the prediction.
+why_it_works: |
+  If $y = p + \epsilon$ with Gaussian noise, the negative log-likelihood
+  is $\frac{(y-p)^2}{2\sigma^2} + \ln\sigma + \frac{1}{2}\ln 2\pi$, which
+  is MSE up to a scale and a constant. With Laplace noise it is
+  $\frac{|y-p|}{b} + \ln 2b$, which is MAE up to the same. For a
+  Bernoulli label with probability $\sigma(z)$ the negative
+  log-likelihood is the binary cross-entropy. Minimising the loss over
+  data is therefore maximum likelihood, and the minimiser of squared,
+  absolute and pinball loss is the mean, median and $\tau$-quantile.
+when_to_use: |
+  MSE for clean Gaussian-like targets, MAE or Huber when outliers exist,
+  pinball for quantile forecasts, binary cross-entropy for binary
+  labels, categorical cross-entropy for classes, hinge for margin
+  classifiers such as SVMs.
+when_not_to_use: |
+  MSE on data with heavy-tailed outliers, MAE when you need a smooth
+  gradient near zero, cross-entropy computed on probabilities that were
+  already squashed (use the logits form), and accuracy as a training
+  loss, since it has no useful gradient.
+math:
+  - "MSE = mean((p−y)²),   gradient 2(p−y)/n"
+  - "MAE = mean|p−y|,   gradient sign(p−y)/n"
+  - "Huber: ½r² if |r| ≤ δ, else δ(|r| − ½δ), with r = p−y"
+  - "Huber gradient: clip(r, −δ, δ)/n"
+  - "Pinball: max(τ r, (τ−1) r), with r = y−p"
+  - "Hinge: max(0, 1 − y s) with y = −1 or +1; gradient −y if y s < 1"
+  - "BCE on logit z: max(z,0) − z y + ln(1 + e^(−|z|))"
+  - "BCE gradient: σ(z) − y"
+  - "Categorical CE: −ln softmax(z)_y = logsumexp(z) − z_y"
+  - "CE gradient: softmax(z) − onehot(y)"
+  - "Gaussian NLL: (y−p)²/(2σ²) + ln σ + ½ ln 2π  (MSE)"
+  - "Laplace NLL: |y−p|/b + ln 2b  (MAE)"
+approach:
+  - Compute the residual $r = p - y$ between prediction and target — every regression loss is a function of it
+  - Choose the penalty from the noise model, squared for Gaussian, absolute for Laplace, Huber for a mix — decides how much outliers pull
+  - For classification, feed logits to the loss and use $\max(z,0) - zy + \ln(1+e^{-|z|})$ — avoids overflow and $\log 0$
+  - Differentiate with respect to the prediction — the gradient is what backpropagation starts from
+  - Average over the batch and divide the gradient by $n$ — keeps the scale independent of batch size
+  - Check each gradient against finite differences or autograd — catches sign and scale slips
+code: |
+  import numpy as np
+
+  def mse(p, y): return np.mean((p - y) ** 2)
+  def mse_grad(p, y): return 2 * (p - y) / p.size
+
+  def mae(p, y): return np.mean(np.abs(p - y))
+  def mae_grad(p, y): return np.sign(p - y) / p.size
+
+  def huber(p, y, d=1.0):
+      r = np.abs(p - y)
+      return np.mean(np.where(r <= d, 0.5 * r**2, d * (r - 0.5 * d)))
+
+  def huber_grad(p, y, d=1.0):
+      return np.clip(p - y, -d, d) / p.size
+
+  def pinball(p, y, q):
+      r = y - p
+      return np.mean(np.maximum(q * r, (q - 1) * r))
+
+  def pinball_grad(p, y, q):
+      return np.where(y > p, -q, 1 - q) / p.size
+
+  def hinge(s, y): return np.mean(np.maximum(0, 1 - y * s))
+  def hinge_grad(s, y): return np.where(y * s < 1, -y, 0) / s.size
+
+  def bce_logits(z, y):
+      t = np.log1p(np.exp(-np.abs(z)))
+      return np.mean(np.maximum(z, 0) - z * y + t)
+
+  def bce_logits_grad(z, y):
+      return (np.exp(-np.logaddexp(0, -z)) - y) / z.size
+
+  def cce(z, y):
+      m = z.max(axis=1, keepdims=True)
+      lse = m[:, 0] + np.log(np.exp(z - m).sum(axis=1))
+      return np.mean(lse - z[np.arange(len(y)), y])
+
+  def cce_grad(z, y):
+      e = np.exp(z - z.max(axis=1, keepdims=True))
+      g = e / e.sum(axis=1, keepdims=True)
+      g[np.arange(len(y)), y] -= 1
+      return g / len(y)
+key_lines: [11, 28, 31]
+time: "O(n) per loss and gradient for n predictions, O(n·C) for C classes"
+space: "O(n) for the residuals and gradient, O(n·C) for the softmax"
+hyperparameters:
+  - 'Huber threshold $\delta$ — residual size where the loss turns from quadratic to linear'
+  - 'Quantile level $\tau$ for pinball loss (0.5 recovers MAE up to a factor)'
+  - 'Reduction (mean or sum) — changes the gradient scale and effective learning rate'
+  - 'Margin in hinge loss (1 here)'
+pitfalls:
+  - 'Applying a sigmoid first and then log-loss on probabilities overflows or hits $\log 0$; use the logits form'
+  - 'MAE and hinge have a kink, so the gradient there is a subgradient and is zero at the exact kink in this code'
+  - 'These gradients average over the batch; summing instead multiplies the effective learning rate by $n$'
+  - 'Hinge expects labels $-1$ and $+1$, whereas cross-entropy expects $0$ and $1$ (or class indices)'
+interview_qa:
+  - q: 'Why does MSE correspond to Gaussian noise?'
+    a: 'The Gaussian negative log-likelihood is $\frac{(y-p)^2}{2\sigma^2}$ plus constants, so maximising the likelihood is minimising squared error.'
+  - q: 'Why is MAE more robust than MSE?'
+    a: 'Its gradient has constant magnitude, so a large residual pulls no harder than a small one, whereas the MSE gradient grows with the residual. The MAE minimiser is the median, not the mean.'
+  - q: 'What does Huber loss buy you?'
+    a: 'A smooth quadratic bowl near the optimum, which gives stable gradients, and linear tails that limit the influence of outliers. The threshold $\delta$ sets the switch.'
+  - q: 'Why compute binary cross-entropy from logits?'
+    a: 'Forming $\sigma(z)$ and then $\log$ overflows or loses precision for large $|z|$. The combined form $\max(z,0) - zy + \ln(1+e^{-|z|})$ is exact and stable.'
+related: [maximum-likelihood, softmax-cross-entropy, logistic-regression]
+math_tex:
+- '$\mathrm{MSE} = \mathrm{mean}((p-y)^2)$, gradient $2(p-y)/n$'
+- '$\mathrm{MAE} = \mathrm{mean}|p-y|$, gradient $\mathrm{sign}(p-y)/n$'
+- 'Huber: $\frac{1}{2}r^2$ if $|r| \leq \delta$, else $\delta(|r|-\frac{1}{2}\delta)$'
+- 'Huber gradient: $\mathrm{clip}(r,-\delta,\delta)/n$'
+- 'Pinball: $\max(\tau r,\,(\tau-1)r)$, $r = y-p$'
+- 'Hinge: $\max(0,\,1-ys)$ with $y$ = $-1$ or $1$'
+- 'BCE on logit: $\max(z,0) - zy + \ln(1+e^{-|z|})$'
+- 'BCE gradient: $\sigma(z) - y$'
+- 'Categorical CE: $-\ln\mathrm{softmax}(z)_y = \ln\sum_j e^{z_j} - z_y$'
+- 'CE gradient: $\mathrm{softmax}(z) - \mathrm{onehot}(y)$'
+- 'Gaussian NLL: $\frac{(y-p)^2}{2\sigma^2} + \ln\sigma + \frac{1}{2}\ln 2\pi$'
+- 'Laplace NLL: $\frac{|y-p|}{b} + \ln 2b$'

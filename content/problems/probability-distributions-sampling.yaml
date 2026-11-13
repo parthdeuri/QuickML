@@ -1,0 +1,120 @@
+slug: probability-distributions-sampling
+title: Probability Distributions and Sampling
+url: https://en.wikipedia.org/wiki/Inverse_transform_sampling
+difficulty: Medium
+area: Math
+topics: [Probability, Distributions, Sampling, Random Variables]
+summary: |
+  The handful of distributions ML leans on (Bernoulli, Binomial,
+  Categorical, Gaussian, Poisson, Exponential) and how to draw samples
+  from them using only uniform random numbers.
+intuition: |
+  Each distribution is a model of one kind of randomness: a coin flip,
+  a count of flips, a choice among classes, a sum of many small effects,
+  rare events in a window, a waiting time. Sampling reduces them all to
+  the uniform draw $u$: push $u$ through the inverse CDF, $x = F^{-1}(u)$,
+  and $x$ has CDF $F$, because $F^{-1}$ just reshuffles probability mass.
+  Box-Muller is the same idea in two dimensions, because the Gaussian CDF
+  has no closed-form inverse.
+  Flow: uniform $u$ → inverse CDF or transform → sample from the target.
+why_it_works: |
+  If $U$ is uniform on $(0,1)$ then $P(F^{-1}(U) \leq x) = F(x)$,
+  because the event is $U \leq F(x)$. So the transformed variable has CDF
+  $F$. For a categorical
+  the CDF is the cumulative sum of the probabilities, and the sample is
+  the first index whose cumulative sum exceeds $u$. For Box-Muller, the
+  squared radius of a 2-D standard normal is exponential with rate $1/2$
+  and the angle is uniform, so $r=\sqrt{-2\ln u_1}$ and
+  $\theta=2\pi u_2$ reproduce a standard normal pair.
+when_to_use: |
+  Simulating data, Monte Carlo estimates, sampling from a softmax or
+  a noise model, and understanding which likelihood matches which kind
+  of data: Bernoulli for binary labels, Categorical for classes,
+  Gaussian for real values, Poisson for counts, Exponential for waiting
+  times.
+when_not_to_use: |
+  Inverse transform needs a CDF you can invert; for awkward densities
+  use rejection sampling or MCMC. In practice call the library sampler
+  (it is faster and well tested) and keep these versions for
+  understanding.
+math:
+  - "Binomial: P(k) = C(n,k) pᵏ (1−p)ⁿ⁻ᵏ"
+  - "Mean np, variance np(1−p); Bernoulli is n = 1"
+  - "Poisson: P(k) = e^(−λ) λᵏ / k!"
+  - "Poisson mean = variance = λ"
+  - "Gaussian: N(x; μ, σ²) = e^(−(x−μ)²/(2σ²)) / (σ√(2π))"
+  - "Exponential pdf: f(x) = λ e^(−λx), x ≥ 0"
+  - "CDF F(x) = 1 − e^(−λx); mean 1/λ, variance 1/λ²"
+  - "Inverse transform: x = F⁻¹(u), u uniform on (0,1)"
+  - "Exponential sample: x = −ln(1−u)/λ"
+  - "Box-Muller: z = √(−2 ln u₁) cos(2π u₂) is N(0,1)"
+approach:
+  - Draw uniform numbers $u$ on $(0,1)$ — the only randomness the sampler needs
+  - "For a categorical, build the cumulative sum of the probabilities — it is the discrete CDF"
+  - Find where $u$ lands in that cumulative sum with a binary search — the landing index is the class
+  - For an exponential, invert the CDF to get $-\ln(1-u)/\lambda$ — closed-form inverse transform
+  - "For a Gaussian, turn two uniforms into a radius and an angle and take the cosine — Box-Muller, since no closed-form inverse exists"
+  - "Check samples against the theory, via mean, variance or a KS test — catches a wrong transform"
+code: |
+  import numpy as np
+  from math import comb, exp, factorial, pi, sqrt
+
+  def binomial_pmf(k, n, p):
+      return comb(n, k) * p**k * (1 - p)**(n - k)
+
+  def poisson_pmf(k, lam):
+      return exp(-lam) * lam**k / factorial(k)
+
+  def gaussian_pdf(x, mu, sigma):
+      z = (x - mu) / sigma
+      return np.exp(-0.5 * z * z) / (sigma * sqrt(2 * pi))
+
+  def exponential_pdf(x, lam):
+      return lam * np.exp(-lam * x)
+
+  def sample_categorical(p, n, rng):
+      cdf = np.cumsum(p)
+      idx = np.searchsorted(cdf, rng.random(n), side="right")
+      return np.minimum(idx, len(p) - 1)
+
+  def box_muller(n, rng):
+      u1, u2 = rng.random(n), rng.random(n)
+      r = np.sqrt(-2 * np.log(1 - u1))
+      return r * np.cos(2 * pi * u2)
+
+  def sample_exponential(lam, n, rng):
+      return -np.log(1 - rng.random(n)) / lam
+key_lines: [18, 19, 28]
+time: "O(n) for n samples; categorical adds O(n log K) for the binary search over K classes"
+space: "O(n) for the samples, O(K) for the cumulative sum"
+hyperparameters:
+  - 'Binomial and Poisson parameters $n$, $p$, $\lambda$ (the rate)'
+  - 'Gaussian mean $\mu$ and standard deviation $\sigma$ (scale the standard normal as $\mu + \sigma z$)'
+  - 'Number of samples $n$ (error of a sample mean shrinks like $1/\sqrt{n}$)'
+  - 'Random seed or generator for reproducibility'
+pitfalls:
+  - 'rng.random() can return exactly $0$, so use $1-u$ inside the logarithm to avoid $\ln 0$'
+  - 'A cumulative sum of probabilities can end at $0.9999999$ instead of $1$; clip the index so a draw near $1$ stays in range'
+  - 'Box-Muller gives a pair per two uniforms; this version uses only the cosine, which is correct but wastes half the work'
+  - 'The exponential is parameterised by rate $\lambda$ here; many libraries use scale $1/\lambda$'
+interview_qa:
+  - q: 'How do you sample from any distribution given only uniform numbers?'
+    a: 'Apply the inverse CDF: if $U$ is uniform then $F^{-1}(U)$ has CDF $F$. It works whenever the CDF can be inverted, numerically if not in closed form.'
+  - q: 'How do you sample from a categorical distribution?'
+    a: 'Take the cumulative sum of the probabilities, draw $u$ uniform, and return the first index whose cumulative value exceeds $u$.'
+  - q: 'Why is Box-Muller needed for the Gaussian?'
+    a: 'The Gaussian CDF has no closed-form inverse. Box-Muller uses the fact that a 2-D standard normal has an exponential squared radius and a uniform angle.'
+  - q: 'How are the Bernoulli, Binomial and Poisson related?'
+    a: 'A Binomial is a sum of $n$ independent Bernoulli draws, and with $n$ large and $p$ small, Binomial$(n,p)$ approaches Poisson with $\lambda = np$.'
+related: [maximum-likelihood, bayes-theorem, metropolis-hastings]
+math_tex:
+- 'Binomial: $P(k) = \binom{n}{k} p^k (1-p)^{n-k}$'
+- 'Mean $np$, variance $np(1-p)$; Bernoulli: $n=1$'
+- 'Poisson: $P(k) = e^{-\lambda}\lambda^k / k!$'
+- 'Poisson mean = variance = $\lambda$'
+- 'Gaussian: $\mathcal{N}(x;\mu,\sigma^2) = \frac{e^{-(x-\mu)^2/(2\sigma^2)}}{\sigma\sqrt{2\pi}}$'
+- 'Exponential pdf: $f(x) = \lambda e^{-\lambda x}$, $x \geq 0$'
+- 'CDF $F(x) = 1 - e^{-\lambda x}$; mean $1/\lambda$'
+- 'Inverse transform: $x = F^{-1}(u)$, $u$ uniform'
+- 'Exponential sample: $x = -\ln(1-u)/\lambda$'
+- 'Box-Muller: $z = \sqrt{-2\ln u_1}\cos(2\pi u_2)$'

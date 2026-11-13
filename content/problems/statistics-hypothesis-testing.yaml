@@ -1,0 +1,119 @@
+slug: statistics-hypothesis-testing
+title: Hypothesis Testing, Welch's t-Test, Bootstrap and FDR
+url: https://www.itl.nist.gov/div898/handbook/eda/section3/eda353.htm
+difficulty: Medium
+area: Math
+topics: [Statistics, Hypothesis Testing, Bootstrap, Multiple Comparisons]
+summary: |
+  Test whether two samples differ with Welch's t-test, put an interval
+  on any statistic with the bootstrap, and control false positives when
+  running many tests with Bonferroni or Benjamini-Hochberg.
+intuition: |
+  A test asks how surprising the data would be if nothing were going on.
+  The $p$-value is the probability, assuming the null hypothesis, of a
+  result at least as extreme as the one seen. It is not the probability
+  that the null is true. The catch with many tests is arithmetic: run
+  100 true nulls at $\alpha = 0.05$ and about 5 will look significant,
+  so the threshold must tighten, either to protect against any false
+  positive (Bonferroni) or to cap the fraction of false discoveries
+  among the rejections (Benjamini-Hochberg).
+  Flow: data → statistic under the null → $p$-value → corrected decision.
+why_it_works: |
+  Under the null the Welch statistic is approximately $t$-distributed,
+  with the Welch-Satterthwaite degrees of freedom matching its variance
+  when the group variances differ. Under a true null a continuous
+  $p$-value is uniform, so rejecting at $p \leq \alpha$ errs with
+  probability $\alpha$. Bonferroni follows from the union bound.
+  Benjamini-Hochberg compares the sorted $p$-values to a rising line
+  and, for independent tests, keeps the expected false discovery
+  proportion at most $\alpha$. The bootstrap resamples the data with
+  replacement to imitate drawing new samples, so the spread of the
+  statistic over resamples estimates its sampling spread.
+when_to_use: |
+  Comparing two group means with unequal variances or sizes (Welch's
+  test is a safe default), getting a confidence interval for a median
+  or other awkward statistic (bootstrap), and screening many features,
+  genes or metrics at once (Bonferroni or BH).
+when_not_to_use: |
+  Binary outcomes (see the A/B test card, a two-proportion $z$-test),
+  tiny or heavy-tailed samples where the $t$ approximation fails,
+  dependent observations, and the bootstrap for extreme order
+  statistics such as the maximum. A small $p$-value says nothing about
+  whether the effect is large enough to matter.
+math:
+  - "t = (x̄ − ȳ) / √(s_x²/n_x + s_y²/n_y)"
+  - "a = s_x²/n_x,  b = s_y²/n_y"
+  - "Welch df = (a+b)² / (a²/(n_x−1) + b²/(n_y−1))"
+  - "p-value = P(|T| ≥ |t|) computed under H₀"
+  - "Power = 1 − β = P(reject H₀ when H₁ is true)"
+  - "Bonferroni: reject if pᵢ ≤ α/m"
+  - "BH: k = max{ i : p₍ᵢ₎ ≤ iα/m }, reject the k smallest"
+  - "Bootstrap CI: α/2 and 1−α/2 quantiles of resampled θ̂*"
+approach:
+  - Compute the two sample means and variances — the statistic compares means in units of their noise
+  - Divide the mean gap by $\sqrt{s_x^2/n_x + s_y^2/n_y}$ — Welch does not assume equal variances
+  - Estimate the degrees of freedom with Welch-Satterthwaite — gives the right $t$ tail when variances differ
+  - Take the two-sided tail probability as the $p$-value — how extreme the data is under the null
+  - For an interval, resample with replacement $B$ times and take quantiles of the statistic — no formula needed
+  - For many tests, compare against $\alpha/m$ (Bonferroni) or the BH step-up line — controls false positives across the family
+code: |
+  import numpy as np
+  from scipy.stats import t as t_dist
+
+  def welch_t(x, y):
+      nx, ny = len(x), len(y)
+      a, b = x.var(ddof=1) / nx, y.var(ddof=1) / ny
+      t = (x.mean() - y.mean()) / np.sqrt(a + b)
+      df = (a + b) ** 2 / (a**2 / (nx - 1) + b**2 / (ny - 1))
+      return t, df, 2 * t_dist.sf(abs(t), df)
+
+  def bootstrap_ci(x, stat, B, alpha, seed):
+      rng = np.random.default_rng(seed)
+      idx = rng.integers(0, len(x), size=(B, len(x)))
+      s = np.array([stat(x[i]) for i in idx])
+      return tuple(np.quantile(s, [alpha / 2, 1 - alpha / 2]))
+
+  def bonferroni(pvals, alpha):
+      return np.asarray(pvals) <= alpha / len(pvals)
+
+  def bh_fdr(pvals, alpha):
+      p = np.asarray(pvals)
+      m = len(p)
+      order = np.argsort(p)
+      ok = p[order] <= alpha * np.arange(1, m + 1) / m
+      k = np.nonzero(ok)[0].max() + 1 if ok.any() else 0
+      reject = np.zeros(m, bool)
+      reject[order[:k]] = True
+      return reject
+key_lines: [8, 24, 25]
+time: "O(n) for the t-test, O(B·n) for the bootstrap, O(m log m) for BH (sort), O(m) for Bonferroni"
+space: "O(B·n) for the resampled indices, O(m) for the p-values"
+hyperparameters:
+  - 'Significance level $\alpha$ — tolerated false-positive rate (or FDR for BH)'
+  - 'Number of bootstrap resamples $B$ — more resamples give smoother interval ends'
+  - 'Number of tests $m$ — sets the Bonferroni threshold and the BH line'
+  - 'Two-sided or one-sided alternative — fixed before looking at the data'
+pitfalls:
+  - 'A $p$-value is not the probability that the null is true, and "not significant" is not evidence that there is no effect (low power looks the same)'
+  - 'Testing many hypotheses and reporting only the significant ones inflates false positives; correct across the whole family'
+  - 'BH guarantees hold for independent or positively dependent tests; Bonferroni controls the chance of any false rejection and is more conservative'
+  - 'The percentile bootstrap undercovers for small samples and for statistics that depend on the extremes'
+interview_qa:
+  - q: 'What does a p-value mean?'
+    a: 'The probability, under the null hypothesis, of a test statistic at least as extreme as the one observed. It is not the probability that the null is true or that the result is a fluke.'
+  - q: 'What are Type I and Type II errors, and power?'
+    a: 'Type I is rejecting a true null, with probability $\alpha$. Type II is missing a real effect, with probability $\beta$. Power is $1-\beta$, the chance of detecting a real effect, and it grows with sample size and effect size.'
+  - q: 'Why use Welch over the pooled t-test?'
+    a: 'It does not assume equal variances and loses little when they are equal, so it is a safe default with unequal group sizes or spreads.'
+  - q: 'Bonferroni versus Benjamini-Hochberg?'
+    a: 'Bonferroni controls the probability of any false positive by testing each at $\alpha/m$. BH controls the expected fraction of false discoveries among rejections, which is less strict and has more power when many effects are real.'
+related: [ab-test-significance, maximum-likelihood, bias-variance-tradeoff]
+math_tex:
+- '$t = \frac{\bar{x}-\bar{y}}{\sqrt{s_x^2/n_x + s_y^2/n_y}}$'
+- '$a = s_x^2/n_x,\; b = s_y^2/n_y$'
+- 'Welch df: $\frac{(a+b)^2}{a^2/(n_x-1) + b^2/(n_y-1)}$'
+- 'p-value: $P(|T| \geq |t|)$ computed under $H_0$'
+- 'Power $= 1-\beta = P(\mathrm{reject}\ H_0\ \mathrm{when}\ H_1)$'
+- 'Bonferroni: reject if $p_i \leq \alpha/m$'
+- 'BH: $k = \max\{i : p_{(i)} \leq i\alpha/m\}$'
+- 'Bootstrap CI: $\alpha/2$ and $1-\alpha/2$ quantiles of $\hat{\theta}^*$'

@@ -1,0 +1,100 @@
+slug: numpy-broadcasting-vectorisation
+title: NumPy Broadcasting and Vectorisation
+url: https://numpy.org/doc/stable/user/basics.broadcasting.html
+difficulty: Easy
+area: Programming
+topics: [NumPy, Broadcasting, Vectorisation]
+summary: |
+  Broadcasting stretches arrays of different shapes to a common shape
+  without copying, so one array expression replaces a Python loop over
+  rows, pairs or batches.
+intuition: |
+  Align the shapes from the right. An axis of size 1 (or a missing
+  leading axis) is repeated virtually to match the other operand, so
+  inserting a size-1 axis with `None` decides which pairs are formed:
+  $A[:,\mathrm{None}]-B[\mathrm{None}]$ subtracts every row of $B$ from
+  every row of $A$. The loop then runs in compiled code, not in Python.
+  Flow: shapes → align from right → stretch size-1 axes → one array op.
+approach:
+  - "Write both shapes right-aligned, padding the shorter with leading 1s — missing axes count as size 1"
+  - "For each axis require equal sizes or a 1 — otherwise raise ValueError"
+  - "Take the larger size per axis as the output shape — size-1 axes are stretched virtually"
+  - "Use None or reshape to add size-1 axes — this chooses which axes pair up"
+  - 'Prefer the identity $\|a\|^2+\|b\|^2-2a\cdot b$ for distances — it avoids the $n \cdot m \cdot d$ temporary'
+code: |
+  import numpy as np
+
+  def broadcast_shape(a, b):
+      n = max(len(a), len(b))
+      a = (1,) * (n - len(a)) + tuple(a)
+      b = (1,) * (n - len(b)) + tuple(b)
+      out = []
+      for x, y in zip(a, b):
+          if x != y and x != 1 and y != 1:
+              raise ValueError(f"cannot broadcast {a} with {b}")
+          out.append(y if x == 1 else x)
+      return tuple(out)
+
+  def pairwise_sq_dists(A, B):
+      diff = A[:, None, :] - B[None, :, :]
+      return (diff ** 2).sum(axis=-1)
+
+  def pairwise_sq_dists_dot(A, B):
+      a2 = (A ** 2).sum(axis=1)[:, None]
+      b2 = (B ** 2).sum(axis=1)[None, :]
+      return a2 + b2 - 2 * A @ B.T
+
+  def softmax_rows(X):
+      e = np.exp(X - X.max(axis=1, keepdims=True))
+      return e / e.sum(axis=1, keepdims=True)
+key_lines: [5, 11, 15]
+time: "O(output size) per operation; pairwise distances cost O(n·m·d)"
+space: "Broadcast view is free, but the diff temporary is O(n·m·d); the dot identity needs only O(n·m)"
+when_to_use: |
+  Any elementwise or reduction work over rows, pairs or batches:
+  normalising features, distance matrices, attention scores, masks and
+  softmax. If you write a Python loop over array rows, look for the
+  broadcast form first.
+when_not_to_use: |
+  When the temporary is too large for memory (chunk the work or use the
+  dot identity), or when each step depends on the previous result, as
+  in a recurrence, which cannot be vectorised along that axis.
+why_it_works: |
+  Broadcasting is only an indexing rule: a size-1 axis uses stride 0,
+  so the same element is read again for every position. No data is
+  copied, and the elementwise loop runs in optimised compiled code.
+  The distance identity follows from expanding the square and is exact
+  in real arithmetic, though it can lose precision when two points are
+  nearly equal.
+math:
+  - "Compatible axis: aᵢ = bᵢ or aᵢ = 1 or bᵢ = 1"
+  - "Result size: outᵢ = max(aᵢ, bᵢ) on every axis"
+  - "‖aᵢ − bⱼ‖² = ‖aᵢ‖² + ‖bⱼ‖² − 2 aᵢ·bⱼ"
+  - "Broadcast temp holds n·m·d floats; the dot identity only n·m"
+  - "Row softmax, shift m = maxⱼ xⱼ: e^(xᵢ−m) / Σⱼ e^(xⱼ−m)"
+interview_qa:
+  - q: "What are the broadcasting rules?"
+    a: "Align shapes from the trailing axis, pad the shorter shape with leading 1s, and require each pair of sizes to be equal or one of them 1. The result takes the larger size on each axis."
+  - q: "Why is a vectorised expression faster than a Python loop?"
+    a: "The loop runs in compiled code over contiguous memory instead of the interpreter, and there is no per-element Python overhead. Broadcasting does it without copying the smaller operand."
+  - q: "How do you get all pairwise differences between two sets of vectors?"
+    a: "Add a size-1 axis to each, A[:, None, :] - B[None, :, :], giving shape (n, m, d), then reduce over the last axis. The dot identity gives the squared distances without the (n, m, d) temporary."
+  - q: "Why subtract the row maximum in softmax?"
+    a: "Softmax is unchanged by a constant shift, and subtracting the maximum keeps every exponent at most zero, which avoids overflow."
+hyperparameters:
+  - "Axis chosen for each reduction"
+  - "keepdims, so the reduced result still broadcasts back"
+  - "Chunk size when the temporary does not fit in memory"
+  - "dtype (float32 or float64), which sets accuracy of the dot identity"
+pitfalls:
+  - "A shape $(n,)$ against $(n,1)$ broadcasts to $(n,n)$, silently producing a matrix instead of an elementwise result"
+  - "Forgetting keepdims=True in a reduction makes the result broadcast along the wrong axis"
+  - "The dot identity can give tiny negative squared distances from rounding; clip at zero before a square root"
+  - "In-place ops such as a += b cannot change the shape of a, so broadcasting only works toward a's shape"
+related: [softmax-cross-entropy, knn, cosine-similarity-embeddings]
+math_tex:
+- 'Compatible axis: $a_i = b_i$ or $a_i = 1$ or $b_i = 1$'
+- 'Result size: $\mathrm{out}_i = \max(a_i, b_i)$ per axis'
+- '$\|a_i - b_j\|^2 = \|a_i\|^2 + \|b_j\|^2 - 2\,a_i \cdot b_j$'
+- 'Broadcast temp: $n \cdot m \cdot d$ floats; identity: $n \cdot m$'
+- 'Row softmax, $m = \max_j x_j$: $\frac{e^{x_i-m}}{\sum_j e^{x_j-m}}$'

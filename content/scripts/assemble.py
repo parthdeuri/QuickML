@@ -146,6 +146,30 @@ SHEETS["llm-engineer"][2].extend([
                                        "content-safety-classifiers", "fairness-metrics"]),
 ])
 
+SHEETS["llm-engineer"][2][0:0] = [
+  ("1. Programming foundations", ["numpy-broadcasting-vectorisation", "pandas-groupby-merge-window",
+                                  "python-generators-functional", "python-oop-protocols-dataclasses",
+                                  "json-api-requests-retries", "git-object-model",
+                                  "big-o-empirical-complexity", "linux-command-line",
+                                  "data-structures-algorithms"]),
+  ("2. Mathematics for LLMs", ["vectors-norms-distances", "dot-product-matrix-multiplication",
+                               "eigen-decomposition-power-iteration", "svd",
+                               "derivatives-chain-rule-gradient-check", "gradient-descent",
+                               "probability-distributions-sampling", "bayes-theorem",
+                               "maximum-likelihood", "entropy-kl-divergence",
+                               "statistics-hypothesis-testing", "convex-optimisation-lagrange"]),
+  ("3. Machine learning fundamentals", ["linear-regression", "logistic-regression", "k-means", "pca",
+                                        "feature-engineering-encoding", "stratified-split",
+                                        "cross-validation", "bias-variance-tradeoff",
+                                        "loss-functions-regression-classification", "precision-recall-f1",
+                                        "roc-auc", "sklearn-pipeline-column-transformer"]),
+  ("4. Deep learning foundations", ["perceptron-learning-rule", "activation-functions", "mlp-forward-pass",
+                                    "softmax-cross-entropy", "backpropagation", "micrograd-autograd-engine",
+                                    "weight-initialization", "momentum-sgd", "adam-optimizer",
+                                    "adamw-decoupled-weight-decay", "dropout", "batch-normalization",
+                                    "pytorch-training-loop-anatomy", "gpu-computing-roofline"]),
+]
+
 def main():
     have = {p.stem for p in PROBLEMS.glob("*.yaml")}
     used = set()

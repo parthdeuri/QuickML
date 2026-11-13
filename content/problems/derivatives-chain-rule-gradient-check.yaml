@@ -1,0 +1,101 @@
+slug: derivatives-chain-rule-gradient-check
+title: Derivatives, Chain Rule and Gradient Checking
+url: https://cs231n.github.io/neural-networks-3/
+difficulty: Medium
+area: Math
+topics: [Calculus, Gradients, Backpropagation]
+summary: |
+  The gradient collects the slope of a function in every input
+  direction, the chain rule multiplies local slopes through a
+  composition, and a finite-difference check tests a hand-derived
+  gradient against a numerical one.
+intuition: |
+  A derivative is the local slope: how much the output moves per unit
+  nudge of the input. For a composition, a nudge passes through each
+  stage and the slopes multiply, which is all backpropagation does,
+  stage by stage. Because a wrong gradient still looks plausible, you
+  nudge each input by a small $h$ both ways and compare the measured
+  slope with your formula. Symmetric nudges cancel the first-order
+  error, so the central difference is far more accurate.
+  Flow: function → nudge input ± h → numerical slope → compare with analytic.
+approach:
+  - 'Differentiate each stage locally — for $f(x) = \sum_i \tanh(Wx+b)_i^2$ the stages are affine, $\tanh$ and square-and-sum'
+  - 'Multiply local slopes from the output backwards — the chain rule, giving $\nabla f = W^\top(2 t (1 - t^2))$ with $t = \tanh(Wx+b)$'
+  - 'Nudge one coordinate at a time by $\pm h$ — the central difference $(f(x+h)-f(x-h))/(2h)$'
+  - 'Assemble the numerical gradient from all coordinates — same shape as $x$'
+  - 'Compare with $\|a-n\| / (\|a\|+\|n\|)$ — below about $10^{-6}$ is a pass; above $10^{-2}$ the gradient is wrong'
+code: |
+  import numpy as np
+
+  def f(x, W, b):
+      return np.sum(np.tanh(W @ x + b) ** 2)
+
+  def analytic_grad(x, W, b):
+      t = np.tanh(W @ x + b)
+      return W.T @ (2 * t * (1 - t ** 2))
+
+  def numerical_grad(f, x, h=1e-5, kind="central"):
+      g = np.zeros_like(x)
+      for i in range(len(x)):
+          e = np.zeros_like(x)
+          e[i] = h
+          if kind == "central":
+              g[i] = (f(x + e) - f(x - e)) / (2 * h)
+          else:
+              g[i] = (f(x + e) - f(x)) / h
+      return g
+
+  def rel_error(a, n):
+      return np.linalg.norm(a - n) / (
+          np.linalg.norm(a) + np.linalg.norm(n))
+key_lines: [8, 16, 18]
+time: "Analytic gradient costs about one extra forward pass; the numerical one needs 2n evaluations for n inputs"
+space: "O(n) for the gradient"
+when_to_use: |
+  Debugging a hand-written backward pass or a custom autograd
+  function: check the analytic gradient against finite differences on a
+  tiny input before trusting it in training.
+when_not_to_use: |
+  As a training method, since it costs one or two function evaluations
+  per parameter. Also unreliable near kinks such as ReLU at 0, and with
+  very small $h$ where floating-point round-off dominates.
+why_it_works: |
+  Taylor expansion gives $f(x \pm h) = f(x) \pm h f' + \frac{h^2}{2} f'' \pm \frac{h^3}{6} f'''$.
+  The forward difference leaves a $\frac{h}{2} f''$ error, while in the
+  central difference the even terms cancel and the error is of order
+  $h^2$. Round-off adds an error of order $\epsilon / h$, so there is a
+  sweet spot for $h$, typically around $10^{-5}$ in double precision.
+math:
+  - "f′(x) = lim (f(x+h) − f(x)) / h"
+  - "∇f = (∂f/∂x₁, …, ∂f/∂xₙ)"
+  - "dy/dx = dy/du · du/dx"
+  - "J = ∂f/∂x with Jᵢⱼ = ∂fᵢ/∂xⱼ,  chain: J_{f∘g} = J_f J_g"
+  - "forward: (f(x+h) − f(x))/h = f′ + O(h)"
+  - "central: (f(x+h) − f(x−h))/(2h) = f′ + O(h²)"
+  - "relative error = ‖a − n‖ / (‖a‖ + ‖n‖)"
+interview_qa:
+  - q: "What is the chain rule in terms of backpropagation?"
+    a: 'For a composition $y = f(u)$, $u = g(x)$, the slope is $\frac{dy}{du}\cdot\frac{du}{dx}$: multiply the local slopes. Backpropagation applies this stage by stage from the loss back to the inputs, reusing the forward values.'
+  - q: "Why is the central difference better than the forward difference?"
+    a: 'The first-order error terms cancel, leaving an error of order $h^2$ instead of $h$, at the price of two function evaluations per coordinate.'
+  - q: "What relative error should a gradient check reach?"
+    a: 'Around $10^{-7}$ or smaller in double precision is excellent; above $10^{-2}$ the gradient is almost certainly wrong. Use float64 and a small input for the check.'
+  - q: "Why not train with numerical gradients?"
+    a: 'They need about $2n$ forward passes for $n$ parameters and are noisy, whereas backpropagation gives all $n$ partial derivatives for the cost of a few passes.'
+hyperparameters:
+  - "Step size $h$ (around $10^{-5}$ in float64)"
+  - "Difference scheme (forward or central)"
+  - "Pass threshold on the relative error"
+pitfalls:
+  - "Too small an $h$ amplifies round-off; too large a bias. Do the check in float64, not float32"
+  - "Non-differentiable points (ReLU at 0, max pooling ties) make a correct gradient look wrong"
+  - "Turn off dropout and other randomness during the check, or the two evaluations differ"
+related: [backpropagation, gradient-descent]
+math_tex:
+- 'Derivative: $f^{\prime}(x) = \lim_{h \rightarrow 0} \frac{f(x+h) - f(x)}{h}$'
+- 'Gradient: $\nabla f = (\partial f/\partial x_1, \ldots, \partial f/\partial x_n)$'
+- 'Chain rule: $\frac{dy}{dx} = \frac{dy}{du}\cdot\frac{du}{dx}$'
+- 'Jacobian: $J_{ij} = \partial f_i/\partial x_j$, $J_{f \circ g} = J_f J_g$'
+- 'Forward: $\frac{f(x+h)-f(x)}{h} = f^{\prime} + O(h)$'
+- 'Central: $\frac{f(x+h)-f(x-h)}{2h} = f^{\prime} + O(h^2)$'
+- 'Relative error: $\frac{\|a-n\|}{\|a\|+\|n\|}$'

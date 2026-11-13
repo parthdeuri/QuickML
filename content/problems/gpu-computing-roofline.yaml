@@ -1,0 +1,104 @@
+slug: gpu-computing-roofline
+title: GPU Roofline Model
+url: https://jax-ml.github.io/scaling-book/roofline/
+difficulty: Medium
+area: Deep Learning
+topics: [GPU, Performance, Arithmetic Intensity, Inference]
+summary: |
+  An operation is limited either by how fast the chip computes or by how
+  fast it moves data. The roofline model predicts which one, from the
+  FLOPs per byte the operation performs.
+intuition: |
+  A GPU has a compute ceiling and a memory-bandwidth ceiling, and each
+  operation hits whichever it reaches first. Arithmetic intensity, the
+  FLOPs done per byte moved, decides it: a large matmul reuses every
+  loaded number many times and saturates compute, while an elementwise
+  add, softmax or layer norm touches each number once and waits on
+  memory. LLM decoding is the extreme case, since each token streams
+  all the weights to do about two FLOPs per weight, so batching
+  (reusing the loaded weights for many tokens) and fused kernels such
+  as FlashAttention (fewer bytes moved) are the main levers.
+  Flow: FLOPs ÷ bytes → intensity → compare to ridge → memory or compute bound.
+approach:
+  - 'Count the FLOPs of the operation — a matmul $m \times k$ by $k \times n$ costs $2mkn$'
+  - 'Count the bytes moved to and from memory — read both inputs, write the output'
+  - 'Divide to get intensity $I = \mathrm{FLOPs}/\mathrm{bytes}$ — the reuse per byte'
+  - 'Take $\min(P,\, B \cdot I)$ for peak $P$ and bandwidth $B$ — the attainable FLOP/s'
+  - 'Compare $I$ to the ridge point $P/B$ — below it the operation is memory-bound, above it compute-bound'
+code: |
+  def matmul_flops(m, k, n):
+      return 2 * m * k * n
+
+  def matmul_bytes(m, k, n, bytes_per=2):
+      return bytes_per * (m * k + k * n + m * n)
+
+  def arithmetic_intensity(flops, nbytes):
+      return flops / nbytes
+
+  def attainable(peak, bw, ai):
+      return min(peak, bw * ai)
+
+  def ridge_point(peak, bw):
+      return peak / bw
+
+  def decode_tokens_per_s(weight_bytes, bw, batch=1,
+                          peak=None, flops_per_token=None):
+      bound = batch * bw / weight_bytes
+      if peak is not None:
+          bound = min(bound, peak / flops_per_token)
+      return bound
+key_lines: [5, 11, 18]
+time: "O(1) arithmetic per operation; it is a model, not a measurement"
+space: "O(1)"
+when_to_use: |
+  Reasoning about why an operation or model is slow, estimating the best
+  possible speed before profiling, and deciding whether to add compute,
+  bandwidth, batching or kernel fusion.
+when_not_to_use: |
+  As an exact predictor. Real kernels also lose time to launch overhead,
+  poor occupancy, caches and communication, so the roofline is an upper
+  bound on speed rather than an estimate of it.
+why_it_works: |
+  Time is at least $\mathrm{FLOPs}/P$ for compute and at least
+  $\mathrm{bytes}/B$ for data movement, and the two overlap at best, so
+  runtime is at least the larger of the two. Dividing the FLOPs by that
+  time gives attainable throughput $\min(P, B \cdot I)$. The kink at
+  $I = P/B$ is the ridge point. In decoding, the weights are read once
+  per step whatever the batch size, so tokens per second grows with the
+  batch until the compute roof is reached.
+math:
+  - "FLOPs(m×k · k×n) = 2mkn"
+  - "bytes = b · (mk + kn + mn),  b = bytes per value"
+  - "I = FLOPs / bytes"
+  - "attainable = min(P, B · I)"
+  - "ridge point I* = P / B"
+  - "elementwise add: I = n / (3bn) = 1 / (3b)"
+  - "decode tokens/s ≤ batch · B / weight bytes"
+math_tex:
+- 'Matmul FLOPs: $2mkn$'
+- 'Bytes moved: $b\,(mk + kn + mn)$'
+- 'Intensity: $I = \frac{\mathrm{FLOPs}}{\mathrm{bytes}}$'
+- 'Attainable: $\min(P,\; B \cdot I)$'
+- 'Ridge point: $I^{*} = \frac{P}{B}$'
+- 'Elementwise add: $I = \frac{n}{3bn} = \frac{1}{3b}$'
+- 'Decode bound: $\frac{\mathrm{batch} \cdot B}{\mathrm{weight\ bytes}}$'
+hyperparameters:
+  - "Peak compute $P$ of the chip in FLOP/s"
+  - "Memory bandwidth $B$ in bytes/s"
+  - "Bytes per value $b$ (precision)"
+  - "Batch size, which sets the matmul shape in decoding"
+pitfalls:
+  - "Counting only the inputs; the output write is also traffic, and intermediate tensors that are written and re-read add more"
+  - "Treating a matmul as always compute-bound; with a small $m$ (small batch) its intensity falls below the ridge point"
+  - "Mixing units, such as FLOPs versus multiply-adds, or bits versus bytes, which shifts the ridge point by a factor of 2 or 8"
+  - "Reading the roofline as achieved speed; it is only the ceiling"
+interview_qa:
+  - q: "What is arithmetic intensity?"
+    a: "The number of FLOPs an operation performs per byte it moves to or from memory. It measures how much each loaded value is reused."
+  - q: "Why is LLM decoding memory-bound at batch size 1?"
+    a: "Each token reads every weight once but does only about two FLOPs per weight, so the intensity is far below the ridge point and speed is set by bandwidth divided by weight bytes."
+  - q: "Why does batching raise decoding throughput?"
+    a: "The weights are loaded once per step and reused for every sequence in the batch, so tokens per step grow while bytes per step stay the same, until compute becomes the limit."
+  - q: "How does FlashAttention help in roofline terms?"
+    a: "It does the same FLOPs but avoids writing and re-reading the large score matrix, so bytes moved fall and intensity rises."
+related: [flash-attention-online-softmax, kv-cache, gpu-memory-estimation]

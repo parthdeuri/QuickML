@@ -2,6 +2,61 @@ id: llm-engineer
 name: LLM Engineer
 description: 'The LLM engineer roadmap: language, transformers, how LLMs work and tokenisation.'
 sections:
+- name: 1. Programming foundations
+  problems:
+  - numpy-broadcasting-vectorisation
+  - pandas-groupby-merge-window
+  - python-generators-functional
+  - python-oop-protocols-dataclasses
+  - json-api-requests-retries
+  - git-object-model
+  - big-o-empirical-complexity
+  - linux-command-line
+  - data-structures-algorithms
+- name: 2. Mathematics for LLMs
+  problems:
+  - vectors-norms-distances
+  - dot-product-matrix-multiplication
+  - eigen-decomposition-power-iteration
+  - svd
+  - derivatives-chain-rule-gradient-check
+  - gradient-descent
+  - probability-distributions-sampling
+  - bayes-theorem
+  - maximum-likelihood
+  - entropy-kl-divergence
+  - statistics-hypothesis-testing
+  - convex-optimisation-lagrange
+- name: 3. Machine learning fundamentals
+  problems:
+  - linear-regression
+  - logistic-regression
+  - k-means
+  - pca
+  - feature-engineering-encoding
+  - stratified-split
+  - cross-validation
+  - bias-variance-tradeoff
+  - loss-functions-regression-classification
+  - precision-recall-f1
+  - roc-auc
+  - sklearn-pipeline-column-transformer
+- name: 4. Deep learning foundations
+  problems:
+  - perceptron-learning-rule
+  - activation-functions
+  - mlp-forward-pass
+  - softmax-cross-entropy
+  - backpropagation
+  - micrograd-autograd-engine
+  - weight-initialization
+  - momentum-sgd
+  - adam-optimizer
+  - adamw-decoupled-weight-decay
+  - dropout
+  - batch-normalization
+  - pytorch-training-loop-anatomy
+  - gpu-computing-roofline
 - name: 5. Natural language processing
   problems:
   - text-preprocessing-stemming

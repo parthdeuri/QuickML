@@ -1,0 +1,124 @@
+slug: python-oop-protocols-dataclasses
+title: Dataclasses, Protocols and Pipelines for ML Code
+url: https://docs.python.org/3/library/dataclasses.html
+difficulty: Medium
+area: Programming
+topics: [Python, Dataclasses, Software Design]
+summary: |
+  Frozen dataclasses hold validated configs, a Protocol states which
+  methods a component must have, and a Pipeline composes components
+  that follow the fit, transform and predict convention.
+intuition: |
+  Structure ML code around data and small interfaces, not deep class
+  trees. A config is a value, so make it immutable and check it once
+  at construction. A component is anything with the right methods, so a
+  Protocol accepts it by shape, with no common base class. A pipeline
+  holds its steps instead of inheriting from them, which keeps each
+  piece testable and swappable.
+  Flow: config → validate → steps fit/transform → model fit/predict.
+approach:
+  - "Declare the config as a frozen dataclass with defaults — immutable values cannot change mid-run"
+  - "Use field(default_factory=...) for mutable defaults and check ranges in __post_init__ — bad configs fail at creation"
+  - "Define a Protocol with the methods a step needs — any class with them qualifies, no inheritance"
+  - "Write steps as fit returning self plus transform or predict — chaining and uniform handling follow"
+  - "Compose steps in a Pipeline that fits each on the output of the previous — mirrors manual chaining"
+code: |
+  import numpy as np
+  from dataclasses import dataclass, field
+  from typing import Protocol, runtime_checkable
+
+  @runtime_checkable
+  class Estimator(Protocol):
+      def fit(self, X, y=None): ...
+      def predict(self, X): ...
+
+  @dataclass(frozen=True)
+  class TrainConfig:
+      lr: float = 0.01
+      epochs: int = 10
+      tags: list = field(default_factory=list)
+
+      def __post_init__(self):
+          if self.lr <= 0:
+              raise ValueError("lr must be positive")
+          if self.epochs < 1:
+              raise ValueError("epochs must be at least 1")
+
+  class StandardScaler:
+      def fit(self, X, y=None):
+          self.mean_ = X.mean(axis=0)
+          std = X.std(axis=0)
+          self.scale_ = np.where(std == 0, 1.0, std)
+          return self
+
+      def transform(self, X):
+          return (X - self.mean_) / self.scale_
+
+  class MeanRegressor:
+      def fit(self, X, y=None):
+          self.mean_ = float(np.mean(y))
+          return self
+
+      def predict(self, X):
+          return np.full(len(X), self.mean_)
+
+  class Pipeline:
+      def __init__(self, steps, model):
+          self.steps, self.model = steps, model
+
+      def fit(self, X, y=None):
+          for s in self.steps:
+              X = s.fit(X, y).transform(X)
+          self.model.fit(X, y)
+          return self
+
+      def predict(self, X):
+          for s in self.steps:
+              X = s.transform(X)
+          return self.model.predict(X)
+key_lines: [14, 17, 46]
+time: "Pipeline fit and predict cost the sum of the step costs; validation is O(1)"
+space: "O(d) per fitted scaler (mean and scale) plus the model state"
+when_to_use: |
+  Experiment configs, reusable preprocessing and model components, and
+  any code that swaps parts (scalers, models, metrics) behind a common
+  method set so that training and serving share one code path.
+when_not_to_use: |
+  Tiny one-off scripts where a function is enough, or deep
+  inheritance hierarchies to share a few lines; prefer composition and
+  plain functions there.
+why_it_works: |
+  A frozen dataclass makes assignment raise, so a config cannot drift
+  after validation, and `__post_init__` runs on every construction path.
+  A Protocol checks structure instead of ancestry, so independent
+  classes interoperate. Fitting each step on the previous step's output
+  is exactly manual chaining, and keeping fitted state on the object
+  lets the same transform be applied to new data.
+math:
+  - "z = (x − μ) / σ,  μ, σ from the training data only"
+  - "ŷ = f(T₂(T₁(X))) for two transform steps and a model f"
+  - "Fit cost = Σₛ (Fₛ + Tₛ) + F_model"
+interview_qa:
+  - q: "Protocol versus abc.ABC?"
+    a: "ABC is nominal: a class must inherit from it. A Protocol is structural: any class with the right methods matches, and runtime_checkable allows isinstance, which only checks method names exist."
+  - q: "Why a frozen dataclass for configs?"
+    a: "Assignment raises FrozenInstanceError, so a config cannot be changed after validation, and with immutable fields it is hashable and safe to log and compare."
+  - q: "Why default_factory instead of a default list?"
+    a: "A literal mutable default would be shared by all instances, and dataclasses reject it with a ValueError. default_factory builds a fresh object per instance."
+  - q: "Why must a scaler be fitted on training data only?"
+    a: "Fitting on test data leaks its statistics into training. The pipeline fits the scaler on the training set and reuses its stored mean and scale for new data."
+hyperparameters:
+  - "Config fields with sensible defaults (learning rate, epochs)"
+  - "Validation bounds enforced in __post_init__"
+  - "Order of pipeline steps"
+  - "Zero-variance handling in the scaler (scale set to 1)"
+pitfalls:
+  - "frozen=True blocks rebinding only; a list or dict field can still be mutated in place"
+  - "isinstance against a runtime_checkable Protocol checks that methods exist, not their signatures or behaviour"
+  - "Fitting a scaler on all data before the split leaks test statistics; fit inside the training fold"
+  - "A fit that returns None instead of self breaks chaining such as scaler.fit(X).transform(X)"
+related: [feature-scaling, data-leakage, cross-validation]
+math_tex:
+- 'Scaler: $z = \frac{x - \mu}{\sigma}$, from training data'
+- 'Pipeline: $\hat{y} = f(T_2(T_1(X)))$'
+- 'Fit cost: $\sum_s (F_s + T_s) + F_{model}$'

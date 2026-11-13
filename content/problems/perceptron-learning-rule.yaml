@@ -1,0 +1,100 @@
+slug: perceptron-learning-rule
+title: Perceptron Learning Rule
+url: https://en.wikipedia.org/wiki/Perceptron
+difficulty: Easy
+area: Deep Learning
+topics: [Perceptron, Linear Classifiers, Online Learning, Convergence]
+summary: |
+  Predict $\mathrm{sign}(w \cdot x + b)$ and, only on a mistake, nudge the
+  weights towards the misclassified point. On linearly separable data it
+  stops after a bounded number of mistakes; on XOR it never settles.
+intuition: |
+  A mistake means the current hyperplane is on the wrong side of
+  $x$, and adding $y\,x$ to $w$ rotates it towards the correct side
+  of that point. Correct points cause no change at all, so the learner
+  is purely mistake driven. Each update also increases the alignment with
+  any true separator by at least the margin $\gamma$, while the weight
+  norm grows only like $R\sqrt{k}$, which squeezes the number of
+  mistakes $k$ below $(R/\gamma)^2$.
+  Flow: predict → mistake? → add $y\,x$ → repeat until a clean pass.
+approach:
+  - "Start from $w = 0$, $b = 0$ — no prior preference between classes"
+  - 'For each example compute the score $w \cdot x + b$ — its sign is the prediction'
+  - 'If $y\,(w \cdot x + b) \leq 0$ it is a mistake — correct points leave the model untouched'
+  - 'On a mistake do $w \leftarrow w + \eta\,y\,x$ and $b \leftarrow b + \eta\,y$ — pushes the score of this point in the right direction'
+  - "Stop after a pass with no mistakes — on separable data this is guaranteed to happen, otherwise cap the epochs"
+code: |
+  import numpy as np
+
+  def predict(X, w, b):
+      return np.where(X @ w + b > 0, 1, -1)
+
+  def perceptron_fit(X, y, epochs, eta=1.0):
+      w, b, mistakes = np.zeros(X.shape[1]), 0.0, 0
+      for _ in range(epochs):
+          changed = 0
+          for x, t in zip(X, y):
+              if t * (x @ w + b) <= 0:
+                  w = w + eta * t * x
+                  b = b + eta * t
+                  changed += 1
+          mistakes += changed
+          if changed == 0:
+              break
+      return w, b, mistakes
+
+  def margin(X, y, w):
+      return (y * (X @ w) / np.linalg.norm(w)).min()
+key_lines: [11, 12, 13]
+time: 'O(n·d) per epoch; at most $(R/\gamma)^2$ updates in total when separable'
+space: "O(d) for the weights"
+when_to_use: |
+  Teaching the mistake-driven update, quick online baselines on data
+  that is close to linearly separable, and as the unit that a neural
+  network stacks: one neuron with a step activation.
+when_not_to_use: |
+  Non-separable problems (it oscillates forever), when calibrated
+  probabilities are needed, or when a good margin matters; use logistic
+  regression or a maximum-margin SVM instead.
+why_it_works: |
+  Suppose a unit vector $w^*$ separates the data with margin $\gamma$, that
+  is $y\,(w^* \cdot x) \geq \gamma$, and $\|x\| \leq R$. Each mistake raises
+  $w \cdot w^*$ by at least $\eta\gamma$, so after $k$ mistakes it is at
+  least $k\eta\gamma$. On a mistake $y\,(w \cdot x) \leq 0$, so $\|w\|^2$ grows
+  by at most $\eta^2 R^2$, giving $\|w\| \leq \eta R\sqrt{k}$. Cauchy-Schwarz
+  gives $k\eta\gamma \leq \eta R\sqrt{k}$, hence $k \leq (R/\gamma)^2$. The
+  bias is covered by appending a constant $1$ to $x$.
+math:
+  - "ŷ = sign(w·x + b)"
+  - "mistake if y (w·x + b) ≤ 0"
+  - "w ← w + η y x,    b ← b + η y"
+  - "γ = minᵢ yᵢ (w*·xᵢ) / ‖w*‖,    R = maxᵢ ‖xᵢ‖"
+  - "w·w* ≥ k η γ     and     ‖w‖² ≤ k η² R²"
+  - "number of mistakes k ≤ (R / γ)²"
+interview_qa:
+  - q: "What is Novikoff's theorem?"
+    a: "If the data is linearly separable with margin gamma and every point has norm at most R, the perceptron makes at most (R/gamma)^2 mistakes, regardless of the order and of the learning rate when starting from zero."
+  - q: "What happens on XOR?"
+    a: "No line separates XOR, so every pass contains a mistake and the weights cycle forever. A hidden layer or a feature such as the product of the inputs fixes it."
+  - q: "How does the perceptron relate to logistic regression and the SVM?"
+    a: "Logistic regression replaces the hard mistake test by a smooth loss and gives probabilities. The SVM also seeks a separator but picks the maximum-margin one, while the perceptron returns any separator."
+  - q: "Does the learning rate matter?"
+    a: "Starting from zero, scaling the rate only rescales $w$ and $b$, so the predictions and mistake count do not change."
+hyperparameters:
+  - 'Learning rate $\eta$ (irrelevant for the decisions when starting from zero)'
+  - "Maximum number of epochs, as a guard on non-separable data"
+  - "Order of the examples, which changes which separator is found"
+  - "Whether to include a bias term"
+pitfalls:
+  - 'Never converges when the data is not separable; always cap the epochs and track the training error'
+  - 'The result depends on the example order and is not the maximum-margin separator, so it can generalise worse than an SVM'
+  - 'Zero scores count as mistakes; using a strict test instead keeps the all-zero start from ever updating'
+  - 'The bound uses the norm of the input including the constant bias feature'
+related: [logistic-regression, svm, mlp-forward-pass]
+math_tex:
+- 'Predict: $\hat{y} = \mathrm{sign}(w \cdot x + b)$'
+- 'Mistake if $y\,(w \cdot x + b) \leq 0$'
+- 'Update: $w \leftarrow w + \eta\,y\,x$, $b \leftarrow b + \eta\,y$'
+- '$\gamma = \min_i \frac{y_i\,(w^* \cdot x_i)}{\|w^*\|}$, $R = \max_i \|x_i\|$'
+- 'After $k$ mistakes: $w \cdot w^* \geq k\eta\gamma$'
+- 'and $\|w\|^2 \leq k\eta^2 R^2$, so $k \leq (R/\gamma)^2$'

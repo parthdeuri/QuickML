@@ -848,7 +848,7 @@ private fun ConceptSection(
             )
         } else if (!item.userAdded) {
             Text(
-                text = "Full notes coming soon",
+                text = "Reference only: open the link below",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

@@ -31,19 +31,19 @@ names were renamed from Problem to Concept; table and column names were not.
 
 ## Done
 - Skeleton, CI, signing, stable-key builds; logo (flash cards with a bolt).
-- 178 concept cards with all code tests passing; 22 families, 12 compare cards, 4 sheets.
+- 202 cards (200 full, 2 link-only) with all code tests passing; 22 families, 12 compare cards, 4 sheets.
 - Card wording (card / learned / implementation), Ask prompt includes math.
 - Reference links all return HTTP 200 (`tools/check_links.py`).
 - 17 diagrams as pre-drawn light/dark images (replaced the text art that broke on phones).
 - Typeset maths: LaTeX inline in all card text and in the Math box, rendered live in the app.
   The APK stays small (assets about 1.1 MB).
 
-## Done: LLM Engineer roadmap, concepts and techniques (sheet `llm-engineer`, 92 entries)
-Roadmap sections 5-10, 12, 13, 16-18 are in (62 new cards, area `LLM`; fairness-metrics is `MLOps`).
-New cards have no image diagram yet (an arrow-flow line ends the Intuition text); real diagrams come in a
-later run. Not covered yet: sections 14-15 (agents, multimodal), 11 and 19 (tools, LLMOps); foundations,
-projects and career are not revision material. Several cards cite abstract pages only; facts beyond the
-abstracts were checked by the card's own tests, not by the cited page.
+## In progress: finishing the LLM Engineer roadmap (sheet `llm-engineer`, 139 entries so far)
+Done: sections 1-10, 12, 13, 16-18 (84 new cards, 2 link-only entries). To do, in order: wave 6 (11 tools,
+14 agents), wave 7 (15 multimodal, 19 LLMOps), wave 8 (20 projects, 21 career with link-only items).
+Then: flash cards, image diagrams for the roadmap cards, families and compare cards.
+New cards have no image diagram yet (an arrow-flow line ends the Intuition text). Several cards cite
+abstract pages only; facts beyond them are checked by the card's own tests, not by the cited page.
 
 ## Next: flash cards (planned, nothing started)
 Auto-generated from the existing cards, spaced repetition, new bottom tab.

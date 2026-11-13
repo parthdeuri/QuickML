@@ -1,0 +1,153 @@
+slug: micrograd-autograd-engine
+title: Reverse-Mode Autograd Engine (Micrograd)
+url: https://docs.pytorch.org/docs/stable/notes/autograd.html
+difficulty: Medium
+area: Deep Learning
+topics: [Autodiff, Computation Graph, Backpropagation, PyTorch]
+summary: |
+  Each scalar Value remembers its parents and a tiny local backward
+  rule. The forward pass builds the graph, and backward sorts it
+  topologically and sweeps it in reverse, accumulating gradients with
+  addition.
+intuition: |
+  The chain rule needs no symbolic algebra: every operation only has to
+  know its own local derivative, and the graph glues them together. A
+  node that feeds two later operations receives two gradient
+  contributions, one per use, so they must be added with $+=$, never
+  assigned. Visiting nodes in reverse topological order guarantees that
+  a node's gradient is complete before it passes anything to its parents.
+  Flow: forward builds graph → sort → reverse sweep → accumulate grads.
+approach:
+  - "Wrap each number in a Value with data, grad = 0, its parents and a no-op backward — the graph is built as a side effect of the arithmetic"
+  - "Each operation creates the output Value and stores a closure that adds local derivative times the output gradient to every parent — the local chain rule"
+  - "Sort the graph topologically from the output with a depth-first visit — every node comes after its parents"
+  - "Set the output gradient to $1$ and call the stored closures in reverse order — a node is processed after all of its consumers"
+  - "Read the gradients from the leaves and zero them before the next call — accumulation means a second call adds on top"
+code: |
+  import math
+
+  class Value:
+      def __init__(self, data, parents=()):
+          self.data, self.grad = data, 0.0
+          self.parents, self._back = parents, lambda: None
+
+      def __add__(self, o):
+          o = o if isinstance(o, Value) else Value(o)
+          out = Value(self.data + o.data, (self, o))
+          def back():
+              self.grad += out.grad
+              o.grad += out.grad
+          out._back = back
+          return out
+
+      def __mul__(self, o):
+          o = o if isinstance(o, Value) else Value(o)
+          out = Value(self.data * o.data, (self, o))
+          def back():
+              self.grad += o.data * out.grad
+              o.grad += self.data * out.grad
+          out._back = back
+          return out
+
+      def __pow__(self, p):  # constant exponent
+          out = Value(self.data ** p, (self,))
+          def back():
+              self.grad += p * self.data ** (p - 1) * out.grad
+          out._back = back
+          return out
+
+      def tanh(self):
+          out = Value(math.tanh(self.data), (self,))
+          def back():
+              self.grad += (1 - out.data ** 2) * out.grad
+          out._back = back
+          return out
+
+      def relu(self):
+          out = Value(max(0.0, self.data), (self,))
+          def back():
+              self.grad += (out.data > 0) * out.grad
+          out._back = back
+          return out
+
+      def exp(self):
+          out = Value(math.exp(self.data), (self,))
+          def back():
+              self.grad += out.data * out.grad
+          out._back = back
+          return out
+
+      __radd__, __rmul__ = __add__, __mul__
+      def __neg__(self): return self * -1
+      def __sub__(self, o): return self + (-o)
+
+      def backward(self):
+          order, seen = [], set()
+          def visit(v):
+              if v not in seen:
+                  seen.add(v)
+                  for p in v.parents:
+                      visit(p)
+                  order.append(v)
+          visit(self)
+          self.grad = 1.0
+          for v in reversed(order):
+              v._back()
+key_lines: [12, 65, 68]
+time: "O(nodes) forward and O(nodes) backward, each about the cost of the forward pass"
+space: "O(nodes), since every intermediate value and closure is kept for the sweep"
+when_to_use: |
+  Understanding how a deep learning framework computes gradients, and
+  checking hand-derived gradients on small graphs. The same mechanism,
+  on tensors and with fused kernels, is what runs under every training
+  loop.
+when_not_to_use: |
+  Anything real-sized: scalar Python objects are thousands of times
+  slower than tensor kernels, and the engine has no broadcasting, no
+  in-place checks and no memory-saving tricks.
+why_it_works: |
+  For $y = f(g(x))$ the chain rule gives
+  $\frac{\partial y}{\partial x} = \frac{\partial y}{\partial g}\frac{\partial g}{\partial x}$, and for a
+  node used several times the total derivative is the sum over its
+  consumers. Reverse order guarantees that when a node is processed its
+  gradient already contains every consumer's contribution, so one sweep
+  gives all $\frac{\partial L}{\partial x_i}$ at about the cost of a
+  forward pass, however many inputs there are.
+math:
+  - "∂L/∂xᵢ = Σ over consumers j of  (∂L/∂zⱼ) (∂zⱼ/∂xᵢ)"
+  - "z = x + y:   ∂z/∂x = 1,   ∂z/∂y = 1"
+  - "z = x y:   ∂z/∂x = y,   ∂z/∂y = x"
+  - "z = xᵖ:   ∂z/∂x = p xᵖ⁻¹"
+  - "z = tanh x:   ∂z/∂x = 1 − z²"
+  - "z = exp x:   ∂z/∂x = z"
+  - "z = relu x:   ∂z/∂x = 1 if x > 0 else 0"
+  - "grad[xᵢ] += (∂zⱼ/∂xᵢ) · grad[zⱼ]"
+interview_qa:
+  - q: "Why does backward use += and not =?"
+    a: "A node used in several places receives a gradient from each use, and the total derivative is their sum. Assignment would keep only the last one."
+  - q: "Why is a topological order needed?"
+    a: "A node may only pass gradient to its parents after all its consumers have added theirs. Reverse topological order ensures that."
+  - q: "Why do we zero gradients between steps?"
+    a: "Gradients accumulate across backward calls. Without zeroing, stale values are added to the new ones, so leaf gradients come out wrong (exactly doubled for a single operation, more in deeper graphs). Training loops zero them before each step."
+  - q: "Why is reverse mode used for neural networks and not forward mode?"
+    a: "Training has one scalar loss and millions of parameters. Reverse mode gets all parameter gradients in one sweep, while forward mode needs one pass per input."
+hyperparameters:
+  - "Which operations are supported and their local rules"
+  - "Initial seed gradient of the output (1 for a scalar loss)"
+  - "When to zero gradients (before each backward call)"
+  - "Whether intermediate values are kept or recomputed (checkpointing)"
+pitfalls:
+  - "Using = instead of += in a local backward breaks any graph where a node is reused"
+  - "Not zeroing gradients between backward calls adds stale values to the new ones; leaves double for one operation and inflate further in deeper graphs"
+  - "Recursive graph traversal hits Python's recursion limit on very deep graphs; use an explicit stack"
+  - 'The ReLU derivative at $0$ is a convention (here $0$); frameworks may differ in edge cases'
+related: [backpropagation, mlp-forward-pass, activation-functions]
+math_tex:
+- 'Total: $\frac{\partial L}{\partial x_i} = \sum_j \frac{\partial L}{\partial z_j}\frac{\partial z_j}{\partial x_i}$'
+- 'Add: $\frac{\partial z}{\partial x} = 1$, $\frac{\partial z}{\partial y} = 1$'
+- 'Mul: $\frac{\partial z}{\partial x} = y$, $\frac{\partial z}{\partial y} = x$'
+- 'Power: $z = x^p$, $\frac{\partial z}{\partial x} = p\,x^{p-1}$'
+- 'Tanh: $\frac{\partial z}{\partial x} = 1 - z^2$'
+- 'Exp: $\frac{\partial z}{\partial x} = z$'
+- 'ReLU: $\frac{\partial z}{\partial x} = [x > 0]$'
+- 'Rule: $g_{x_i} \leftarrow g_{x_i} + \frac{\partial z_j}{\partial x_i} g_{z_j}$'

@@ -1,0 +1,98 @@
+slug: vectors-norms-distances
+title: Vectors, Norms and Distances
+url: https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.mahalanobis.html
+difficulty: Easy
+area: Math
+topics: [Linear Algebra, Distance, Geometry]
+summary: |
+  A vector is a point with a length and a direction. Norms measure
+  length, the dot product measures alignment, and distances compare two
+  points, each with different assumptions about the data.
+intuition: |
+  Every distance answers a different question: $L_1$ adds up coordinate
+  gaps, $L_2$ is straight-line length, $L_\infty$ is the single worst
+  coordinate, cosine ignores length and keeps direction, and
+  Mahalanobis rescales by the data's covariance so correlated or
+  large-scale directions count less. After scaling vectors to length 1,
+  $\|u - v\|^2 = 2 - 2\cos(u, v)$, so Euclidean and cosine rank
+  neighbours identically. In very high dimension the nearest and farthest
+  points end up almost equally far away.
+  Flow: vectors → norm and dot product → unit vectors → angle → distance → ranking.
+approach:
+  - 'Compute $\|x\|_p = (\sum_i |x_i|^p)^{1/p}$, with a max for $p = \infty$ — the length under the chosen geometry'
+  - 'Divide a vector by its $L_2$ norm — a unit vector keeps direction only'
+  - 'Take the dot product of two unit vectors — this is the cosine of their angle'
+  - 'Use $1 - \cos$ as the cosine distance — zero for equal directions, 2 for opposite ones'
+  - 'Solve with the covariance instead of inverting it — Mahalanobis whitens the difference stably'
+code: |
+  import numpy as np
+
+  def norm(x, p):
+      x = np.abs(x)
+      if np.isinf(p):
+          return x.max()
+      return (x ** p).sum() ** (1 / p)
+
+  def unit(x):
+      return x / norm(x, 2)
+
+  def cosine_dist(u, v):
+      return 1 - unit(u) @ unit(v)
+
+  def mahalanobis(x, y, cov):
+      d = x - y
+      return np.sqrt(d @ np.linalg.solve(cov, d))
+key_lines: [7, 13, 17]
+time: "O(d) per norm or distance; O(d³) once to factor the covariance, O(d²) per query"
+space: "O(d) for vectors, O(d²) for the covariance matrix"
+when_to_use: |
+  Choosing a similarity for nearest-neighbour search, clustering or
+  anomaly detection: $L_2$ for raw geometry, cosine for embeddings,
+  $L_1$ for robustness to a few large coordinates, and Mahalanobis for
+  correlated features with a known covariance.
+when_not_to_use: |
+  Distances on unscaled mixed-unit features without normalising, and
+  Mahalanobis when the covariance is singular or estimated from too few
+  samples. In very high dimension any distance carries less contrast, so
+  reduce dimension first.
+why_it_works: |
+  Expanding the squared difference gives
+  $\|u - v\|^2 = \|u\|^2 + \|v\|^2 - 2\,u^{\top}v$, so with unit vectors it
+  equals $2 - 2\cos$, a decreasing function of cosine, and rankings
+  agree. Mahalanobis is Euclidean distance after whitening by
+  $\Sigma^{-1/2}$. In high dimension squared distance is a sum of many
+  independent terms, so it concentrates around its mean and the spread
+  relative to the mean shrinks.
+math:
+  - "‖x‖ₚ = (Σᵢ |xᵢ|ᵖ)^(1/p)"
+  - "‖x‖∞ = maxᵢ |xᵢ|  (the limit p → ∞)"
+  - "cos(u, v) = uᵀv / (‖u‖ ‖v‖),  cosine distance = 1 − cos(u, v)"
+  - "unit vectors:  ‖u − v‖² = 2 − 2 cos(u, v)"
+  - "d_M(x, y) = √((x − y)ᵀ Σ⁻¹ (x − y))"
+  - "high dimension:  max distance / min distance → 1"
+interview_qa:
+  - q: "When do Euclidean and cosine give the same neighbours?"
+    a: "When the vectors are normalised to unit length. Then the squared Euclidean distance equals 2 minus 2 times the cosine, so the ordering is identical."
+  - q: "How is Mahalanobis different from Euclidean distance?"
+    a: "It uses the inverse covariance, so directions with large variance or strong correlation count less. With an identity covariance it reduces to Euclidean distance."
+  - q: "Why do distances lose meaning in high dimension?"
+    a: "Distances to a query concentrate: the farthest point is barely farther than the nearest, so nearest-neighbour contrast fades and k-NN gets unreliable."
+  - q: "Why use $L_1$ instead of $L_2$?"
+    a: "$L_1$ grows linearly with each coordinate gap, so a few large deviations dominate less than under the squared $L_2$, and it can be more robust to outliers."
+hyperparameters:
+  - "Norm order $p$ (1, 2, $\\infty$)"
+  - "Whether to normalise vectors to unit length first"
+  - "Covariance estimate and its regularisation for Mahalanobis"
+pitfalls:
+  - 'Cosine distance is undefined for a zero vector; guard against dividing by zero'
+  - 'Cosine distance is not a true metric; the triangle inequality can fail'
+  - 'Invert-free solve is safer than inv(cov), and a singular covariance needs a small ridge'
+  - 'Unscaled features let the largest-range coordinate decide every $L_p$ distance'
+related: [cosine-similarity-embeddings, knn]
+math_tex:
+- '$\|x\|_p = (\sum_i |x_i|^p)^{1/p}$'
+- '$\|x\|_{\infty} = \max_i |x_i|$, the limit $p \rightarrow \infty$'
+- '$\cos(u, v) = \frac{u^{\top} v}{\|u\| \|v\|}$, distance $= 1 - \cos$'
+- 'Unit vectors: $\|u - v\|^2 = 2 - 2\cos(u, v)$'
+- '$d_M(x, y) = \sqrt{(x-y)^{\top} \Sigma^{-1} (x-y)}$'
+- 'High dimension: $\frac{d_{\max}}{d_{\min}} \rightarrow 1$'

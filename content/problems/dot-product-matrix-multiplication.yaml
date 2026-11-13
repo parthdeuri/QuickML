@@ -1,0 +1,112 @@
+slug: dot-product-matrix-multiplication
+title: Dot Product and Matrix Multiplication
+url: https://en.wikipedia.org/wiki/Matrix_chain_multiplication
+difficulty: Easy
+area: Math
+topics: [Linear Algebra, Matrix Multiplication, Dynamic Programming]
+summary: |
+  A dot product is a weighted sum that measures how much two vectors
+  agree; a matrix product is a table of dot products that composes two
+  linear maps. The answer is independent of grouping, the cost is not.
+intuition: |
+  Every neural-network layer is a bundle of dot products, so matrix
+  multiplication is the unit of work. Multiplication is associative, so
+  $(xW_1)W_2$ and $x(W_1W_2)$ give the same numbers, but with a skinny
+  $x$ the first never builds a big matrix and costs thousands of times
+  less. The same fact shapes batching, low-rank layers and the order in
+  which frameworks fuse operations.
+  Flow: vectors → dot products → matrix product → pick the grouping → cost.
+approach:
+  - 'Compute each entry as a dot product of a row of $A$ and a column of $B$ — $C_{ij} = \sum_{p} A_{ip} B_{pj}$'
+  - 'Count $2mkn$ FLOPs for $(m \times k)(k \times n)$ — $mkn$ multiplies and about as many adds'
+  - 'Cost a full parenthesisation by summing the cost of every pairwise product — shapes shrink to outer dimensions'
+  - 'Fill a table $M_{ij}$ of the cheapest cost for matrices $i$ to $j$, trying every split $s$ — subproblems overlap'
+  - 'Keep the best split per interval — lets you rebuild the optimal order'
+code: |
+  import numpy as np
+
+  def matmul_naive(A, B):
+      m, k = A.shape
+      n = B.shape[1]
+      C = np.zeros((m, n))
+      for i in range(m):
+          for j in range(n):
+              C[i, j] = sum(A[i, p] * B[p, j] for p in range(k))
+      return C
+
+  def chain_cost(dims, order):
+      # matrix i has shape dims[i] x dims[i+1]; order is nested
+      # pairs of indices, e.g. ((0, 1), 2)
+      def go(t):
+          if isinstance(t, int):
+              return dims[t], dims[t + 1], 0
+          r1, c1, f1 = go(t[0])
+          r2, c2, f2 = go(t[1])
+          return r1, c2, f1 + f2 + 2 * r1 * c1 * c2
+      return go(order)[2]
+
+  def best_chain_cost(dims):
+      n = len(dims) - 1
+      cost = [[0] * n for _ in range(n)]
+      split = [[0] * n for _ in range(n)]
+      for L in range(2, n + 1):
+          for i in range(n - L + 1):
+              j = i + L - 1
+              cost[i][j] = float("inf")
+              for s in range(i, j):
+                  c = (cost[i][s] + cost[s + 1][j]
+                       + 2 * dims[i] * dims[s + 1] * dims[j + 1])
+                  if c < cost[i][j]:
+                      cost[i][j], split[i][j] = c, s
+      return cost[0][n - 1], split
+key_lines: [9, 20, 33]
+time: "O(mkn) per product; the chain DP is O(n³) for n matrices"
+space: "O(n²) for the DP tables; the product itself needs O(mn)"
+when_to_use: |
+  Estimating the cost of a layer or a chain of projections, deciding
+  whether to apply a low-rank factorisation as two thin matmuls, and
+  choosing an evaluation order for a product with very different
+  dimensions.
+when_not_to_use: |
+  The chain DP only matters for long chains with unequal shapes. For
+  square matrices of equal size every order costs the same, and real
+  libraries call tuned BLAS kernels rather than this triple loop.
+why_it_works: |
+  Matrix multiplication corresponds to composing linear maps, and
+  composition is associative, so every parenthesisation gives the same
+  matrix up to floating-point rounding. The cost of a product depends
+  on the shapes of its two operands, and the shape of an intermediate is
+  fixed by which outer dimensions it keeps. The optimal split of a chain
+  is built from optimal splits of its two halves, which gives the DP.
+math:
+  - "a·b = Σᵢ aᵢ bᵢ"
+  - "projection of a onto b = (a·b / ‖b‖²) b"
+  - "Cᵢⱼ = Σₚ Aᵢₚ Bₚⱼ"
+  - "(m×k)(k×n) → (m×n), cost = 2mkn FLOPs"
+  - "M[i,j] = minₛ M[i,s] + M[s+1,j] + 2·pᵢ·pₛ₊₁·pⱼ₊₁"
+  - "x(1×d), W₁, W₂ (d×d): (xW₁)W₂ = 4d², x(W₁W₂) = 2d³ + 2d²"
+interview_qa:
+  - q: "Is matrix multiplication commutative or associative?"
+    a: 'It is associative, so grouping never changes the result, but it is not commutative in general: $AB \neq BA$, and the shapes may not even allow $BA$.'
+  - q: "Why does the order of multiplication matter for speed?"
+    a: "The number of FLOPs depends on the shapes of the intermediates. With a short, wide chain, multiplying the thin matrix first keeps every intermediate thin."
+  - q: "What does a dot product measure?"
+    a: "The sum of elementwise products. For unit vectors it equals the cosine of the angle between them, so it is a similarity score and also the coefficient of a projection."
+  - q: "How is matmul batched in a neural network?"
+    a: "Inputs of shape $(B, T, d)$ are multiplied by one weight matrix of shape $(d, d')$, equivalent to flattening to $(BT, d)$, or by a stack of matrices with a batched matmul as in attention heads."
+hyperparameters:
+  - "Matrix dimensions m, k, n (they set the cost)"
+  - "Parenthesisation of a chain"
+  - "Numeric precision (float32, float16, bfloat16)"
+pitfalls:
+  - "Shapes (m, k) and (k, n) must share the inner dimension; swapping operands is a common bug"
+  - "FLOPs are not wall time: memory traffic and kernel shape often dominate"
+  - "The triple loop here is for clarity only; it is orders of magnitude slower than BLAS"
+related: [tensor-parallel-matmul, parameter-count-flops, lora-low-rank-adaptation]
+math_tex:
+- 'Dot product: $a \cdot b = \sum_{i} a_i b_i$'
+- 'Projection of $a$ onto $b$: $\frac{a \cdot b}{\|b\|^2}\, b$'
+- 'Entry: $C_{ij} = \sum_{p} A_{ip} B_{pj}$'
+- 'Cost $= 2mkn$ for $(m \times k)(k \times n)$'
+- 'Chain DP: $M_{ij} = \min_{s}\,(M_{is} + M_{s+1,j} + 2\,p_i p_{s+1} p_{j+1})$'
+- 'Skinny $x$: $(xW_1)W_2 = 4d^2$ vs $2d^3 + 2d^2$'

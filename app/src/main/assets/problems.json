@@ -1,5 +1,5 @@
 {
- "contentVersion": 12,
+ "contentVersion": 13,
  "problems": [
   {
    "slug": "ab-test-significance",
@@ -319,6 +319,80 @@
     "gradient-descent",
     "backpropagation",
     "mlp-forward-pass"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "adamw-decoupled-weight-decay",
+   "title": "AdamW Decoupled Weight Decay",
+   "platform": "Deep Learning",
+   "url": "https://arxiv.org/abs/1711.05101",
+   "difficulty": "Medium",
+   "topics": [
+    "Optimisation",
+    "Regularisation",
+    "Weight Decay",
+    "Adaptive Learning Rates"
+   ],
+   "patterns": [],
+   "summary": "Adam with L2 puts the decay term inside the gradient, where the adaptive denominator rescales it. AdamW subtracts the decay from the weights directly, so every weight shrinks at the same rate.",
+   "bruteForce": "With plain SGD, where L2 regularisation and weight decay are equivalent and no change is needed. Decay is also usually skipped for biases and normalisation parameters.",
+   "intuition": "With L2 regularisation the penalty gradient $\\lambda w$ is added to $g$ and then divided by $\\sqrt{\\hat{v}}$ like everything else, so a weight with a large gradient history is decayed less, and one with a small history is decayed more. That is not what weight decay means. AdamW takes the decay out of the gradient and applies it as a separate shrink $-\\eta\\lambda w$, so the regularisation strength no longer depends on the gradient scale and is easier to tune. Flow: gradient + history → adaptive step → separate decay → update.",
+   "whyItWorks": "For SGD, adding $\\lambda w$ to the gradient gives the update $-\\eta\\lambda w$, so L2 and weight decay coincide. In Adam the added term is divided by $\\sqrt{\\hat{v}}+\\epsilon$, so the effective decay is $\\eta\\lambda w/(\\sqrt{\\hat{v}}+\\epsilon)$, which differs per weight and is entangled with the gradient scale. AdamW restores the fixed decay $\\eta\\lambda w$, which also makes the best $\\lambda$ less dependent on the learning rate, as reported in the paper.",
+   "approach": [
+    "Form the gradient $g$ of the loss alone — in AdamW the penalty is not added to it",
+    "Update $m$ and $v$ with bias correction as in Adam — the adaptive part is unchanged",
+    "Compute the adaptive step $\\hat{m}/(\\sqrt{\\hat{v}}+\\epsilon)$ — scaled per parameter",
+    "Add $\\lambda w$ outside the adaptive ratio — the decay bypasses the denominator",
+    "Update $w \\leftarrow w - \\eta(\\ldots)$ — decay and step share only the learning rate"
+   ],
+   "time": "O(d) per step for d parameters",
+   "space": "O(d) extra, two moment buffers",
+   "solution": "import numpy as np\n\ndef init_state(w):\n    return {\"m\": np.zeros_like(w), \"v\": np.zeros_like(w), \"t\": 0}\n\ndef _adam_dir(st, g, b1, b2, eps):\n    st[\"t\"] += 1\n    st[\"m\"] = b1 * st[\"m\"] + (1 - b1) * g\n    st[\"v\"] = b2 * st[\"v\"] + (1 - b2) * g * g\n    m_hat = st[\"m\"] / (1 - b1 ** st[\"t\"])\n    v_hat = st[\"v\"] / (1 - b2 ** st[\"t\"])\n    return m_hat / (np.sqrt(v_hat) + eps)\n\ndef adam_l2_step(st, w, g, lr=1e-3, b1=0.9, b2=0.999,\n                 eps=1e-8, wd=0.0):\n    d = _adam_dir(st, g + wd * w, b1, b2, eps)\n    return w - lr * d\n\ndef adamw_step(st, w, g, lr=1e-3, b1=0.9, b2=0.999,\n               eps=1e-8, wd=0.0):\n    d = _adam_dir(st, g, b1, b2, eps)\n    return w - lr * (d + wd * w)",
+   "keyLines": [
+    16,
+    21,
+    22
+   ],
+   "dryRun": [
+    "Adam+L2: $g^{\\prime} = g + \\lambda w$, then the Adam step",
+    "Effective L2 decay: $\\frac{\\eta\\lambda w}{\\sqrt{\\hat{v}}+\\epsilon}$",
+    "AdamW: $w \\leftarrow w - \\eta\\left(\\frac{\\hat{m}}{\\sqrt{\\hat{v}}+\\epsilon} + \\lambda w\\right)$",
+    "Decay alone shrinks $w$ by $(1-\\eta\\lambda)$"
+   ],
+   "description": "Training transformers and most modern networks with Adam-style optimisers when weight decay is wanted; it is the standard choice.",
+   "examples": [
+    {
+     "input": "Why is L2 regularisation not the same as weight decay in Adam?",
+     "output": "The L2 term enters the gradient and is divided by the adaptive denominator, so weights with large gradient history are decayed less. Weight decay should shrink all weights by the same factor.",
+     "explanation": ""
+    },
+    {
+     "input": "What does AdamW change in the update?",
+     "output": "It adds $\\lambda w$ to the final step, outside the ratio $\\hat{m}/(\\sqrt{\\hat{v}}+\\epsilon)$, instead of to the gradient.",
+     "explanation": ""
+    },
+    {
+     "input": "What happens to AdamW weights when the gradient is zero?",
+     "output": "The moments decay but the decay term still applies, so the weight keeps shrinking by about $\\eta\\lambda w$ each step.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Learning rate $\\eta$",
+    "Weight decay $\\lambda$",
+    "$\\beta_1$ and $\\beta_2$",
+    "$\\epsilon$"
+   ],
+   "edgeCases": [
+    "Passing the L2 coefficient to Adam and calling it weight decay; the behaviour differs from AdamW",
+    "Applying the decay to biases and normalisation scales, which usually should not be decayed",
+    "Assuming $\\lambda$ is comparable across libraries; some scale the decay by the learning rate and some do not"
+   ],
+   "related": [
+    "adam-optimizer",
+    "ridge-lasso-regularization",
+    "gradient-descent"
    ],
    "diagram": []
   },
@@ -1605,6 +1679,84 @@
    "diagram": []
   },
   {
+   "slug": "big-o-empirical-complexity",
+   "title": "Measuring Big-O Empirically",
+   "platform": "Programming",
+   "url": "https://docs.python.org/3/library/bisect.html",
+   "difficulty": "Easy",
+   "topics": [
+    "Complexity",
+    "Algorithms",
+    "Benchmarking"
+   ],
+   "patterns": [],
+   "summary": "Count the operations an algorithm performs at growing input sizes and fit a straight line to the log-log plot: the slope is the exponent of the growth, so Big-O becomes something you can measure.",
+   "bruteForce": "Predicting wall-clock time, which also depends on caches, memory layout and constants. A fitted slope only says how cost grows over the sizes you tried, so it cannot prove an asymptotic bound.",
+   "intuition": "If cost grows like $c \\cdot n^{k}$, taking logs gives $\\log \\text{cost} = \\log c + k \\log n$, a straight line whose slope is the exponent $k$. Counting comparisons instead of seconds removes machine noise, so linear search shows slope 1, insertion sort 2, merge sort a little above 1, and binary search nearly 0 because its cost is $\\log n$, which a log-log fit cannot tell from a tiny power. Flow: input size n → operation count → log-log points → fitted slope → complexity class.",
+   "whyItWorks": "For a cost of the form $c \\cdot n^{k}$ the log-log plot is exactly a line of slope $k$, and least squares recovers it. For $n \\log n$ the local slope is $1 + 1/\\ln n$, which stays slightly above 1 and slowly falls toward it, and for $\\log n$ the slope is $1/\\ln n$, near 0 and shrinking.",
+   "approach": [
+    "Instrument each algorithm to return (result, op_count) — the count is deterministic, unlike wall time",
+    "Generate seeded random inputs at doubling sizes — the same data on every run",
+    "Take logs of sizes and costs — power laws become straight lines",
+    "Fit a line with least squares and read the slope — the empirical exponent",
+    "For logarithmic growth, divide the cost by $\\log_2 n$ — a flat ratio confirms it"
+   ],
+   "time": "O(n), O(log n), O(n²), O(n log n) for the four algorithms measured",
+   "space": "O(1) extra for the searches and insertion sort, O(n) for merge sort",
+   "solution": "import numpy as np\n\ndef fit_loglog_slope(ns, costs):\n    return float(np.polyfit(np.log(ns), np.log(costs), 1)[0])\n\ndef linear_search(a, x):\n    ops = 0\n    for i, v in enumerate(a):\n        ops += 1\n        if v == x:\n            return i, ops\n    return -1, ops\n\ndef binary_search(a, x):\n    lo, hi, ops = 0, len(a), 0\n    while lo < hi:\n        mid = (lo + hi) // 2\n        ops += 1\n        if a[mid] < x:\n            lo = mid + 1\n        else:\n            hi = mid\n    found = lo < len(a) and a[lo] == x\n    return (lo if found else -1), ops\n\ndef insertion_sort(a):\n    a, ops = list(a), 0\n    for i in range(1, len(a)):\n        j = i\n        while j > 0:\n            ops += 1\n            if a[j - 1] <= a[j]:\n                break\n            a[j - 1], a[j] = a[j], a[j - 1]\n            j -= 1\n    return a, ops\n\ndef merge_sort(a):\n    if len(a) <= 1:\n        return list(a), 0\n    m = len(a) // 2\n    L, cl = merge_sort(a[:m])\n    R, cr = merge_sort(a[m:])\n    out, i, j, ops = [], 0, 0, cl + cr\n    while i < len(L) and j < len(R):\n        ops += 1\n        if L[i] <= R[j]:\n            out.append(L[i]); i += 1\n        else:\n            out.append(R[j]); j += 1\n    return out + L[i:] + R[j:], ops",
+   "keyLines": [
+    4,
+    17,
+    31
+   ],
+   "dryRun": [
+    "$\\log \\mathrm{cost} = \\log c + k \\log n$",
+    "Slope: $\\hat{k} = \\frac{\\sum (x_i - \\bar{x})(y_i - \\bar{y})}{\\sum (x_i - \\bar{x})^2}$",
+    "Local slope: $n \\log n$ gives $1 + \\frac{1}{\\ln n}$",
+    "Bounds: $\\lceil \\log_2 (n+1) \\rceil$ and $n \\lceil \\log_2 n \\rceil$",
+    "Attention $T^2 d$ vs KV-cache step $T d$"
+   ],
+   "description": "Checking that code scales the way you claim, comparing two implementations, and building intuition for costs such as quadratic self-attention before running anything on a GPU.",
+   "examples": [
+    {
+     "input": "Why count operations instead of timing the code?",
+     "output": "Wall time is noisy and depends on the machine, caches and the interpreter. An operation count is deterministic and reflects the algorithm itself.",
+     "explanation": ""
+    },
+    {
+     "input": "What slope do you expect for O(n log n)?",
+     "output": "Slightly above 1, for example about 1.1 to 1.2 at moderate sizes, falling toward 1 as n grows, because the extra factor log n adds a small exponent.",
+     "explanation": ""
+    },
+    {
+     "input": "How does Big-O relate to transformers?",
+     "output": "Self-attention compares every token with every other, so cost is quadratic in sequence length. With a KV cache, each new token attends once over the stored rows, which is linear.",
+     "explanation": ""
+    },
+    {
+     "input": "Does a measured slope prove the complexity?",
+     "output": "No. It only describes the sizes tested. Worst cases, small-n effects and different input distributions can all change the exponent.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Input sizes (use doubling, for example 256 to 4096)",
+    "Random seed and input distribution",
+    "Which operation to count (comparisons or swaps)"
+   ],
+   "edgeCases": [
+    "Random input shows the average case; sorted input makes insertion sort linear, so choose the case deliberately",
+    "Very small sizes are dominated by constants and distort the fit; use a wide range of n",
+    "Python slicing in merge_sort copies data, so its time is higher than its comparison count suggests",
+    "A flat cost-versus-$\\log n$ ratio, not a slope near 0, is the evidence for logarithmic growth"
+   ],
+   "related": [
+    "kv-cache",
+    "self-attention"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "bleu-score",
    "title": "BLEU Score",
    "platform": "NLP",
@@ -2565,6 +2717,85 @@
    "diagram": []
   },
   {
+   "slug": "convex-optimisation-lagrange",
+   "title": "Convex Optimisation and Lagrange Multipliers",
+   "platform": "Math",
+   "url": "https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf",
+   "difficulty": "Hard",
+   "topics": [
+    "Optimisation",
+    "Convexity",
+    "KKT Conditions"
+   ],
+   "patterns": [],
+   "summary": "For a convex objective every local minimum is global. Lagrange multipliers turn a constrained problem into stationarity of a Lagrangian, and the KKT conditions extend this to inequality constraints, as used in the SVM dual.",
+   "bruteForce": "Large sparse or inequality-constrained problems, where you would use an iterative or interior-point solver, and non-convex problems where a KKT point need not be a global minimum.",
+   "intuition": "At a constrained optimum you cannot slide along the constraint surface and improve, so the objective gradient has no component along the surface: it points straight along the constraint normals, and the multipliers are the weights. A multiplier is also a price: it says how much the optimal value changes when the constraint is relaxed. For an inequality constraint, either it is tight and has a price, or it is slack and its price is zero (complementary slackness). Flow: objective + constraints → Lagrangian → stationarity → solve → multipliers as prices.",
+   "whyItWorks": "If the Hessian $Q$ is positive semidefinite, the objective lies below every chord, so any stationary point on the feasible set is a global minimum. Stationarity says $\\nabla f = -A^\\top \\lambda$ at the optimum. Perturbing $b$ to $b + \\delta$ changes the optimal value by about $-\\lambda^\\top \\delta$ with this sign convention, which makes $\\lambda$ the shadow price. For inequalities, KKT adds $\\lambda_i \\geq 0$ and $\\lambda_i g_i = 0$.",
+   "approach": [
+    "Check convexity — a quadratic is convex when $Q$ has no negative eigenvalue, so a stationary point is the global minimum",
+    "Form the Lagrangian $\\mathcal{L} = \\frac{1}{2}x^\\top Q x + c^\\top x + \\lambda^\\top (Ax - b)$ — folds constraints into the objective",
+    "Set the gradient in $x$ to zero and keep $Ax = b$ — stationarity plus feasibility",
+    "Stack both into one linear KKT system and solve — a quadratic program with equalities is just linear algebra",
+    "Check residuals and read $\\lambda$ — a good solution makes both residuals near 0 and $\\lambda$ is the price"
+   ],
+   "time": "O((n+m)³) to solve the dense KKT system",
+   "space": "O((n+m)²) for the KKT matrix",
+   "solution": "import numpy as np\n\ndef is_convex_quadratic(Q, tol=1e-10):\n    return bool(np.linalg.eigvalsh((Q + Q.T) / 2).min() >= -tol)\n\ndef solve_eq_qp(Q, c, A, b):\n    n, m = len(c), len(b)\n    K = np.block([[Q, A.T], [A, np.zeros((m, m))]])\n    sol = np.linalg.solve(K, np.concatenate([-c, b]))\n    return sol[:n], sol[n:]\n\ndef kkt_residuals(Q, c, A, b, x, lam):\n    stationarity = Q @ x + c + A.T @ lam\n    feasibility = A @ x - b\n    return (np.linalg.norm(stationarity),\n            np.linalg.norm(feasibility))",
+   "keyLines": [
+    8,
+    9,
+    13
+   ],
+   "dryRun": [
+    "Convex: $f(\\theta x + (1-\\theta)y) \\leq \\theta f(x) + (1-\\theta) f(y)$",
+    "Convex iff Hessian $\\nabla^2 f$ is PSD",
+    "Lagrangian: $\\frac{1}{2}x^\\top Q x + c^\\top x + \\lambda^\\top (Ax - b)$",
+    "Stationary: $Qx + c + A^\\top \\lambda = 0$, $Ax = b$",
+    "KKT system: $[Q, A^\\top; A, 0]\\,[x; \\lambda] = [-c; b]$",
+    "KKT: $g(x) \\leq 0$, $\\lambda \\geq 0$, $\\lambda_i g_i(x) = 0$",
+    "Shadow price: $dp^{*}/db = -\\lambda$"
+   ],
+   "description": "Equality-constrained quadratic problems, understanding duals and support vectors in the SVM, and reading any constrained optimum as stationarity of a Lagrangian with multipliers as prices.",
+   "examples": [
+    {
+     "input": "Why do we care about convexity?",
+     "output": "In a convex problem every local minimum is a global minimum, so gradient methods and stationarity conditions are enough to find the best solution.",
+     "explanation": ""
+    },
+    {
+     "input": "What do Lagrange multipliers mean?",
+     "output": "They weight the constraint normals in the stationarity condition, and they are the sensitivity of the optimal value to the constraint level, a shadow price.",
+     "explanation": ""
+    },
+    {
+     "input": "What is complementary slackness?",
+     "output": "For each inequality constraint either the constraint is tight or its multiplier is zero. In the SVM this means only support vectors, which lie on the margin, have non-zero dual variables.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you test whether a quadratic is convex?",
+     "output": "Its Hessian $Q$ must be positive semidefinite: all eigenvalues of the symmetrised matrix are at least 0.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Objective matrix $Q$ and vector $c$",
+    "Constraint matrix $A$ and level $b$",
+    "Tolerance for the eigenvalue convexity test"
+   ],
+   "edgeCases": [
+    "The KKT system is singular if the constraints in $A$ are linearly dependent; remove redundant rows",
+    "Sign conventions for $\\lambda$ differ between texts, so the sign of the shadow price flips with them",
+    "For non-convex $Q$ a KKT point can be a saddle or a maximum, not the minimum"
+   ],
+   "related": [
+    "svm",
+    "gradient-descent"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "convolution-2d",
    "title": "2D Convolution",
    "platform": "Vision",
@@ -3021,6 +3252,34 @@
    "diagram": []
   },
   {
+   "slug": "data-structures-algorithms",
+   "title": "Data Structures and Algorithms",
+   "platform": "Programming",
+   "url": "https://cp-algorithms.com/",
+   "difficulty": "Medium",
+   "topics": [
+    "Algorithms",
+    "Data Structures"
+   ],
+   "patterns": [],
+   "summary": null,
+   "bruteForce": null,
+   "intuition": null,
+   "whyItWorks": null,
+   "approach": null,
+   "time": null,
+   "space": null,
+   "solution": null,
+   "keyLines": [],
+   "dryRun": [],
+   "description": null,
+   "examples": [],
+   "constraints": [],
+   "edgeCases": [],
+   "related": [],
+   "diagram": []
+  },
+  {
    "slug": "dbscan",
    "title": "DBSCAN",
    "platform": "Classical ML",
@@ -3329,6 +3588,85 @@
    "diagram": []
   },
   {
+   "slug": "derivatives-chain-rule-gradient-check",
+   "title": "Derivatives, Chain Rule and Gradient Checking",
+   "platform": "Math",
+   "url": "https://cs231n.github.io/neural-networks-3/",
+   "difficulty": "Medium",
+   "topics": [
+    "Calculus",
+    "Gradients",
+    "Backpropagation"
+   ],
+   "patterns": [],
+   "summary": "The gradient collects the slope of a function in every input direction, the chain rule multiplies local slopes through a composition, and a finite-difference check tests a hand-derived gradient against a numerical one.",
+   "bruteForce": "As a training method, since it costs one or two function evaluations per parameter. Also unreliable near kinks such as ReLU at 0, and with very small $h$ where floating-point round-off dominates.",
+   "intuition": "A derivative is the local slope: how much the output moves per unit nudge of the input. For a composition, a nudge passes through each stage and the slopes multiply, which is all backpropagation does, stage by stage. Because a wrong gradient still looks plausible, you nudge each input by a small $h$ both ways and compare the measured slope with your formula. Symmetric nudges cancel the first-order error, so the central difference is far more accurate. Flow: function → nudge input ± h → numerical slope → compare with analytic.",
+   "whyItWorks": "Taylor expansion gives $f(x \\pm h) = f(x) \\pm h f' + \\frac{h^2}{2} f'' \\pm \\frac{h^3}{6} f'''$. The forward difference leaves a $\\frac{h}{2} f''$ error, while in the central difference the even terms cancel and the error is of order $h^2$. Round-off adds an error of order $\\epsilon / h$, so there is a sweet spot for $h$, typically around $10^{-5}$ in double precision.",
+   "approach": [
+    "Differentiate each stage locally — for $f(x) = \\sum_i \\tanh(Wx+b)_i^2$ the stages are affine, $\\tanh$ and square-and-sum",
+    "Multiply local slopes from the output backwards — the chain rule, giving $\\nabla f = W^\\top(2 t (1 - t^2))$ with $t = \\tanh(Wx+b)$",
+    "Nudge one coordinate at a time by $\\pm h$ — the central difference $(f(x+h)-f(x-h))/(2h)$",
+    "Assemble the numerical gradient from all coordinates — same shape as $x$",
+    "Compare with $\\|a-n\\| / (\\|a\\|+\\|n\\|)$ — below about $10^{-6}$ is a pass; above $10^{-2}$ the gradient is wrong"
+   ],
+   "time": "Analytic gradient costs about one extra forward pass; the numerical one needs 2n evaluations for n inputs",
+   "space": "O(n) for the gradient",
+   "solution": "import numpy as np\n\ndef f(x, W, b):\n    return np.sum(np.tanh(W @ x + b) ** 2)\n\ndef analytic_grad(x, W, b):\n    t = np.tanh(W @ x + b)\n    return W.T @ (2 * t * (1 - t ** 2))\n\ndef numerical_grad(f, x, h=1e-5, kind=\"central\"):\n    g = np.zeros_like(x)\n    for i in range(len(x)):\n        e = np.zeros_like(x)\n        e[i] = h\n        if kind == \"central\":\n            g[i] = (f(x + e) - f(x - e)) / (2 * h)\n        else:\n            g[i] = (f(x + e) - f(x)) / h\n    return g\n\ndef rel_error(a, n):\n    return np.linalg.norm(a - n) / (\n        np.linalg.norm(a) + np.linalg.norm(n))",
+   "keyLines": [
+    8,
+    16,
+    18
+   ],
+   "dryRun": [
+    "Derivative: $f^{\\prime}(x) = \\lim_{h \\rightarrow 0} \\frac{f(x+h) - f(x)}{h}$",
+    "Gradient: $\\nabla f = (\\partial f/\\partial x_1, \\ldots, \\partial f/\\partial x_n)$",
+    "Chain rule: $\\frac{dy}{dx} = \\frac{dy}{du}\\cdot\\frac{du}{dx}$",
+    "Jacobian: $J_{ij} = \\partial f_i/\\partial x_j$, $J_{f \\circ g} = J_f J_g$",
+    "Forward: $\\frac{f(x+h)-f(x)}{h} = f^{\\prime} + O(h)$",
+    "Central: $\\frac{f(x+h)-f(x-h)}{2h} = f^{\\prime} + O(h^2)$",
+    "Relative error: $\\frac{\\|a-n\\|}{\\|a\\|+\\|n\\|}$"
+   ],
+   "description": "Debugging a hand-written backward pass or a custom autograd function: check the analytic gradient against finite differences on a tiny input before trusting it in training.",
+   "examples": [
+    {
+     "input": "What is the chain rule in terms of backpropagation?",
+     "output": "For a composition $y = f(u)$, $u = g(x)$, the slope is $\\frac{dy}{du}\\cdot\\frac{du}{dx}$: multiply the local slopes. Backpropagation applies this stage by stage from the loss back to the inputs, reusing the forward values.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is the central difference better than the forward difference?",
+     "output": "The first-order error terms cancel, leaving an error of order $h^2$ instead of $h$, at the price of two function evaluations per coordinate.",
+     "explanation": ""
+    },
+    {
+     "input": "What relative error should a gradient check reach?",
+     "output": "Around $10^{-7}$ or smaller in double precision is excellent; above $10^{-2}$ the gradient is almost certainly wrong. Use float64 and a small input for the check.",
+     "explanation": ""
+    },
+    {
+     "input": "Why not train with numerical gradients?",
+     "output": "They need about $2n$ forward passes for $n$ parameters and are noisy, whereas backpropagation gives all $n$ partial derivatives for the cost of a few passes.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Step size $h$ (around $10^{-5}$ in float64)",
+    "Difference scheme (forward or central)",
+    "Pass threshold on the relative error"
+   ],
+   "edgeCases": [
+    "Too small an $h$ amplifies round-off; too large a bias. Do the check in float64, not float32",
+    "Non-differentiable points (ReLU at 0, max pooling ties) make a correct gradient look wrong",
+    "Turn off dropout and other randomness during the check, or the two evaluations differ"
+   ],
+   "related": [
+    "backpropagation",
+    "gradient-descent"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "diffusion-forward-process",
    "title": "Diffusion Forward (Noising) Process",
    "platform": "Deep Learning",
@@ -3571,6 +3909,85 @@
    "diagram": []
   },
   {
+   "slug": "dot-product-matrix-multiplication",
+   "title": "Dot Product and Matrix Multiplication",
+   "platform": "Math",
+   "url": "https://en.wikipedia.org/wiki/Matrix_chain_multiplication",
+   "difficulty": "Easy",
+   "topics": [
+    "Linear Algebra",
+    "Matrix Multiplication",
+    "Dynamic Programming"
+   ],
+   "patterns": [],
+   "summary": "A dot product is a weighted sum that measures how much two vectors agree; a matrix product is a table of dot products that composes two linear maps. The answer is independent of grouping, the cost is not.",
+   "bruteForce": "The chain DP only matters for long chains with unequal shapes. For square matrices of equal size every order costs the same, and real libraries call tuned BLAS kernels rather than this triple loop.",
+   "intuition": "Every neural-network layer is a bundle of dot products, so matrix multiplication is the unit of work. Multiplication is associative, so $(xW_1)W_2$ and $x(W_1W_2)$ give the same numbers, but with a skinny $x$ the first never builds a big matrix and costs thousands of times less. The same fact shapes batching, low-rank layers and the order in which frameworks fuse operations. Flow: vectors → dot products → matrix product → pick the grouping → cost.",
+   "whyItWorks": "Matrix multiplication corresponds to composing linear maps, and composition is associative, so every parenthesisation gives the same matrix up to floating-point rounding. The cost of a product depends on the shapes of its two operands, and the shape of an intermediate is fixed by which outer dimensions it keeps. The optimal split of a chain is built from optimal splits of its two halves, which gives the DP.",
+   "approach": [
+    "Compute each entry as a dot product of a row of $A$ and a column of $B$ — $C_{ij} = \\sum_{p} A_{ip} B_{pj}$",
+    "Count $2mkn$ FLOPs for $(m \\times k)(k \\times n)$ — $mkn$ multiplies and about as many adds",
+    "Cost a full parenthesisation by summing the cost of every pairwise product — shapes shrink to outer dimensions",
+    "Fill a table $M_{ij}$ of the cheapest cost for matrices $i$ to $j$, trying every split $s$ — subproblems overlap",
+    "Keep the best split per interval — lets you rebuild the optimal order"
+   ],
+   "time": "O(mkn) per product; the chain DP is O(n³) for n matrices",
+   "space": "O(n²) for the DP tables; the product itself needs O(mn)",
+   "solution": "import numpy as np\n\ndef matmul_naive(A, B):\n    m, k = A.shape\n    n = B.shape[1]\n    C = np.zeros((m, n))\n    for i in range(m):\n        for j in range(n):\n            C[i, j] = sum(A[i, p] * B[p, j] for p in range(k))\n    return C\n\ndef chain_cost(dims, order):\n    # matrix i has shape dims[i] x dims[i+1]; order is nested\n    # pairs of indices, e.g. ((0, 1), 2)\n    def go(t):\n        if isinstance(t, int):\n            return dims[t], dims[t + 1], 0\n        r1, c1, f1 = go(t[0])\n        r2, c2, f2 = go(t[1])\n        return r1, c2, f1 + f2 + 2 * r1 * c1 * c2\n    return go(order)[2]\n\ndef best_chain_cost(dims):\n    n = len(dims) - 1\n    cost = [[0] * n for _ in range(n)]\n    split = [[0] * n for _ in range(n)]\n    for L in range(2, n + 1):\n        for i in range(n - L + 1):\n            j = i + L - 1\n            cost[i][j] = float(\"inf\")\n            for s in range(i, j):\n                c = (cost[i][s] + cost[s + 1][j]\n                     + 2 * dims[i] * dims[s + 1] * dims[j + 1])\n                if c < cost[i][j]:\n                    cost[i][j], split[i][j] = c, s\n    return cost[0][n - 1], split",
+   "keyLines": [
+    9,
+    20,
+    33
+   ],
+   "dryRun": [
+    "Dot product: $a \\cdot b = \\sum_{i} a_i b_i$",
+    "Projection of $a$ onto $b$: $\\frac{a \\cdot b}{\\|b\\|^2}\\, b$",
+    "Entry: $C_{ij} = \\sum_{p} A_{ip} B_{pj}$",
+    "Cost $= 2mkn$ for $(m \\times k)(k \\times n)$",
+    "Chain DP: $M_{ij} = \\min_{s}\\,(M_{is} + M_{s+1,j} + 2\\,p_i p_{s+1} p_{j+1})$",
+    "Skinny $x$: $(xW_1)W_2 = 4d^2$ vs $2d^3 + 2d^2$"
+   ],
+   "description": "Estimating the cost of a layer or a chain of projections, deciding whether to apply a low-rank factorisation as two thin matmuls, and choosing an evaluation order for a product with very different dimensions.",
+   "examples": [
+    {
+     "input": "Is matrix multiplication commutative or associative?",
+     "output": "It is associative, so grouping never changes the result, but it is not commutative in general: $AB \\neq BA$, and the shapes may not even allow $BA$.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does the order of multiplication matter for speed?",
+     "output": "The number of FLOPs depends on the shapes of the intermediates. With a short, wide chain, multiplying the thin matrix first keeps every intermediate thin.",
+     "explanation": ""
+    },
+    {
+     "input": "What does a dot product measure?",
+     "output": "The sum of elementwise products. For unit vectors it equals the cosine of the angle between them, so it is a similarity score and also the coefficient of a projection.",
+     "explanation": ""
+    },
+    {
+     "input": "How is matmul batched in a neural network?",
+     "output": "Inputs of shape $(B, T, d)$ are multiplied by one weight matrix of shape $(d, d')$, equivalent to flattening to $(BT, d)$, or by a stack of matrices with a batched matmul as in attention heads.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Matrix dimensions m, k, n (they set the cost)",
+    "Parenthesisation of a chain",
+    "Numeric precision (float32, float16, bfloat16)"
+   ],
+   "edgeCases": [
+    "Shapes (m, k) and (k, n) must share the inner dimension; swapping operands is a common bug",
+    "FLOPs are not wall time: memory traffic and kernel shape often dominate",
+    "The triple loop here is for clarity only; it is orders of magnitude slower than BLAS"
+   ],
+   "related": [
+    "tensor-parallel-matmul",
+    "parameter-count-flops",
+    "lora-low-rank-adaptation"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "dpo-loss",
    "title": "Direct Preference Optimisation Loss",
    "platform": "NLP",
@@ -3800,6 +4217,85 @@
     "bias-variance-tradeoff",
     "dropout",
     "ridge-lasso-regularization"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "eigen-decomposition-power-iteration",
+   "title": "Eigen-Decomposition and Power Iteration",
+   "platform": "Math",
+   "url": "https://en.wikipedia.org/wiki/Power_iteration",
+   "difficulty": "Medium",
+   "topics": [
+    "Linear Algebra",
+    "Eigenvectors",
+    "PCA"
+   ],
+   "patterns": [],
+   "summary": "Eigenvectors are directions a matrix only stretches. Power iteration applies the matrix again and again and normalises, which converges to the eigenvector with the largest eigenvalue in magnitude.",
+   "bruteForce": "When you need all eigenpairs of a small dense matrix (use a direct solver such as symmetric eigendecomposition), or when the top two eigenvalues have nearly equal magnitude and convergence is very slow.",
+   "intuition": "Write a start vector in the eigenbasis. Each multiplication by $A$ scales the component along eigenvector $i$ by $\\lambda_i$, so the biggest eigenvalue gradually wins and the vector aligns with its eigenvector. Normalising only stops the numbers overflowing. A symmetric matrix has real eigenvalues and orthonormal eigenvectors, which is why PCA can read principal axes off the covariance matrix. Flow: matrix → apply repeatedly → normalise → dominant direction.",
+   "whyItWorks": "For a symmetric matrix, $A^k v = \\sum_{i} c_i \\lambda_i^k u_i$ with orthonormal eigenvectors $u_i$. Dividing by $\\lambda_1^k$ shrinks every term except the first by $(\\lambda_i/\\lambda_1)^k$, so the direction converges to $u_1$ at rate $|\\lambda_2/\\lambda_1|$ per step, provided $c_1 \\neq 0$ and $|\\lambda_1| > |\\lambda_2|$. The Rayleigh quotient of a vector lies between the smallest and largest eigenvalue.",
+   "approach": [
+    "Start from a random unit vector $v$ — it almost surely has a component along the top eigenvector",
+    "Replace $v$ by $Av$ — each eigen-component is scaled by its eigenvalue",
+    "Divide by $\\|v\\|$ — keeps the length at 1 so nothing overflows",
+    "After enough steps read the eigenvalue as $v^\\top A v$ — the Rayleigh quotient of a unit vector",
+    "Subtract $\\lambda v v^\\top$ to deflate and repeat — removes the found direction to expose the next"
+   ],
+   "time": "O(n²) per iteration for a dense matrix, O(nnz) for a sparse one",
+   "space": "O(n) beyond the matrix itself",
+   "solution": "import numpy as np\n\ndef rayleigh(A, v):\n    return v @ A @ v / (v @ v)\n\ndef power_iteration(A, iters, seed=0):\n    v = np.random.default_rng(seed).normal(size=A.shape[0])\n    v = v / np.linalg.norm(v)\n    for _ in range(iters):\n        v = A @ v\n        v = v / np.linalg.norm(v)\n    return rayleigh(A, v), v\n\ndef deflate(A, lam, v):\n    # valid for symmetric A and unit-length v\n    return A - lam * np.outer(v, v)",
+   "keyLines": [
+    10,
+    11,
+    16
+   ],
+   "dryRun": [
+    "Eigenpair: $A v = \\lambda v$",
+    "Symmetric $A$: $A = Q \\Lambda Q^\\top$, $Q^\\top Q = I$",
+    "Update: $v_{k+1} = \\frac{A v_k}{\\|A v_k\\|}$",
+    "Error after $k$ steps $\\propto |\\lambda_2/\\lambda_1|^k$",
+    "Rayleigh: $R(v) = \\frac{v^\\top A v}{v^\\top v}$",
+    "Bounds: $\\lambda_{\\min} \\leq R(v) \\leq \\lambda_{\\max}$",
+    "Deflated: $A - \\lambda_1 u_1 u_1^\\top$ has $\\lambda_1 \\rightarrow 0$"
+   ],
+   "description": "Finding the top eigenpair of a huge or sparse matrix, as in PageRank or the first principal component, where a full decomposition is too costly and only a few eigenvectors are needed.",
+   "examples": [
+    {
+     "input": "Why does power iteration converge to the dominant eigenvector?",
+     "output": "Each step multiplies the component along eigenvector $i$ by $\\lambda_i$, so the largest in magnitude dominates, and the error shrinks like $|\\lambda_2/\\lambda_1|^k$.",
+     "explanation": ""
+    },
+    {
+     "input": "When does power iteration fail?",
+     "output": "If the start vector has no component along the top eigenvector, or if the top two eigenvalues have equal magnitude, such as $+1$ and $-1$: the vector then keeps oscillating instead of settling.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the Rayleigh quotient used for?",
+     "output": "It estimates an eigenvalue from an approximate eigenvector, and for symmetric matrices it is always between the smallest and largest eigenvalue.",
+     "explanation": ""
+    },
+    {
+     "input": "How does this relate to PCA?",
+     "output": "The principal components are the eigenvectors of the symmetric covariance matrix, ordered by eigenvalue; power iteration with deflation finds them one at a time.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of iterations",
+    "Random seed for the start vector",
+    "Convergence tolerance on the change in $v$"
+   ],
+   "edgeCases": [
+    "Slow when $|\\lambda_2/\\lambda_1|$ is close to 1; shifted or inverse iteration can help",
+    "Equal-magnitude top eigenvalues give no convergence; the vector flips between two directions",
+    "Deflation as written needs a symmetric matrix and accurate eigenvectors; errors accumulate with each deflation"
+   ],
+   "related": [
+    "pca",
+    "svd"
    ],
    "diagram": []
   },
@@ -4205,6 +4701,91 @@
     "precision-recall-f1",
     "roc-auc",
     "probability-calibration"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "feature-engineering-encoding",
+   "title": "Feature Encoding (One-Hot, Target, Cyclical, Binning)",
+   "platform": "Classical ML",
+   "url": "https://scikit-learn.org/stable/modules/preprocessing.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Feature Engineering",
+    "Encoding",
+    "Target Encoding",
+    "Leakage"
+   ],
+   "patterns": [],
+   "summary": "Turn raw columns into numeric model inputs: one-hot for categories, leak-safe out-of-fold target encoding for high-cardinality ones, sine and cosine for periodic values, and equal-width bins.",
+   "bruteForce": "One-hot on very high-cardinality columns (huge sparse matrices), ordinal codes for unordered categories in linear models (they invent an order), and target encoding on tiny data where fold estimates are noisy. Tree ensembles often need no scaling or binning at all.",
+   "intuition": "An encoding is a claim about geometry. One-hot says categories are equally far apart. Sine and cosine say hour 23 sits next to hour 0, which a raw number gets wrong. Target encoding replaces a category by its average label, which is powerful for thousands of categories but dangerous: if a row's own label is inside its own encoding, the model is handed the answer. Computing each row's encoding from the other folds, and shrinking rare categories toward the global mean, keeps the signal and removes the leak. Flow: raw column → encode → leak-safe fit → model input.",
+   "whyItWorks": "Out-of-fold encoding makes the feature for row $i$ a function of rows that do not include row $i$, so the same statistic computed at test time (from training labels only) has the same distribution as the one seen in training. Smoothing $\\frac{n\\bar{y}_c + a\\bar{y}}{n + a}$ is a weighted average of the category mean and the prior, trusting the category more as $n$ grows. The pair $(\\sin, \\cos)$ places a period on the unit circle, so values one step apart across the wrap-around are close.",
+   "approach": [
+    "Fit the category list on training data only — the model never sees test categories",
+    "One-hot each category into its own indicator column — no false ordering between categories",
+    "For target encoding, split rows into $K$ folds and encode each fold from the other folds — a row never sees its own label",
+    "Shrink with $\\frac{n\\bar{y}_c + a\\bar{y}}{n + a}$ — rare categories fall back to the global mean",
+    "Map a periodic feature to $(\\sin, \\cos)$ of $2\\pi x / P$ — keeps the wrap-around neighbours close",
+    "Cut a numeric column into equal-width bins from the training min and max — captures step-like effects"
+   ],
+   "time": "O(n·K) for one-hot with K categories, O(n) for target encoding, cyclical and binning",
+   "space": "O(n·K) for the one-hot matrix, O(K) for the category statistics",
+   "solution": "import numpy as np\n\ndef one_hot(values, categories):\n    values = np.asarray(values)\n    eq = values[:, None] == np.asarray(categories)[None, :]\n    return eq.astype(float)\n\ndef equal_width_bins(x, k):\n    x = np.asarray(x, float)\n    edges = np.linspace(x.min(), x.max(), k + 1)\n    return np.searchsorted(edges[1:-1], x, side=\"right\")\n\ndef cyclical(x, period):\n    a = 2 * np.pi * np.asarray(x) / period\n    return np.column_stack([np.sin(a), np.cos(a)])\n\ndef target_encode_oof(cat, y, n_folds, smoothing, seed):\n    cat, y = np.asarray(cat), np.asarray(y, float)\n    rng = np.random.default_rng(seed)\n    folds = rng.integers(0, n_folds, len(y))\n    out = np.empty(len(y))\n    for f in range(n_folds):\n        tr, te = folds != f, folds == f\n        prior = y[tr].mean()\n        s, n = {}, {}\n        for c, v in zip(cat[tr], y[tr]):\n            s[c] = s.get(c, 0.0) + v\n            n[c] = n.get(c, 0) + 1\n        for i in np.nonzero(te)[0]:\n            c = cat[i]\n            num = s.get(c, 0.0) + smoothing * prior\n            out[i] = num / (n.get(c, 0) + smoothing)\n    return out",
+   "keyLines": [
+    14,
+    24,
+    32
+   ],
+   "dryRun": [
+    "One-hot: $e_k[j] = 1$ if $k = j$, else $0$",
+    "Target enc.: $\\hat{c} = \\frac{n\\bar{y}_c + a\\bar{y}}{n + a}$",
+    "Here $n$ counts rows in other folds, $a$ smooths",
+    "Cyclical: $(\\sin\\frac{2\\pi x}{P}, \\cos\\frac{2\\pi x}{P})$",
+    "Chord distance: $2\\,|\\sin(\\pi\\Delta/P)|$",
+    "Bin width $w = (x_{max}-x_{min})/k$",
+    "Bin id = floor of $(x - x_{min})/w$, max in last bin",
+    "Log transform: $z = \\ln(1+x)$, $x \\geq 0$"
+   ],
+   "description": "One-hot for low-cardinality categories and linear models, target or frequency encoding for high-cardinality ones with tree or linear models, cyclical encoding for hour, weekday or angle, binning when a nonlinear step-like effect is expected, a log transform for skewed positive values.",
+   "examples": [
+    {
+     "input": "Why does naive target encoding leak?",
+     "output": "Each row's encoding includes its own label, so the feature already contains the answer. The model looks accurate on training data and collapses on test data, where the label is not available.",
+     "explanation": ""
+    },
+    {
+     "input": "How does out-of-fold encoding fix it?",
+     "output": "Each row is encoded using only the other folds, so it never sees its own label, and the training feature has the same noise level as the feature at test time.",
+     "explanation": ""
+    },
+    {
+     "input": "Why encode hour with sine and cosine?",
+     "output": "Hour 23 and hour 0 are one step apart but numerically 23 apart. Placing hours on a circle with $(\\sin, \\cos)$ makes neighbours close, and both are needed to tell positions apart.",
+     "explanation": ""
+    },
+    {
+     "input": "When prefer one-hot over ordinal encoding?",
+     "output": "When the categories have no order, particularly with linear models, which would otherwise treat the codes as magnitudes. Trees can cope with ordinal codes more easily.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Smoothing strength $a$ — larger values pull rare categories toward the global mean",
+    "Number of folds for out-of-fold target encoding",
+    "Period $P$ of the cyclical feature (24 for hour, 7 for weekday)",
+    "Number of bins $k$ and the binning strategy (uniform or quantile)"
+   ],
+   "edgeCases": [
+    "Fitting target encoding on all rows and then training on it leaks each label into its own feature; the model overfits and fails on new data",
+    "Unseen categories at test time need a fallback, here the prior mean through $n=0$; one-hot needs an unknown-category rule",
+    "Encoding statistics (categories, bin edges, prior) must come from training data only, never from validation or test",
+    "A single raw number for a cyclical feature puts 23h and 0h far apart; $\\sin$ alone is ambiguous, so use both $\\sin$ and $\\cos$"
+   ],
+   "related": [
+    "feature-scaling",
+    "data-leakage",
+    "cross-validation"
    ],
    "diagram": []
   },
@@ -5097,6 +5678,84 @@
    "diagram": []
   },
   {
+   "slug": "git-object-model",
+   "title": "Git Object Model (Blobs, Trees, Commits)",
+   "platform": "Programming",
+   "url": "https://git-scm.com/book/en/v2/Git-Internals-Git-Objects",
+   "difficulty": "Medium",
+   "topics": [
+    "Git",
+    "Hashing",
+    "Data Structures"
+   ],
+   "patterns": [],
+   "summary": "Git is a content-addressed store: blobs hold file bytes, trees list names and ids, commits point to a tree and parent commits, and each id is the SHA-1 of the object's header plus its content.",
+   "bruteForce": "Day-to-day work: use the porcelain commands. This model also omits packfiles, delta compression, refs files and the index, and newer repositories may use a different hash function than SHA-1.",
+   "intuition": "Because the id is computed from the content, an object cannot change without changing its name, and a commit's id covers its tree and its parents' ids. Editing one old file therefore changes its blob id, its tree ids, and every later commit id, so history is tamper evident. Identical content is stored once, and a branch is only a file holding one commit id, which is why creating branches is nearly free. Flow: content → header + hash → object id → tree lists ids → commit points to tree.",
+   "whyItWorks": "The id is a cryptographic hash of the full object, so equal ids mean equal content for practical purposes and any change gives a new id. A tree stores the ids of its children and a commit stores the ids of its tree and parents, which forms a Merkle DAG: one id at the tip authenticates the entire history below it.",
+   "approach": [
+    "Hash a blob as SHA-1 of \"blob size\" NUL then bytes — the id depends only on content",
+    "Sort tree entries as Git does, directories as if their name ended in \"/\" — the bytes must match exactly",
+    "Write each entry as mode, space, name, NUL, then the 20-byte raw id — the binary tree format",
+    "Build the commit text with tree, parent, author, committer lines, a blank line and the message — all hashed",
+    "Point a branch file at the new commit id — moving a branch is just writing 41 bytes"
+   ],
+   "time": "O(n) in the object size to hash it; O(k log k) to sort k tree entries",
+   "space": "O(size) per object; unchanged content is shared, not copied",
+   "solution": "import hashlib\n\ndef hash_object(kind, data):\n    header = b\"%s %d\\0\" % (kind.encode(), len(data))\n    return hashlib.sha1(header + data).hexdigest()\n\ndef tree_hash(entries):\n    def order(e):\n        mode, name, _ = e\n        return name.encode() + (b\"/\" if mode == \"40000\" else b\"\")\n    body = b\"\"\n    for mode, name, oid in sorted(entries, key=order):\n        body += mode.encode() + b\" \" + name.encode() + b\"\\0\"\n        body += bytes.fromhex(oid)\n    return hash_object(\"tree\", body)\n\ndef commit_hash(tree, parents, author, committer, message):\n    lines = [\"tree \" + tree]\n    lines += [\"parent \" + p for p in parents]\n    lines += [\"author \" + author, \"committer \" + committer]\n    text = \"\\n\".join(lines) + \"\\n\\n\" + message\n    return hash_object(\"commit\", text.encode())",
+   "keyLines": [
+    5,
+    10,
+    19
+   ],
+   "dryRun": [
+    "$\\mathrm{id} = \\mathrm{SHA1}(\\mathrm{type}\\ \\mathrm{size}\\ \\mathrm{NUL}\\ \\|\\ \\mathrm{content})$",
+    "Entry: $\\mathrm{mode}\\ \\mathrm{name}\\ \\mathrm{NUL}\\ \\|\\ \\mathrm{id}_{20}$ (raw bytes)",
+    "Commit: $\\mathrm{SHA1}(\\mathrm{header}\\ \\|\\ \\mathrm{tree}, \\mathrm{parents}, \\mathrm{msg})$",
+    "Edit $\\Rightarrow$ new blob id $\\Rightarrow$ new tree ids $\\Rightarrow$ new commit ids",
+    "Id size: $40\\ \\mathrm{hex} = 160\\ \\mathrm{bits} = 20\\ \\mathrm{bytes}$"
+   ],
+   "description": "Understanding what git commit, branch, merge and rebase really do, debugging odd repository states, and building tools that read or write repositories directly, such as dataset or model versioning.",
+   "examples": [
+    {
+     "input": "What is a Git branch?",
+     "output": "A small file under refs/heads holding the id of one commit. Committing moves it forward, and creating a branch just writes a new file.",
+     "explanation": ""
+    },
+    {
+     "input": "Why do two files with the same content share one object?",
+     "output": "The id comes from the content alone, not the file name, so identical bytes hash to the same blob and are stored once. Names live in the tree.",
+     "explanation": ""
+    },
+    {
+     "input": "How does Git detect tampering with history?",
+     "output": "Each commit id covers its tree and parent ids. Altering an old object changes its id and every id above it, so it no longer matches the id you trust.",
+     "explanation": ""
+    },
+    {
+     "input": "What does a commit contain?",
+     "output": "One tree id, zero or more parent ids, author and committer with timestamps, and the message. The parents make the history a DAG.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Hash function (SHA-1 or SHA-256 repositories)",
+    "File mode of each tree entry (100644, 100755, 40000)",
+    "Author and committer name, email and timestamp"
+   ],
+   "edgeCases": [
+    "Tree ids inside a tree are raw 20 bytes, not 40 hex characters",
+    "Directories sort as if their name ended in \"/\", so \"a\" comes after \"a.txt\"",
+    "The commit message must end in a newline exactly as Git stores it, or the id differs",
+    "Two commits with the same tree but different time or parents get different ids"
+   ],
+   "related": [
+    "prompt-versioning",
+    "tracing-and-logging"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "glove-embeddings",
    "title": "GloVe Embeddings",
    "platform": "NLP",
@@ -5336,6 +5995,89 @@
     "decoder-only-block",
     "bert-masked-lm",
     "next-token-prediction-loss"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "gpu-computing-roofline",
+   "title": "GPU Roofline Model",
+   "platform": "Deep Learning",
+   "url": "https://jax-ml.github.io/scaling-book/roofline/",
+   "difficulty": "Medium",
+   "topics": [
+    "GPU",
+    "Performance",
+    "Arithmetic Intensity",
+    "Inference"
+   ],
+   "patterns": [],
+   "summary": "An operation is limited either by how fast the chip computes or by how fast it moves data. The roofline model predicts which one, from the FLOPs per byte the operation performs.",
+   "bruteForce": "As an exact predictor. Real kernels also lose time to launch overhead, poor occupancy, caches and communication, so the roofline is an upper bound on speed rather than an estimate of it.",
+   "intuition": "A GPU has a compute ceiling and a memory-bandwidth ceiling, and each operation hits whichever it reaches first. Arithmetic intensity, the FLOPs done per byte moved, decides it: a large matmul reuses every loaded number many times and saturates compute, while an elementwise add, softmax or layer norm touches each number once and waits on memory. LLM decoding is the extreme case, since each token streams all the weights to do about two FLOPs per weight, so batching (reusing the loaded weights for many tokens) and fused kernels such as FlashAttention (fewer bytes moved) are the main levers. Flow: FLOPs ÷ bytes → intensity → compare to ridge → memory or compute bound.",
+   "whyItWorks": "Time is at least $\\mathrm{FLOPs}/P$ for compute and at least $\\mathrm{bytes}/B$ for data movement, and the two overlap at best, so runtime is at least the larger of the two. Dividing the FLOPs by that time gives attainable throughput $\\min(P, B \\cdot I)$. The kink at $I = P/B$ is the ridge point. In decoding, the weights are read once per step whatever the batch size, so tokens per second grows with the batch until the compute roof is reached.",
+   "approach": [
+    "Count the FLOPs of the operation — a matmul $m \\times k$ by $k \\times n$ costs $2mkn$",
+    "Count the bytes moved to and from memory — read both inputs, write the output",
+    "Divide to get intensity $I = \\mathrm{FLOPs}/\\mathrm{bytes}$ — the reuse per byte",
+    "Take $\\min(P,\\, B \\cdot I)$ for peak $P$ and bandwidth $B$ — the attainable FLOP/s",
+    "Compare $I$ to the ridge point $P/B$ — below it the operation is memory-bound, above it compute-bound"
+   ],
+   "time": "O(1) arithmetic per operation; it is a model, not a measurement",
+   "space": "O(1)",
+   "solution": "def matmul_flops(m, k, n):\n    return 2 * m * k * n\n\ndef matmul_bytes(m, k, n, bytes_per=2):\n    return bytes_per * (m * k + k * n + m * n)\n\ndef arithmetic_intensity(flops, nbytes):\n    return flops / nbytes\n\ndef attainable(peak, bw, ai):\n    return min(peak, bw * ai)\n\ndef ridge_point(peak, bw):\n    return peak / bw\n\ndef decode_tokens_per_s(weight_bytes, bw, batch=1,\n                        peak=None, flops_per_token=None):\n    bound = batch * bw / weight_bytes\n    if peak is not None:\n        bound = min(bound, peak / flops_per_token)\n    return bound",
+   "keyLines": [
+    5,
+    11,
+    18
+   ],
+   "dryRun": [
+    "Matmul FLOPs: $2mkn$",
+    "Bytes moved: $b\\,(mk + kn + mn)$",
+    "Intensity: $I = \\frac{\\mathrm{FLOPs}}{\\mathrm{bytes}}$",
+    "Attainable: $\\min(P,\\; B \\cdot I)$",
+    "Ridge point: $I^{*} = \\frac{P}{B}$",
+    "Elementwise add: $I = \\frac{n}{3bn} = \\frac{1}{3b}$",
+    "Decode bound: $\\frac{\\mathrm{batch} \\cdot B}{\\mathrm{weight\\ bytes}}$"
+   ],
+   "description": "Reasoning about why an operation or model is slow, estimating the best possible speed before profiling, and deciding whether to add compute, bandwidth, batching or kernel fusion.",
+   "examples": [
+    {
+     "input": "What is arithmetic intensity?",
+     "output": "The number of FLOPs an operation performs per byte it moves to or from memory. It measures how much each loaded value is reused.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is LLM decoding memory-bound at batch size 1?",
+     "output": "Each token reads every weight once but does only about two FLOPs per weight, so the intensity is far below the ridge point and speed is set by bandwidth divided by weight bytes.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does batching raise decoding throughput?",
+     "output": "The weights are loaded once per step and reused for every sequence in the batch, so tokens per step grow while bytes per step stay the same, until compute becomes the limit.",
+     "explanation": ""
+    },
+    {
+     "input": "How does FlashAttention help in roofline terms?",
+     "output": "It does the same FLOPs but avoids writing and re-reading the large score matrix, so bytes moved fall and intensity rises.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Peak compute $P$ of the chip in FLOP/s",
+    "Memory bandwidth $B$ in bytes/s",
+    "Bytes per value $b$ (precision)",
+    "Batch size, which sets the matmul shape in decoding"
+   ],
+   "edgeCases": [
+    "Counting only the inputs; the output write is also traffic, and intermediate tensors that are written and re-read add more",
+    "Treating a matmul as always compute-bound; with a small $m$ (small batch) its intensity falls below the ridge point",
+    "Mixing units, such as FLOPs versus multiply-adds, or bits versus bytes, which shifts the ridge point by a factor of 2 or 8",
+    "Reading the roofline as achieved speed; it is only the ceiling"
+   ],
+   "related": [
+    "flash-attention-online-softmax",
+    "kv-cache",
+    "gpu-memory-estimation"
    ],
    "diagram": []
   },
@@ -6627,6 +7369,86 @@
    "diagram": []
   },
   {
+   "slug": "json-api-requests-retries",
+   "title": "JSON APIs, Retries and Backoff",
+   "platform": "Programming",
+   "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Retry-After",
+   "difficulty": "Medium",
+   "topics": [
+    "HTTP",
+    "JSON",
+    "Reliability"
+   ],
+   "patterns": [],
+   "summary": "Call an HTTP JSON API safely: retry only failures that can succeed later (429 and 5xx), wait with exponential backoff and full jitter, honour Retry-After, page through results, and validate the body.",
+   "bruteForce": "Non-idempotent calls such as a payment POST unless the server accepts an idempotency key, and 4xx errors, which are your bug and retrying only wastes quota. Provider-specific LLM rate limits need their own handling.",
+   "intuition": "A request is a method, URL, headers and optional JSON body; the status class tells you whose fault a failure is. A 4xx means your request is wrong, so repeating it is pointless, while 429 and 5xx mean the server is busy or broken and may recover. If every client retries on the same schedule they hammer the server in waves, so the wait grows exponentially up to a cap and is drawn uniformly from zero to that bound (full jitter), which spreads the retries out in time. Flow: send → status class → retryable? → jittered wait → resend or stop.",
+   "whyItWorks": "Failures from overload are transient, so a later attempt often succeeds, and the growing delay gives the server time to recover. Randomising the wait de-synchronises clients: with full jitter the expected wait is half the exponential bound, and the total load is spread out instead of arriving in synchronised bursts. Idempotent methods (GET, PUT, DELETE) give the same server state however many times they run, which is what makes repeating them safe.",
+   "approach": [
+    "Classify the status with is_retryable — 429 and 5xx may succeed later, other 4xx never will",
+    "Compute the delay as $U(0, \\min(c, b \\cdot 2^{a}))$ — exponential growth with full jitter",
+    "If Retry-After is present, wait at least that long — the server knows its own recovery time",
+    "Retry timeouts and stop after max_tries — bounded total time, then raise a clear error",
+    "Loop on the next cursor in paginate until it is None — collects every page",
+    "Check that the body is valid JSON with the expected keys — never trust a response blindly"
+   ],
+   "time": "O(P) requests for P pages; a retry loop waits at most the sum of capped delays",
+   "space": "O(N) to hold N collected items; O(1) for the retry state",
+   "solution": "import httpx\n\ndef backoff_delay(attempt, base, cap, rng):\n    return rng.uniform(0, min(cap, base * 2 ** attempt))\n\ndef is_retryable(status):\n    return status == 429 or 500 <= status < 600\n\ndef call_with_retries(send, max_tries, sleep, rng,\n                      base=0.5, cap=8.0):\n    for attempt in range(max_tries):\n        try:\n            r = send()\n            if not is_retryable(r.status_code):\n                return r\n            wait = backoff_delay(attempt, base, cap, rng)\n            ra = r.headers.get(\"Retry-After\", \"\")\n            if ra.isdigit():\n                wait = max(wait, float(ra))\n        except httpx.TimeoutException:\n            wait = backoff_delay(attempt, base, cap, rng)\n        if attempt < max_tries - 1:\n            sleep(wait)\n    raise RuntimeError(f\"gave up after {max_tries} tries\")\n\ndef parse_json(r, keys):\n    try:\n        data = r.json()\n    except ValueError:\n        raise ValueError(\"response body is not valid JSON\")\n    missing = [k for k in keys if k not in data]\n    if missing:\n        raise ValueError(f\"missing keys: {missing}\")\n    return data\n\ndef paginate(fetch_page):\n    items, cursor = [], None\n    while True:\n        page = fetch_page(cursor)\n        items += page[\"items\"]\n        cursor = page[\"next\"]\n        if cursor is None:\n            return items",
+   "keyLines": [
+    4,
+    7,
+    19
+   ],
+   "dryRun": [
+    "Delay: $d_a = u \\cdot \\min(c,\\ b \\cdot 2^{a})$, $u \\in [0, 1]$",
+    "Worst-case wait: $\\sum_{a=0}^{n-2} \\min(c,\\ b \\cdot 2^{a})$",
+    "Retry-After $r$: $d = \\max(d_a,\\ r)$",
+    "Requests: $\\lceil N / s \\rceil$",
+    "Success within $n$ tries: $1 - p^{n}$"
+   ],
+   "description": "Any client of an HTTP JSON service, especially over flaky networks or rate-limited APIs, where transient 429, 5xx and timeouts are normal and a bare request would turn them into user-visible failures.",
+   "examples": [
+    {
+     "input": "Which requests are safe to retry?",
+     "output": "Idempotent ones: GET, PUT and DELETE give the same final state however often they run. A plain POST may create duplicates unless the API supports an idempotency key.",
+     "explanation": ""
+    },
+    {
+     "input": "Why add jitter to exponential backoff?",
+     "output": "Without it, clients that failed together retry together and overload the server again. Random delays spread the retries over time.",
+     "explanation": ""
+    },
+    {
+     "input": "Which status codes do you retry?",
+     "output": "429 and 5xx, plus timeouts and connection errors. Other 4xx codes such as 400, 401 and 404 mean the request itself is wrong, so retrying cannot help.",
+     "explanation": ""
+    },
+    {
+     "input": "What does Retry-After do?",
+     "output": "The server tells you how many seconds (or until which date) to wait. Use at least that delay instead of guessing.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Maximum number of tries",
+    "Base delay $b$ and cap $c$ of the backoff",
+    "Per-request timeout",
+    "Page size for pagination"
+   ],
+   "edgeCases": [
+    "Retrying a non-idempotent POST can create duplicates; send an idempotency key or do not retry",
+    "Retry-After may be an HTTP date as well as seconds; this code handles only seconds",
+    "No timeout means a hung connection blocks forever, so always set one on the client",
+    "Retrying at several layers multiplies attempts, for example $3 \\cdot 3 = 9$ calls"
+   ],
+   "related": [
+    "structured-outputs-json-schema",
+    "output-validation-guardrails"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "k-means",
    "title": "K-Means Clustering",
    "platform": "Classical ML",
@@ -7393,6 +8215,35 @@
    "diagram": []
   },
   {
+   "slug": "linux-command-line",
+   "title": "Linux and the Command Line",
+   "platform": "Programming",
+   "url": "https://linuxcommand.org/tlcl.php",
+   "difficulty": "Easy",
+   "topics": [
+    "Linux",
+    "Shell",
+    "Tooling"
+   ],
+   "patterns": [],
+   "summary": null,
+   "bruteForce": null,
+   "intuition": null,
+   "whyItWorks": null,
+   "approach": null,
+   "time": null,
+   "space": null,
+   "solution": null,
+   "keyLines": [],
+   "dryRun": [],
+   "description": null,
+   "examples": [],
+   "constraints": [],
+   "edgeCases": [],
+   "related": [],
+   "diagram": []
+  },
+  {
    "slug": "llama-rmsnorm-gqa",
    "title": "Llama Blocks - RMSNorm and Grouped-Query Attention",
    "platform": "LLM",
@@ -7788,6 +8639,95 @@
    "diagram": [
     "lora-low-rank-adaptation"
    ]
+  },
+  {
+   "slug": "loss-functions-regression-classification",
+   "title": "Loss Functions for Regression and Classification",
+   "platform": "Deep Learning",
+   "url": "https://en.wikipedia.org/wiki/Huber_loss",
+   "difficulty": "Medium",
+   "topics": [
+    "Loss Functions",
+    "Regression",
+    "Classification",
+    "Maximum Likelihood"
+   ],
+   "patterns": [],
+   "summary": "MSE, MAE, Huber, pinball, hinge, binary and categorical cross-entropy, each with its gradient, and why each one is a likelihood in disguise.",
+   "bruteForce": "MSE on data with heavy-tailed outliers, MAE when you need a smooth gradient near zero, cross-entropy computed on probabilities that were already squashed (use the logits form), and accuracy as a training loss, since it has no useful gradient.",
+   "intuition": "A loss is a belief about the noise. Squared error is the negative log-likelihood of Gaussian noise, so it chases the mean and a single outlier drags it far. Absolute error is Laplace noise, so it chases the median and the pull of an outlier is capped. Huber is quadratic near zero and linear far away, taking the smooth gradient of MSE for small residuals and the robustness of MAE for large ones. Cross-entropy is the Bernoulli or categorical log-likelihood. The gradient tells the story: it is the residual (MSE), its sign (MAE), or the clipped residual (Huber), and for cross-entropy with logits it is simply prediction minus target. Flow: noise assumption → likelihood → loss → gradient on the prediction.",
+   "whyItWorks": "If $y = p + \\epsilon$ with Gaussian noise, the negative log-likelihood is $\\frac{(y-p)^2}{2\\sigma^2} + \\ln\\sigma + \\frac{1}{2}\\ln 2\\pi$, which is MSE up to a scale and a constant. With Laplace noise it is $\\frac{|y-p|}{b} + \\ln 2b$, which is MAE up to the same. For a Bernoulli label with probability $\\sigma(z)$ the negative log-likelihood is the binary cross-entropy. Minimising the loss over data is therefore maximum likelihood, and the minimiser of squared, absolute and pinball loss is the mean, median and $\\tau$-quantile.",
+   "approach": [
+    "Compute the residual $r = p - y$ between prediction and target — every regression loss is a function of it",
+    "Choose the penalty from the noise model, squared for Gaussian, absolute for Laplace, Huber for a mix — decides how much outliers pull",
+    "For classification, feed logits to the loss and use $\\max(z,0) - zy + \\ln(1+e^{-|z|})$ — avoids overflow and $\\log 0$",
+    "Differentiate with respect to the prediction — the gradient is what backpropagation starts from",
+    "Average over the batch and divide the gradient by $n$ — keeps the scale independent of batch size",
+    "Check each gradient against finite differences or autograd — catches sign and scale slips"
+   ],
+   "time": "O(n) per loss and gradient for n predictions, O(n·C) for C classes",
+   "space": "O(n) for the residuals and gradient, O(n·C) for the softmax",
+   "solution": "import numpy as np\n\ndef mse(p, y): return np.mean((p - y) ** 2)\ndef mse_grad(p, y): return 2 * (p - y) / p.size\n\ndef mae(p, y): return np.mean(np.abs(p - y))\ndef mae_grad(p, y): return np.sign(p - y) / p.size\n\ndef huber(p, y, d=1.0):\n    r = np.abs(p - y)\n    return np.mean(np.where(r <= d, 0.5 * r**2, d * (r - 0.5 * d)))\n\ndef huber_grad(p, y, d=1.0):\n    return np.clip(p - y, -d, d) / p.size\n\ndef pinball(p, y, q):\n    r = y - p\n    return np.mean(np.maximum(q * r, (q - 1) * r))\n\ndef pinball_grad(p, y, q):\n    return np.where(y > p, -q, 1 - q) / p.size\n\ndef hinge(s, y): return np.mean(np.maximum(0, 1 - y * s))\ndef hinge_grad(s, y): return np.where(y * s < 1, -y, 0) / s.size\n\ndef bce_logits(z, y):\n    t = np.log1p(np.exp(-np.abs(z)))\n    return np.mean(np.maximum(z, 0) - z * y + t)\n\ndef bce_logits_grad(z, y):\n    return (np.exp(-np.logaddexp(0, -z)) - y) / z.size\n\ndef cce(z, y):\n    m = z.max(axis=1, keepdims=True)\n    lse = m[:, 0] + np.log(np.exp(z - m).sum(axis=1))\n    return np.mean(lse - z[np.arange(len(y)), y])\n\ndef cce_grad(z, y):\n    e = np.exp(z - z.max(axis=1, keepdims=True))\n    g = e / e.sum(axis=1, keepdims=True)\n    g[np.arange(len(y)), y] -= 1\n    return g / len(y)",
+   "keyLines": [
+    11,
+    28,
+    31
+   ],
+   "dryRun": [
+    "$\\mathrm{MSE} = \\mathrm{mean}((p-y)^2)$, gradient $2(p-y)/n$",
+    "$\\mathrm{MAE} = \\mathrm{mean}|p-y|$, gradient $\\mathrm{sign}(p-y)/n$",
+    "Huber: $\\frac{1}{2}r^2$ if $|r| \\leq \\delta$, else $\\delta(|r|-\\frac{1}{2}\\delta)$",
+    "Huber gradient: $\\mathrm{clip}(r,-\\delta,\\delta)/n$",
+    "Pinball: $\\max(\\tau r,\\,(\\tau-1)r)$, $r = y-p$",
+    "Hinge: $\\max(0,\\,1-ys)$ with $y$ = $-1$ or $1$",
+    "BCE on logit: $\\max(z,0) - zy + \\ln(1+e^{-|z|})$",
+    "BCE gradient: $\\sigma(z) - y$",
+    "Categorical CE: $-\\ln\\mathrm{softmax}(z)_y = \\ln\\sum_j e^{z_j} - z_y$",
+    "CE gradient: $\\mathrm{softmax}(z) - \\mathrm{onehot}(y)$",
+    "Gaussian NLL: $\\frac{(y-p)^2}{2\\sigma^2} + \\ln\\sigma + \\frac{1}{2}\\ln 2\\pi$",
+    "Laplace NLL: $\\frac{|y-p|}{b} + \\ln 2b$"
+   ],
+   "description": "MSE for clean Gaussian-like targets, MAE or Huber when outliers exist, pinball for quantile forecasts, binary cross-entropy for binary labels, categorical cross-entropy for classes, hinge for margin classifiers such as SVMs.",
+   "examples": [
+    {
+     "input": "Why does MSE correspond to Gaussian noise?",
+     "output": "The Gaussian negative log-likelihood is $\\frac{(y-p)^2}{2\\sigma^2}$ plus constants, so maximising the likelihood is minimising squared error.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is MAE more robust than MSE?",
+     "output": "Its gradient has constant magnitude, so a large residual pulls no harder than a small one, whereas the MSE gradient grows with the residual. The MAE minimiser is the median, not the mean.",
+     "explanation": ""
+    },
+    {
+     "input": "What does Huber loss buy you?",
+     "output": "A smooth quadratic bowl near the optimum, which gives stable gradients, and linear tails that limit the influence of outliers. The threshold $\\delta$ sets the switch.",
+     "explanation": ""
+    },
+    {
+     "input": "Why compute binary cross-entropy from logits?",
+     "output": "Forming $\\sigma(z)$ and then $\\log$ overflows or loses precision for large $|z|$. The combined form $\\max(z,0) - zy + \\ln(1+e^{-|z|})$ is exact and stable.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Huber threshold $\\delta$ — residual size where the loss turns from quadratic to linear",
+    "Quantile level $\\tau$ for pinball loss (0.5 recovers MAE up to a factor)",
+    "Reduction (mean or sum) — changes the gradient scale and effective learning rate",
+    "Margin in hinge loss (1 here)"
+   ],
+   "edgeCases": [
+    "Applying a sigmoid first and then log-loss on probabilities overflows or hits $\\log 0$; use the logits form",
+    "MAE and hinge have a kink, so the gradient there is a subgradient and is zero at the exact kink in this code",
+    "These gradients average over the batch; summing instead multiplies the effective learning rate by $n$",
+    "Hinge expects labels $-1$ and $+1$, whereas cross-entropy expects $0$ and $1$ (or class indices)"
+   ],
+   "related": [
+    "maximum-likelihood",
+    "softmax-cross-entropy",
+    "logistic-regression"
+   ],
+   "diagram": []
   },
   {
    "slug": "lstm-cell",
@@ -8430,6 +9370,90 @@
     "bayes-theorem",
     "maximum-likelihood",
     "entropy-kl-divergence"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "micrograd-autograd-engine",
+   "title": "Reverse-Mode Autograd Engine (Micrograd)",
+   "platform": "Deep Learning",
+   "url": "https://docs.pytorch.org/docs/stable/notes/autograd.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Autodiff",
+    "Computation Graph",
+    "Backpropagation",
+    "PyTorch"
+   ],
+   "patterns": [],
+   "summary": "Each scalar Value remembers its parents and a tiny local backward rule. The forward pass builds the graph, and backward sorts it topologically and sweeps it in reverse, accumulating gradients with addition.",
+   "bruteForce": "Anything real-sized: scalar Python objects are thousands of times slower than tensor kernels, and the engine has no broadcasting, no in-place checks and no memory-saving tricks.",
+   "intuition": "The chain rule needs no symbolic algebra: every operation only has to know its own local derivative, and the graph glues them together. A node that feeds two later operations receives two gradient contributions, one per use, so they must be added with $+=$, never assigned. Visiting nodes in reverse topological order guarantees that a node's gradient is complete before it passes anything to its parents. Flow: forward builds graph → sort → reverse sweep → accumulate grads.",
+   "whyItWorks": "For $y = f(g(x))$ the chain rule gives $\\frac{\\partial y}{\\partial x} = \\frac{\\partial y}{\\partial g}\\frac{\\partial g}{\\partial x}$, and for a node used several times the total derivative is the sum over its consumers. Reverse order guarantees that when a node is processed its gradient already contains every consumer's contribution, so one sweep gives all $\\frac{\\partial L}{\\partial x_i}$ at about the cost of a forward pass, however many inputs there are.",
+   "approach": [
+    "Wrap each number in a Value with data, grad = 0, its parents and a no-op backward — the graph is built as a side effect of the arithmetic",
+    "Each operation creates the output Value and stores a closure that adds local derivative times the output gradient to every parent — the local chain rule",
+    "Sort the graph topologically from the output with a depth-first visit — every node comes after its parents",
+    "Set the output gradient to $1$ and call the stored closures in reverse order — a node is processed after all of its consumers",
+    "Read the gradients from the leaves and zero them before the next call — accumulation means a second call adds on top"
+   ],
+   "time": "O(nodes) forward and O(nodes) backward, each about the cost of the forward pass",
+   "space": "O(nodes), since every intermediate value and closure is kept for the sweep",
+   "solution": "import math\n\nclass Value:\n    def __init__(self, data, parents=()):\n        self.data, self.grad = data, 0.0\n        self.parents, self._back = parents, lambda: None\n\n    def __add__(self, o):\n        o = o if isinstance(o, Value) else Value(o)\n        out = Value(self.data + o.data, (self, o))\n        def back():\n            self.grad += out.grad\n            o.grad += out.grad\n        out._back = back\n        return out\n\n    def __mul__(self, o):\n        o = o if isinstance(o, Value) else Value(o)\n        out = Value(self.data * o.data, (self, o))\n        def back():\n            self.grad += o.data * out.grad\n            o.grad += self.data * out.grad\n        out._back = back\n        return out\n\n    def __pow__(self, p):  # constant exponent\n        out = Value(self.data ** p, (self,))\n        def back():\n            self.grad += p * self.data ** (p - 1) * out.grad\n        out._back = back\n        return out\n\n    def tanh(self):\n        out = Value(math.tanh(self.data), (self,))\n        def back():\n            self.grad += (1 - out.data ** 2) * out.grad\n        out._back = back\n        return out\n\n    def relu(self):\n        out = Value(max(0.0, self.data), (self,))\n        def back():\n            self.grad += (out.data > 0) * out.grad\n        out._back = back\n        return out\n\n    def exp(self):\n        out = Value(math.exp(self.data), (self,))\n        def back():\n            self.grad += out.data * out.grad\n        out._back = back\n        return out\n\n    __radd__, __rmul__ = __add__, __mul__\n    def __neg__(self): return self * -1\n    def __sub__(self, o): return self + (-o)\n\n    def backward(self):\n        order, seen = [], set()\n        def visit(v):\n            if v not in seen:\n                seen.add(v)\n                for p in v.parents:\n                    visit(p)\n                order.append(v)\n        visit(self)\n        self.grad = 1.0\n        for v in reversed(order):\n            v._back()",
+   "keyLines": [
+    12,
+    65,
+    68
+   ],
+   "dryRun": [
+    "Total: $\\frac{\\partial L}{\\partial x_i} = \\sum_j \\frac{\\partial L}{\\partial z_j}\\frac{\\partial z_j}{\\partial x_i}$",
+    "Add: $\\frac{\\partial z}{\\partial x} = 1$, $\\frac{\\partial z}{\\partial y} = 1$",
+    "Mul: $\\frac{\\partial z}{\\partial x} = y$, $\\frac{\\partial z}{\\partial y} = x$",
+    "Power: $z = x^p$, $\\frac{\\partial z}{\\partial x} = p\\,x^{p-1}$",
+    "Tanh: $\\frac{\\partial z}{\\partial x} = 1 - z^2$",
+    "Exp: $\\frac{\\partial z}{\\partial x} = z$",
+    "ReLU: $\\frac{\\partial z}{\\partial x} = [x > 0]$",
+    "Rule: $g_{x_i} \\leftarrow g_{x_i} + \\frac{\\partial z_j}{\\partial x_i} g_{z_j}$"
+   ],
+   "description": "Understanding how a deep learning framework computes gradients, and checking hand-derived gradients on small graphs. The same mechanism, on tensors and with fused kernels, is what runs under every training loop.",
+   "examples": [
+    {
+     "input": "Why does backward use += and not =?",
+     "output": "A node used in several places receives a gradient from each use, and the total derivative is their sum. Assignment would keep only the last one.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is a topological order needed?",
+     "output": "A node may only pass gradient to its parents after all its consumers have added theirs. Reverse topological order ensures that.",
+     "explanation": ""
+    },
+    {
+     "input": "Why do we zero gradients between steps?",
+     "output": "Gradients accumulate across backward calls. Without zeroing, stale values are added to the new ones, so leaf gradients come out wrong (exactly doubled for a single operation, more in deeper graphs). Training loops zero them before each step.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is reverse mode used for neural networks and not forward mode?",
+     "output": "Training has one scalar loss and millions of parameters. Reverse mode gets all parameter gradients in one sweep, while forward mode needs one pass per input.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Which operations are supported and their local rules",
+    "Initial seed gradient of the output (1 for a scalar loss)",
+    "When to zero gradients (before each backward call)",
+    "Whether intermediate values are kept or recomputed (checkpointing)"
+   ],
+   "edgeCases": [
+    "Using = instead of += in a local backward breaks any graph where a node is reused",
+    "Not zeroing gradients between backward calls adds stale values to the new ones; leaves double for one operation and inflate further in deeper graphs",
+    "Recursive graph traversal hits Python's recursion limit on very deep graphs; use an explicit stack",
+    "The ReLU derivative at $0$ is a convention (here $0$); frameworks may differ in edge cases"
+   ],
+   "related": [
+    "backpropagation",
+    "mlp-forward-pass",
+    "activation-functions"
    ],
    "diagram": []
   },
@@ -9153,6 +10177,86 @@
    "diagram": []
   },
   {
+   "slug": "numpy-broadcasting-vectorisation",
+   "title": "NumPy Broadcasting and Vectorisation",
+   "platform": "Programming",
+   "url": "https://numpy.org/doc/stable/user/basics.broadcasting.html",
+   "difficulty": "Easy",
+   "topics": [
+    "NumPy",
+    "Broadcasting",
+    "Vectorisation"
+   ],
+   "patterns": [],
+   "summary": "Broadcasting stretches arrays of different shapes to a common shape without copying, so one array expression replaces a Python loop over rows, pairs or batches.",
+   "bruteForce": "When the temporary is too large for memory (chunk the work or use the dot identity), or when each step depends on the previous result, as in a recurrence, which cannot be vectorised along that axis.",
+   "intuition": "Align the shapes from the right. An axis of size 1 (or a missing leading axis) is repeated virtually to match the other operand, so inserting a size-1 axis with `None` decides which pairs are formed: $A[:,\\mathrm{None}]-B[\\mathrm{None}]$ subtracts every row of $B$ from every row of $A$. The loop then runs in compiled code, not in Python. Flow: shapes → align from right → stretch size-1 axes → one array op.",
+   "whyItWorks": "Broadcasting is only an indexing rule: a size-1 axis uses stride 0, so the same element is read again for every position. No data is copied, and the elementwise loop runs in optimised compiled code. The distance identity follows from expanding the square and is exact in real arithmetic, though it can lose precision when two points are nearly equal.",
+   "approach": [
+    "Write both shapes right-aligned, padding the shorter with leading 1s — missing axes count as size 1",
+    "For each axis require equal sizes or a 1 — otherwise raise ValueError",
+    "Take the larger size per axis as the output shape — size-1 axes are stretched virtually",
+    "Use None or reshape to add size-1 axes — this chooses which axes pair up",
+    "Prefer the identity $\\|a\\|^2+\\|b\\|^2-2a\\cdot b$ for distances — it avoids the $n \\cdot m \\cdot d$ temporary"
+   ],
+   "time": "O(output size) per operation; pairwise distances cost O(n·m·d)",
+   "space": "Broadcast view is free, but the diff temporary is O(n·m·d); the dot identity needs only O(n·m)",
+   "solution": "import numpy as np\n\ndef broadcast_shape(a, b):\n    n = max(len(a), len(b))\n    a = (1,) * (n - len(a)) + tuple(a)\n    b = (1,) * (n - len(b)) + tuple(b)\n    out = []\n    for x, y in zip(a, b):\n        if x != y and x != 1 and y != 1:\n            raise ValueError(f\"cannot broadcast {a} with {b}\")\n        out.append(y if x == 1 else x)\n    return tuple(out)\n\ndef pairwise_sq_dists(A, B):\n    diff = A[:, None, :] - B[None, :, :]\n    return (diff ** 2).sum(axis=-1)\n\ndef pairwise_sq_dists_dot(A, B):\n    a2 = (A ** 2).sum(axis=1)[:, None]\n    b2 = (B ** 2).sum(axis=1)[None, :]\n    return a2 + b2 - 2 * A @ B.T\n\ndef softmax_rows(X):\n    e = np.exp(X - X.max(axis=1, keepdims=True))\n    return e / e.sum(axis=1, keepdims=True)",
+   "keyLines": [
+    5,
+    11,
+    15
+   ],
+   "dryRun": [
+    "Compatible axis: $a_i = b_i$ or $a_i = 1$ or $b_i = 1$",
+    "Result size: $\\mathrm{out}_i = \\max(a_i, b_i)$ per axis",
+    "$\\|a_i - b_j\\|^2 = \\|a_i\\|^2 + \\|b_j\\|^2 - 2\\,a_i \\cdot b_j$",
+    "Broadcast temp: $n \\cdot m \\cdot d$ floats; identity: $n \\cdot m$",
+    "Row softmax, $m = \\max_j x_j$: $\\frac{e^{x_i-m}}{\\sum_j e^{x_j-m}}$"
+   ],
+   "description": "Any elementwise or reduction work over rows, pairs or batches: normalising features, distance matrices, attention scores, masks and softmax. If you write a Python loop over array rows, look for the broadcast form first.",
+   "examples": [
+    {
+     "input": "What are the broadcasting rules?",
+     "output": "Align shapes from the trailing axis, pad the shorter shape with leading 1s, and require each pair of sizes to be equal or one of them 1. The result takes the larger size on each axis.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is a vectorised expression faster than a Python loop?",
+     "output": "The loop runs in compiled code over contiguous memory instead of the interpreter, and there is no per-element Python overhead. Broadcasting does it without copying the smaller operand.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you get all pairwise differences between two sets of vectors?",
+     "output": "Add a size-1 axis to each, A[:, None, :] - B[None, :, :], giving shape (n, m, d), then reduce over the last axis. The dot identity gives the squared distances without the (n, m, d) temporary.",
+     "explanation": ""
+    },
+    {
+     "input": "Why subtract the row maximum in softmax?",
+     "output": "Softmax is unchanged by a constant shift, and subtracting the maximum keeps every exponent at most zero, which avoids overflow.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Axis chosen for each reduction",
+    "keepdims, so the reduced result still broadcasts back",
+    "Chunk size when the temporary does not fit in memory",
+    "dtype (float32 or float64), which sets accuracy of the dot identity"
+   ],
+   "edgeCases": [
+    "A shape $(n,)$ against $(n,1)$ broadcasts to $(n,n)$, silently producing a matrix instead of an elementwise result",
+    "Forgetting keepdims=True in a reduction makes the result broadcast along the wrong axis",
+    "The dot identity can give tiny negative squared distances from rounding; clip at zero before a square root",
+    "In-place ops such as a += b cannot change the shape of a, so broadcasting only works toward a's shape"
+   ],
+   "related": [
+    "softmax-cross-entropy",
+    "knn",
+    "cosine-similarity-embeddings"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "output-validation-guardrails",
    "title": "Output Validation and Guardrails",
    "platform": "LLM",
@@ -9226,6 +10330,86 @@
     "structured-outputs-json-schema",
     "prompt-injection-defense",
     "hallucination-detection"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "pandas-groupby-merge-window",
+   "title": "Pandas Groupby, Merge and Window Features",
+   "platform": "Programming",
+   "url": "https://pandas.pydata.org/docs/user_guide/groupby.html",
+   "difficulty": "Easy",
+   "topics": [
+    "Pandas",
+    "Feature Engineering",
+    "Time Series"
+   ],
+   "patterns": [],
+   "summary": "Groupby aggregates rows per key, merge joins tables on a key, and rolling or shift builds features from earlier rows. Together they produce most tabular features.",
+   "bruteForce": "Data too large for memory (use a database or a distributed engine), or when order does not exist: rolling and lag features only make sense on data sorted by time within each group.",
+   "intuition": "All three are index operations on a table. Groupby splits rows by key, applies a function per group and combines the results; a join looks up each left row's key in the right table, so a duplicated right key multiplies the left row; a window or lag reads earlier rows. The danger is time: a feature for time $t$ may only use data up to $t-1$, otherwise the model sees the answer. Flow: table → group keys → aggregate → join back → lag features.",
+   "whyItWorks": "Hashing the key turns matching into a lookup, so no pairwise comparison of rows is needed. The rolling mean averages each length-$w$ window, and a NaN poisons only the windows containing it. Shifting the feature by one step guarantees that row $t$ was computed only from rows before it.",
+   "approach": [
+    "Split rows by key into groups — every row lands in exactly one group",
+    "Apply the aggregate to each group and combine into one value per key — a single pass, $O(N)$",
+    "Index the right table by key, then look up each left row — a dict makes the join $O(N+M)$",
+    "Emit one output row per matching right row, or one row of NaN if none — this is a left join",
+    "Build rolling and lag features, then shift by at least 1 — the feature at $t$ must not contain $x_t$"
+   ],
+   "time": "groupby and join O(N+M) with hashing; rolling mean O(N·w) as written, O(N) with cumulative sums",
+   "space": "O(N) for the groups or the join index and the output",
+   "solution": "import numpy as np\n\ndef groupby_agg(keys, values, fn):\n    groups = {}\n    for k, v in zip(keys, values):\n        groups.setdefault(k, []).append(v)\n    return {k: fn(vs) for k, vs in sorted(groups.items())}\n\ndef left_join(left_rows, right_rows, key):\n    index = {}\n    for r in right_rows:\n        index.setdefault(r[key], []).append(r)\n    cols = [c for c in right_rows[0] if c != key]\n    miss = [dict.fromkeys(cols, np.nan)]\n    out = []\n    for l in left_rows:\n        for r in index.get(l[key], miss):\n            out.append({**l, **{c: r[c] for c in cols}})\n    return out\n\ndef rolling_mean(x, w):\n    x = np.asarray(x, dtype=float)\n    out = np.full(len(x), np.nan)\n    if len(x) >= w:\n        win = np.lib.stride_tricks.sliding_window_view(x, w)\n        out[w - 1:] = win.mean(axis=1)\n    return out\n\ndef lag(x, k):\n    x = np.asarray(x, dtype=float)\n    out = np.full(len(x), np.nan)\n    if k < len(x):\n        out[k:] = x[:len(x) - k]\n    return out",
+   "keyLines": [
+    12,
+    17,
+    33
+   ],
+   "dryRun": [
+    "One pass over rows: $\\sum_k n_k = N$, cost O(N)",
+    "Left join rows: $\\sum_k l_k \\cdot \\max(r_k, 1)$",
+    "Inner join rows: $\\sum_k l_k \\cdot r_k$",
+    "Rolling: $\\bar{x}_t = \\frac{1}{w}\\sum_{i=0}^{w-1} x_{t-i}$",
+    "Lag: $\\mathrm{lag}_k(x)_t = x_{t-k}$, with $k \\geq 1$"
+   ],
+   "description": "Turning raw event or transaction tables into model features: per-user statistics, enriching rows with a lookup table, and lagged or rolling features for time series and forecasting.",
+   "examples": [
+    {
+     "input": "What happens to row counts when the right table has duplicate keys?",
+     "output": "Each left row is repeated once per matching right row, so a join can grow the table. Check key uniqueness on the side that should be unique.",
+     "explanation": ""
+    },
+    {
+     "input": "Difference between inner and left join?",
+     "output": "An inner join keeps only keys present on both sides. A left join keeps every left row and fills right columns with missing values when no match exists.",
+     "explanation": ""
+    },
+    {
+     "input": "How does a rolling feature leak the future?",
+     "output": "A window ending at $t$ includes $x_t$, which is the value being predicted at $t$. Shift the feature by at least one step before using it.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you compute group statistics without leaking across a train/test split?",
+     "output": "Compute them on the training rows only and join them onto both sets, or use out-of-fold statistics for target-based aggregates.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Window size $w$ for rolling features",
+    "Lag $k$ (at least 1 when predicting the current step)",
+    "Join type (inner, left) and the key columns",
+    "Aggregate function (mean, sum, count, std)"
+   ],
+   "edgeCases": [
+    "Computing the rolling mean on $x$ and aligning it to the same row leaks $x_t$ into the feature for $t$",
+    "Rolling or lag across several entities without grouping first mixes the end of one series with the start of the next",
+    "Joining on a key with duplicates silently multiplies rows and inflates later sums",
+    "Target-based group means computed on all data leak labels; compute them within training folds"
+   ],
+   "related": [
+    "data-leakage",
+    "feature-scaling",
+    "exponential-smoothing"
    ],
    "diagram": []
   },
@@ -9386,6 +10570,88 @@
     "k-means",
     "linear-regression",
     "ridge-lasso-regularization"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "perceptron-learning-rule",
+   "title": "Perceptron Learning Rule",
+   "platform": "Deep Learning",
+   "url": "https://en.wikipedia.org/wiki/Perceptron",
+   "difficulty": "Easy",
+   "topics": [
+    "Perceptron",
+    "Linear Classifiers",
+    "Online Learning",
+    "Convergence"
+   ],
+   "patterns": [],
+   "summary": "Predict $\\mathrm{sign}(w \\cdot x + b)$ and, only on a mistake, nudge the weights towards the misclassified point. On linearly separable data it stops after a bounded number of mistakes; on XOR it never settles.",
+   "bruteForce": "Non-separable problems (it oscillates forever), when calibrated probabilities are needed, or when a good margin matters; use logistic regression or a maximum-margin SVM instead.",
+   "intuition": "A mistake means the current hyperplane is on the wrong side of $x$, and adding $y\\,x$ to $w$ rotates it towards the correct side of that point. Correct points cause no change at all, so the learner is purely mistake driven. Each update also increases the alignment with any true separator by at least the margin $\\gamma$, while the weight norm grows only like $R\\sqrt{k}$, which squeezes the number of mistakes $k$ below $(R/\\gamma)^2$. Flow: predict → mistake? → add $y\\,x$ → repeat until a clean pass.",
+   "whyItWorks": "Suppose a unit vector $w^*$ separates the data with margin $\\gamma$, that is $y\\,(w^* \\cdot x) \\geq \\gamma$, and $\\|x\\| \\leq R$. Each mistake raises $w \\cdot w^*$ by at least $\\eta\\gamma$, so after $k$ mistakes it is at least $k\\eta\\gamma$. On a mistake $y\\,(w \\cdot x) \\leq 0$, so $\\|w\\|^2$ grows by at most $\\eta^2 R^2$, giving $\\|w\\| \\leq \\eta R\\sqrt{k}$. Cauchy-Schwarz gives $k\\eta\\gamma \\leq \\eta R\\sqrt{k}$, hence $k \\leq (R/\\gamma)^2$. The bias is covered by appending a constant $1$ to $x$.",
+   "approach": [
+    "Start from $w = 0$, $b = 0$ — no prior preference between classes",
+    "For each example compute the score $w \\cdot x + b$ — its sign is the prediction",
+    "If $y\\,(w \\cdot x + b) \\leq 0$ it is a mistake — correct points leave the model untouched",
+    "On a mistake do $w \\leftarrow w + \\eta\\,y\\,x$ and $b \\leftarrow b + \\eta\\,y$ — pushes the score of this point in the right direction",
+    "Stop after a pass with no mistakes — on separable data this is guaranteed to happen, otherwise cap the epochs"
+   ],
+   "time": "O(n·d) per epoch; at most $(R/\\gamma)^2$ updates in total when separable",
+   "space": "O(d) for the weights",
+   "solution": "import numpy as np\n\ndef predict(X, w, b):\n    return np.where(X @ w + b > 0, 1, -1)\n\ndef perceptron_fit(X, y, epochs, eta=1.0):\n    w, b, mistakes = np.zeros(X.shape[1]), 0.0, 0\n    for _ in range(epochs):\n        changed = 0\n        for x, t in zip(X, y):\n            if t * (x @ w + b) <= 0:\n                w = w + eta * t * x\n                b = b + eta * t\n                changed += 1\n        mistakes += changed\n        if changed == 0:\n            break\n    return w, b, mistakes\n\ndef margin(X, y, w):\n    return (y * (X @ w) / np.linalg.norm(w)).min()",
+   "keyLines": [
+    11,
+    12,
+    13
+   ],
+   "dryRun": [
+    "Predict: $\\hat{y} = \\mathrm{sign}(w \\cdot x + b)$",
+    "Mistake if $y\\,(w \\cdot x + b) \\leq 0$",
+    "Update: $w \\leftarrow w + \\eta\\,y\\,x$, $b \\leftarrow b + \\eta\\,y$",
+    "$\\gamma = \\min_i \\frac{y_i\\,(w^* \\cdot x_i)}{\\|w^*\\|}$, $R = \\max_i \\|x_i\\|$",
+    "After $k$ mistakes: $w \\cdot w^* \\geq k\\eta\\gamma$",
+    "and $\\|w\\|^2 \\leq k\\eta^2 R^2$, so $k \\leq (R/\\gamma)^2$"
+   ],
+   "description": "Teaching the mistake-driven update, quick online baselines on data that is close to linearly separable, and as the unit that a neural network stacks: one neuron with a step activation.",
+   "examples": [
+    {
+     "input": "What is Novikoff's theorem?",
+     "output": "If the data is linearly separable with margin gamma and every point has norm at most R, the perceptron makes at most (R/gamma)^2 mistakes, regardless of the order and of the learning rate when starting from zero.",
+     "explanation": ""
+    },
+    {
+     "input": "What happens on XOR?",
+     "output": "No line separates XOR, so every pass contains a mistake and the weights cycle forever. A hidden layer or a feature such as the product of the inputs fixes it.",
+     "explanation": ""
+    },
+    {
+     "input": "How does the perceptron relate to logistic regression and the SVM?",
+     "output": "Logistic regression replaces the hard mistake test by a smooth loss and gives probabilities. The SVM also seeks a separator but picks the maximum-margin one, while the perceptron returns any separator.",
+     "explanation": ""
+    },
+    {
+     "input": "Does the learning rate matter?",
+     "output": "Starting from zero, scaling the rate only rescales $w$ and $b$, so the predictions and mistake count do not change.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Learning rate $\\eta$ (irrelevant for the decisions when starting from zero)",
+    "Maximum number of epochs, as a guard on non-separable data",
+    "Order of the examples, which changes which separator is found",
+    "Whether to include a bias term"
+   ],
+   "edgeCases": [
+    "Never converges when the data is not separable; always cap the epochs and track the training error",
+    "The result depends on the example order and is not the maximum-margin separator, so it can generalise worse than an SVM",
+    "Zero scores count as mistakes; using a strict test instead keeps the all-zero start from ever updating",
+    "The bound uses the norm of the input including the constant bias feature"
+   ],
+   "related": [
+    "logistic-regression",
+    "svm",
+    "mlp-forward-pass"
    ],
    "diagram": []
   },
@@ -9931,6 +11197,93 @@
    "diagram": []
   },
   {
+   "slug": "probability-distributions-sampling",
+   "title": "Probability Distributions and Sampling",
+   "platform": "Math",
+   "url": "https://en.wikipedia.org/wiki/Inverse_transform_sampling",
+   "difficulty": "Medium",
+   "topics": [
+    "Probability",
+    "Distributions",
+    "Sampling",
+    "Random Variables"
+   ],
+   "patterns": [],
+   "summary": "The handful of distributions ML leans on (Bernoulli, Binomial, Categorical, Gaussian, Poisson, Exponential) and how to draw samples from them using only uniform random numbers.",
+   "bruteForce": "Inverse transform needs a CDF you can invert; for awkward densities use rejection sampling or MCMC. In practice call the library sampler (it is faster and well tested) and keep these versions for understanding.",
+   "intuition": "Each distribution is a model of one kind of randomness: a coin flip, a count of flips, a choice among classes, a sum of many small effects, rare events in a window, a waiting time. Sampling reduces them all to the uniform draw $u$: push $u$ through the inverse CDF, $x = F^{-1}(u)$, and $x$ has CDF $F$, because $F^{-1}$ just reshuffles probability mass. Box-Muller is the same idea in two dimensions, because the Gaussian CDF has no closed-form inverse. Flow: uniform $u$ → inverse CDF or transform → sample from the target.",
+   "whyItWorks": "If $U$ is uniform on $(0,1)$ then $P(F^{-1}(U) \\leq x) = F(x)$, because the event is $U \\leq F(x)$. So the transformed variable has CDF $F$. For a categorical the CDF is the cumulative sum of the probabilities, and the sample is the first index whose cumulative sum exceeds $u$. For Box-Muller, the squared radius of a 2-D standard normal is exponential with rate $1/2$ and the angle is uniform, so $r=\\sqrt{-2\\ln u_1}$ and $\\theta=2\\pi u_2$ reproduce a standard normal pair.",
+   "approach": [
+    "Draw uniform numbers $u$ on $(0,1)$ — the only randomness the sampler needs",
+    "For a categorical, build the cumulative sum of the probabilities — it is the discrete CDF",
+    "Find where $u$ lands in that cumulative sum with a binary search — the landing index is the class",
+    "For an exponential, invert the CDF to get $-\\ln(1-u)/\\lambda$ — closed-form inverse transform",
+    "For a Gaussian, turn two uniforms into a radius and an angle and take the cosine — Box-Muller, since no closed-form inverse exists",
+    "Check samples against the theory, via mean, variance or a KS test — catches a wrong transform"
+   ],
+   "time": "O(n) for n samples; categorical adds O(n log K) for the binary search over K classes",
+   "space": "O(n) for the samples, O(K) for the cumulative sum",
+   "solution": "import numpy as np\nfrom math import comb, exp, factorial, pi, sqrt\n\ndef binomial_pmf(k, n, p):\n    return comb(n, k) * p**k * (1 - p)**(n - k)\n\ndef poisson_pmf(k, lam):\n    return exp(-lam) * lam**k / factorial(k)\n\ndef gaussian_pdf(x, mu, sigma):\n    z = (x - mu) / sigma\n    return np.exp(-0.5 * z * z) / (sigma * sqrt(2 * pi))\n\ndef exponential_pdf(x, lam):\n    return lam * np.exp(-lam * x)\n\ndef sample_categorical(p, n, rng):\n    cdf = np.cumsum(p)\n    idx = np.searchsorted(cdf, rng.random(n), side=\"right\")\n    return np.minimum(idx, len(p) - 1)\n\ndef box_muller(n, rng):\n    u1, u2 = rng.random(n), rng.random(n)\n    r = np.sqrt(-2 * np.log(1 - u1))\n    return r * np.cos(2 * pi * u2)\n\ndef sample_exponential(lam, n, rng):\n    return -np.log(1 - rng.random(n)) / lam",
+   "keyLines": [
+    18,
+    19,
+    28
+   ],
+   "dryRun": [
+    "Binomial: $P(k) = \\binom{n}{k} p^k (1-p)^{n-k}$",
+    "Mean $np$, variance $np(1-p)$; Bernoulli: $n=1$",
+    "Poisson: $P(k) = e^{-\\lambda}\\lambda^k / k!$",
+    "Poisson mean = variance = $\\lambda$",
+    "Gaussian: $\\mathcal{N}(x;\\mu,\\sigma^2) = \\frac{e^{-(x-\\mu)^2/(2\\sigma^2)}}{\\sigma\\sqrt{2\\pi}}$",
+    "Exponential pdf: $f(x) = \\lambda e^{-\\lambda x}$, $x \\geq 0$",
+    "CDF $F(x) = 1 - e^{-\\lambda x}$; mean $1/\\lambda$",
+    "Inverse transform: $x = F^{-1}(u)$, $u$ uniform",
+    "Exponential sample: $x = -\\ln(1-u)/\\lambda$",
+    "Box-Muller: $z = \\sqrt{-2\\ln u_1}\\cos(2\\pi u_2)$"
+   ],
+   "description": "Simulating data, Monte Carlo estimates, sampling from a softmax or a noise model, and understanding which likelihood matches which kind of data: Bernoulli for binary labels, Categorical for classes, Gaussian for real values, Poisson for counts, Exponential for waiting times.",
+   "examples": [
+    {
+     "input": "How do you sample from any distribution given only uniform numbers?",
+     "output": "Apply the inverse CDF: if $U$ is uniform then $F^{-1}(U)$ has CDF $F$. It works whenever the CDF can be inverted, numerically if not in closed form.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you sample from a categorical distribution?",
+     "output": "Take the cumulative sum of the probabilities, draw $u$ uniform, and return the first index whose cumulative value exceeds $u$.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is Box-Muller needed for the Gaussian?",
+     "output": "The Gaussian CDF has no closed-form inverse. Box-Muller uses the fact that a 2-D standard normal has an exponential squared radius and a uniform angle.",
+     "explanation": ""
+    },
+    {
+     "input": "How are the Bernoulli, Binomial and Poisson related?",
+     "output": "A Binomial is a sum of $n$ independent Bernoulli draws, and with $n$ large and $p$ small, Binomial$(n,p)$ approaches Poisson with $\\lambda = np$.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Binomial and Poisson parameters $n$, $p$, $\\lambda$ (the rate)",
+    "Gaussian mean $\\mu$ and standard deviation $\\sigma$ (scale the standard normal as $\\mu + \\sigma z$)",
+    "Number of samples $n$ (error of a sample mean shrinks like $1/\\sqrt{n}$)",
+    "Random seed or generator for reproducibility"
+   ],
+   "edgeCases": [
+    "rng.random() can return exactly $0$, so use $1-u$ inside the logarithm to avoid $\\ln 0$",
+    "A cumulative sum of probabilities can end at $0.9999999$ instead of $1$; clip the index so a draw near $1$ stays in range",
+    "Box-Muller gives a pair per two uniforms; this version uses only the cosine, which is correct but wastes half the work",
+    "The exponential is parameterised by rate $\\lambda$ here; many libraries use scale $1/\\lambda$"
+   ],
+   "related": [
+    "maximum-likelihood",
+    "bayes-theorem",
+    "metropolis-hastings"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "prompt-injection-defense",
    "title": "Prompt Injection Defence in Depth",
    "platform": "LLM",
@@ -10232,6 +11585,242 @@
     "prompt-optimization",
     "prompt-templates",
     "ab-test-significance"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "python-generators-functional",
+   "title": "Generators and Functional Python for Data Pipelines",
+   "platform": "Programming",
+   "url": "https://docs.python.org/3/howto/functional.html",
+   "difficulty": "Easy",
+   "topics": [
+    "Python",
+    "Generators",
+    "Functional Programming"
+   ],
+   "patterns": [],
+   "summary": "Generators produce items one at a time on demand, so a pipeline of small generator stages streams data of any size in constant memory. Closures, partial, caching and decorators compose the stages.",
+   "bruteForce": "When you need random access, the length, or several passes over the same data: a generator is one-shot, so materialise it as a list. Memoising impure functions or unhashable arguments is also wrong.",
+   "intuition": "A generator function is a paused computation: each `next` runs it to the next `yield` and freezes its state. Chaining generators makes every item flow through all stages before the next item is read, so nothing is materialised. The price is that a generator is one-shot: once consumed it is empty. Flow: source → clean (lazy) → batch (lazy) → consumer pulls.",
+   "whyItWorks": "Calling a generator function returns an iterator that holds only its frame, not the results. Each `next` resumes the frame, so work happens when a value is demanded. `islice` on a shared iterator advances it, which is why consecutive batches do not overlap. `reduce` threads one value through the list of functions in order.",
+   "approach": [
+    "Write each stage as a generator that takes an iterable and yields items — stages stay small and testable",
+    "Chain stages by passing one generator into the next — nothing runs until a consumer pulls",
+    "Group items with batched using islice on one shared iterator — each batch continues where the last stopped",
+    "Combine functions with compose or functools.partial — fixes arguments and builds a pipeline from parts",
+    "Wrap pure, expensive functions with a memoize decorator — repeated arguments return the stored result"
+   ],
+   "time": "O(1) per item pulled; whole pipeline O(N) time",
+   "space": "O(1) for the stages plus O(n) for one batch, instead of O(N) for the full list",
+   "solution": "import itertools, functools\nfrom functools import reduce\n\ndef batched(iterable, n):\n    it = iter(iterable)\n    while batch := list(itertools.islice(it, n)):\n        yield batch\n\ndef compose(*fns):\n    return lambda x: reduce(lambda acc, f: f(acc), fns, x)\n\ndef memoize(fn):\n    cache = {}\n    @functools.wraps(fn)\n    def wrapper(*args):\n        if args not in cache:\n            cache[args] = fn(*args)\n        return cache[args]\n    return wrapper\n\ndef read_lines(lines):\n    for line in lines:\n        yield line\n\ndef clean(lines):\n    for line in lines:\n        line = line.strip().lower()\n        if line:\n            yield line\n\ndef flatten(batches):\n    for b in batches:\n        yield from b\n\ndef pipeline(lines, n):\n    return batched(clean(read_lines(lines)), n)",
+   "keyLines": [
+    6,
+    10,
+    17
+   ],
+   "dryRun": [
+    "List of $n$ items of size $s$: $n \\cdot s$ bytes",
+    "Batches: $\\lceil n/b \\rceil$ for batch size $b$",
+    "compose(f, g, h)(x) $= h(g(f(x)))$",
+    "$k$ distinct args, $c$ calls: $k$ runs, $c-k$ hits"
+   ],
+   "description": "Reading files, streams or database cursors too large for memory, feeding mini-batches to training, and any multi-stage transform where you want one pass and early exit.",
+   "examples": [
+    {
+     "input": "Difference between an iterator and a generator?",
+     "output": "An iterator is any object with __next__ and __iter__. A generator is an iterator created by a function with yield or a generator expression, which keeps its local state between calls.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does a generator give nothing the second time?",
+     "output": "It is a one-shot iterator: after StopIteration its frame is finished. Re-create it or store the items in a list if you need another pass.",
+     "explanation": ""
+    },
+    {
+     "input": "What does yield from do?",
+     "output": "It delegates to a sub-iterator, yielding each of its items, and returns the sub-generator's return value. It replaces a for loop with yield.",
+     "explanation": ""
+    },
+    {
+     "input": "When is lru_cache or a memoize decorator safe?",
+     "output": "For pure functions with hashable arguments. A cache of an impure function returns stale results and an unbounded cache grows without limit.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Batch size $n$ for batched",
+    "maxsize of lru_cache (None means unbounded)",
+    "Order of stages in compose",
+    "Prefetch or buffer size when overlapping reading with compute"
+   ],
+   "edgeCases": [
+    "Iterating a generator twice silently yields nothing the second time, for example calling len or sum then looping",
+    "Late binding in closures: lambdas created in a loop all see the final loop variable unless it is bound as a default argument",
+    "Memoizing with unhashable arguments such as lists raises TypeError, and unbounded caches leak memory",
+    "An exception inside a stage surfaces only when the consumer pulls, which can hide the real source of the bug"
+   ],
+   "related": [
+    "data-leakage",
+    "hyperparameter-search",
+    "text-preprocessing-stemming"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "python-oop-protocols-dataclasses",
+   "title": "Dataclasses, Protocols and Pipelines for ML Code",
+   "platform": "Programming",
+   "url": "https://docs.python.org/3/library/dataclasses.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Python",
+    "Dataclasses",
+    "Software Design"
+   ],
+   "patterns": [],
+   "summary": "Frozen dataclasses hold validated configs, a Protocol states which methods a component must have, and a Pipeline composes components that follow the fit, transform and predict convention.",
+   "bruteForce": "Tiny one-off scripts where a function is enough, or deep inheritance hierarchies to share a few lines; prefer composition and plain functions there.",
+   "intuition": "Structure ML code around data and small interfaces, not deep class trees. A config is a value, so make it immutable and check it once at construction. A component is anything with the right methods, so a Protocol accepts it by shape, with no common base class. A pipeline holds its steps instead of inheriting from them, which keeps each piece testable and swappable. Flow: config → validate → steps fit/transform → model fit/predict.",
+   "whyItWorks": "A frozen dataclass makes assignment raise, so a config cannot drift after validation, and `__post_init__` runs on every construction path. A Protocol checks structure instead of ancestry, so independent classes interoperate. Fitting each step on the previous step's output is exactly manual chaining, and keeping fitted state on the object lets the same transform be applied to new data.",
+   "approach": [
+    "Declare the config as a frozen dataclass with defaults — immutable values cannot change mid-run",
+    "Use field(default_factory=...) for mutable defaults and check ranges in __post_init__ — bad configs fail at creation",
+    "Define a Protocol with the methods a step needs — any class with them qualifies, no inheritance",
+    "Write steps as fit returning self plus transform or predict — chaining and uniform handling follow",
+    "Compose steps in a Pipeline that fits each on the output of the previous — mirrors manual chaining"
+   ],
+   "time": "Pipeline fit and predict cost the sum of the step costs; validation is O(1)",
+   "space": "O(d) per fitted scaler (mean and scale) plus the model state",
+   "solution": "import numpy as np\nfrom dataclasses import dataclass, field\nfrom typing import Protocol, runtime_checkable\n\n@runtime_checkable\nclass Estimator(Protocol):\n    def fit(self, X, y=None): ...\n    def predict(self, X): ...\n\n@dataclass(frozen=True)\nclass TrainConfig:\n    lr: float = 0.01\n    epochs: int = 10\n    tags: list = field(default_factory=list)\n\n    def __post_init__(self):\n        if self.lr <= 0:\n            raise ValueError(\"lr must be positive\")\n        if self.epochs < 1:\n            raise ValueError(\"epochs must be at least 1\")\n\nclass StandardScaler:\n    def fit(self, X, y=None):\n        self.mean_ = X.mean(axis=0)\n        std = X.std(axis=0)\n        self.scale_ = np.where(std == 0, 1.0, std)\n        return self\n\n    def transform(self, X):\n        return (X - self.mean_) / self.scale_\n\nclass MeanRegressor:\n    def fit(self, X, y=None):\n        self.mean_ = float(np.mean(y))\n        return self\n\n    def predict(self, X):\n        return np.full(len(X), self.mean_)\n\nclass Pipeline:\n    def __init__(self, steps, model):\n        self.steps, self.model = steps, model\n\n    def fit(self, X, y=None):\n        for s in self.steps:\n            X = s.fit(X, y).transform(X)\n        self.model.fit(X, y)\n        return self\n\n    def predict(self, X):\n        for s in self.steps:\n            X = s.transform(X)\n        return self.model.predict(X)",
+   "keyLines": [
+    14,
+    17,
+    46
+   ],
+   "dryRun": [
+    "Scaler: $z = \\frac{x - \\mu}{\\sigma}$, from training data",
+    "Pipeline: $\\hat{y} = f(T_2(T_1(X)))$",
+    "Fit cost: $\\sum_s (F_s + T_s) + F_{model}$"
+   ],
+   "description": "Experiment configs, reusable preprocessing and model components, and any code that swaps parts (scalers, models, metrics) behind a common method set so that training and serving share one code path.",
+   "examples": [
+    {
+     "input": "Protocol versus abc.ABC?",
+     "output": "ABC is nominal: a class must inherit from it. A Protocol is structural: any class with the right methods matches, and runtime_checkable allows isinstance, which only checks method names exist.",
+     "explanation": ""
+    },
+    {
+     "input": "Why a frozen dataclass for configs?",
+     "output": "Assignment raises FrozenInstanceError, so a config cannot be changed after validation, and with immutable fields it is hashable and safe to log and compare.",
+     "explanation": ""
+    },
+    {
+     "input": "Why default_factory instead of a default list?",
+     "output": "A literal mutable default would be shared by all instances, and dataclasses reject it with a ValueError. default_factory builds a fresh object per instance.",
+     "explanation": ""
+    },
+    {
+     "input": "Why must a scaler be fitted on training data only?",
+     "output": "Fitting on test data leaks its statistics into training. The pipeline fits the scaler on the training set and reuses its stored mean and scale for new data.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Config fields with sensible defaults (learning rate, epochs)",
+    "Validation bounds enforced in __post_init__",
+    "Order of pipeline steps",
+    "Zero-variance handling in the scaler (scale set to 1)"
+   ],
+   "edgeCases": [
+    "frozen=True blocks rebinding only; a list or dict field can still be mutated in place",
+    "isinstance against a runtime_checkable Protocol checks that methods exist, not their signatures or behaviour",
+    "Fitting a scaler on all data before the split leaks test statistics; fit inside the training fold",
+    "A fit that returns None instead of self breaks chaining such as scaler.fit(X).transform(X)"
+   ],
+   "related": [
+    "feature-scaling",
+    "data-leakage",
+    "cross-validation"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "pytorch-training-loop-anatomy",
+   "title": "PyTorch Training Loop Anatomy",
+   "platform": "Deep Learning",
+   "url": "https://docs.pytorch.org/tutorials/recipes/recipes/zeroing_out_gradients.html",
+   "difficulty": "Easy",
+   "topics": [
+    "PyTorch",
+    "Training Loop",
+    "Gradient Accumulation",
+    "Evaluation"
+   ],
+   "patterns": [],
+   "summary": "One training step is zero the gradients, forward, loss, backward, optionally clip, then step. Evaluation switches to eval mode and turns off gradient tracking.",
+   "bruteForce": "Accumulation does not reproduce batch statistics for batch norm, and with a sum-reduced or uneven microbatch loss the $1/k$ scaling must be adjusted. Clipping hides problems if gradients are constantly clipped.",
+   "intuition": "PyTorch accumulates into .grad on every backward call instead of overwriting it, so the order of the steps carries the meaning. Clear first, or old gradients leak into the new step. Clip after backward (the gradient must exist) and before step (it must be used). The same accumulation lets $k$ microbatches imitate one large batch: scale each loss by $1/k$ and the summed gradient is the mean over all of the data. Dropout and batch norm act differently in train and eval mode, so evaluation also needs the mode switch. Flow: zero_grad → forward → loss → backward → clip → step.",
+   "whyItWorks": "Gradients are linear in the loss, so the sum of gradients of $L_i/k$ over $k$ equal microbatches equals the gradient of their mean loss, which is the gradient of the large batch. Calling $\\mathrm{zero\\_grad}$ before backward makes each step start from zero, and no_grad prevents building a graph that evaluation does not need.",
+   "approach": [
+    "Call $\\mathrm{zero\\_grad}$ — backward adds to existing gradients",
+    "Run the forward pass in train mode and compute the loss — builds the graph",
+    "Call backward — fills .grad for every parameter",
+    "Clip the global gradient norm if wanted — after backward, before step",
+    "Call the optimiser step — updates parameters from the gradients"
+   ],
+   "time": "One forward and backward pass per microbatch plus one optimiser step",
+   "space": "Activations of one microbatch; accumulation avoids holding the full batch",
+   "solution": "import torch\n\ndef train_step(model, xb, yb, loss_fn, opt, clip=None):\n    model.train()\n    opt.zero_grad()\n    loss = loss_fn(model(xb), yb)\n    loss.backward()\n    if clip is not None:\n        torch.nn.utils.clip_grad_norm_(model.parameters(), clip)\n    opt.step()\n    return loss.item()\n\ndef accumulate_step(model, microbatches, loss_fn, opt):\n    model.train()\n    opt.zero_grad()\n    k = len(microbatches)\n    for xb, yb in microbatches:\n        (loss_fn(model(xb), yb) / k).backward()\n    opt.step()\n\ndef evaluate(model, loader, loss_fn):\n    model.eval()\n    total, n = 0.0, 0\n    with torch.no_grad():\n        for xb, yb in loader:\n            total += loss_fn(model(xb), yb).item() * len(xb)\n            n += len(xb)\n    return total / n",
+   "keyLines": [
+    5,
+    9,
+    18
+   ],
+   "dryRun": [
+    "Large batch: $g = \\frac{1}{N}\\sum_{i}\\nabla \\ell_i$",
+    "Microbatch $j$ loss $L_j$ (mean over its samples)",
+    "Accumulated: $\\sum_{j}\\nabla\\frac{L_j}{k} = \\frac{1}{k}\\sum_{j}\\nabla L_j = g$",
+    "Clip: $g \\leftarrow g\\cdot\\min\\left(1,\\frac{\\tau}{\\|g\\|}\\right)$"
+   ],
+   "description": "Every PyTorch training job; gradient accumulation when the desired batch does not fit in memory, clipping when loss spikes appear.",
+   "examples": [
+    {
+     "input": "Why must zero_grad be called every step?",
+     "output": "Backward adds into the existing gradients rather than replacing them, so without clearing, the gradient is the sum over steps.",
+     "explanation": ""
+    },
+    {
+     "input": "How does gradient accumulation match a large batch?",
+     "output": "Scale each microbatch mean loss by $1/k$, call backward on each, and step once; the summed gradient equals the gradient of the mean over all samples.",
+     "explanation": ""
+    },
+    {
+     "input": "What do model.eval() and torch.no_grad() each do?",
+     "output": "eval switches layers such as dropout and batch norm to inference behaviour; no_grad stops graph construction. They are independent, so evaluation needs both.",
+     "explanation": ""
+    },
+    {
+     "input": "Where does gradient clipping go?",
+     "output": "After backward, so gradients exist, and before the optimiser step, so the step uses the clipped values.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Batch size and number of accumulation steps $k$",
+    "Learning rate",
+    "Clipping threshold $\\tau$"
+   ],
+   "edgeCases": [
+    "Forgetting zero_grad, so each step uses the sum of all past gradients",
+    "Forgetting model.eval() or no_grad, which keeps dropout active and wastes memory in evaluation",
+    "Not dividing each microbatch loss by $k$, which makes the update $k$ times too large",
+    "Clipping before backward or after step, which has no effect on the update"
+   ],
+   "related": [
+    "gradient-clipping",
+    "dropout",
+    "backpropagation"
    ],
    "diagram": []
   },
@@ -12309,6 +13898,88 @@
    "diagram": []
   },
   {
+   "slug": "sklearn-pipeline-column-transformer",
+   "title": "Pipelines and ColumnTransformer (Leakage-Safe Preprocessing)",
+   "platform": "Classical ML",
+   "url": "https://scikit-learn.org/stable/modules/compose.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Preprocessing",
+    "Pipelines",
+    "Leakage",
+    "Cross-Validation"
+   ],
+   "patterns": [],
+   "summary": "Every transformer learns its statistics in fit and applies them in transform. A Pipeline chains steps, a ColumnTransformer routes column subsets to different transformers, and fitting only on training rows keeps validation and test data out of the preprocessing.",
+   "bruteForce": "Stateless transforms such as a fixed $\\log$ need no fitting, and a model that handles raw categories natively (some tree libraries) may not need an encoder. Do not use one global fit just because it is convenient.",
+   "intuition": "Preprocessing is a learned function, not a fixed one: the mean, the scale and the category list are parameters estimated from data. If they are estimated on rows the model is later scored on, information leaks. Packing preprocessing and model into one object makes the right order automatic, because a single $\\mathrm{fit}$ call sees only the rows it was handed, and a single $\\mathrm{predict}$ reuses those frozen statistics. Flow: fit on train → transform train → transform val/test with train stats.",
+   "whyItWorks": "A fitted transformer is a deterministic function of the rows it saw in fit. If fit sees only training rows, the transformed validation rows are a function of training data alone, so the score is an honest estimate. A Pipeline composes these functions, and a ColumnTransformer applies them to disjoint column blocks, so the whole is again one fit and predict interface that cross-validation can clone and refit per fold.",
+   "approach": [
+    "Give every transformer fit (learn parameters) and transform (apply them) — fit_transform is just the two in a row",
+    "In a ColumnTransformer, fit each transformer on its own column subset and hstack the outputs — numeric and categorical columns need different treatment",
+    "In a Pipeline, call fit_transform on every step but the last and fit on the last — each step trains on the previous step's output",
+    "At predict time call only transform on the fitted steps — validation and test rows never change the statistics",
+    "Deep-copy each step before fitting — one template can be refit in every CV fold without carrying state over"
+   ],
+   "time": "O(n·d) per transformer fit and transform; the final model dominates",
+   "space": "O(d) statistics per scaler plus the O(n·d') transformed matrix",
+   "solution": "import copy\nimport numpy as np\n\nclass FitTransform:\n    def fit_transform(self, X, y=None):\n        return self.fit(X, y).transform(X)\n\nclass StandardScaler(FitTransform):\n    def fit(self, X, y=None):\n        X = np.asarray(X, float)\n        self.mean_, self.std_ = X.mean(0), X.std(0)\n        return self\n\n    def transform(self, X):\n        X = np.asarray(X, float)\n        return (X - self.mean_) / self.std_\n\nclass OneHot(FitTransform):\n    def fit(self, X, y=None):\n        self.cats_ = [np.unique(c) for c in X.T]\n        return self\n\n    def transform(self, X):\n        return np.hstack([(c[:, None] == u).astype(float)\n                          for c, u in zip(X.T, self.cats_)])\n\nclass ColumnTransformer(FitTransform):\n    def __init__(self, parts):\n        self.parts = parts  # list of (transformer, columns)\n\n    def fit(self, X, y=None):\n        self.fitted_ = [(copy.deepcopy(t).fit(X[:, c]), c)\n                        for t, c in self.parts]\n        return self\n\n    def transform(self, X):\n        return np.hstack([t.transform(X[:, c])\n                          for t, c in self.fitted_])\n\nclass Pipeline:\n    def __init__(self, steps):\n        self.steps = steps\n\n    def fit(self, X, y):\n        self.fitted_ = [copy.deepcopy(s) for s in self.steps]\n        for s in self.fitted_[:-1]:\n            X = s.fit_transform(X)\n        self.fitted_[-1].fit(X, y)\n        return self\n\n    def predict(self, X):\n        for s in self.fitted_[:-1]:\n            X = s.transform(X)\n        return self.fitted_[-1].predict(X)\n\nclass LinearReg:\n    def fit(self, X, y):\n        xm, ym = X.mean(0), y.mean()\n        A, t = X - xm, y - ym\n        self.coef_ = np.linalg.lstsq(A, t, rcond=None)[0]\n        self.b_ = ym - xm @ self.coef_\n        return self\n\n    def predict(self, X):\n        return X @ self.coef_ + self.b_",
+   "keyLines": [
+    32,
+    47,
+    48
+   ],
+   "dryRun": [
+    "$z = \\frac{x - \\mu_{\\mathrm{train}}}{\\sigma_{\\mathrm{train}}}$",
+    "Statistics from training rows only: $\\mu_{\\mathrm{train}}$",
+    "One-hot: $\\mathrm{onehot}(x)_k = [x = c_k]$",
+    "Concat: $X^{\\prime} = [\\,T_1(X_{S_1}) \\,|\\, T_2(X_{S_2})\\,]$",
+    "Chain: $X_{i+1} = T_i(X_i)$, then $\\hat{y} = f(X_L)$",
+    "Centred fit: minimise $\\|A\\beta - t\\|^2$"
+   ],
+   "description": "Any workflow with preprocessing before a model, especially mixed numeric and categorical tables, cross-validation and hyperparameter search, where preprocessing must be refit inside every fold.",
+   "examples": [
+    {
+     "input": "Why put the scaler inside the pipeline instead of scaling first?",
+     "output": "Scaling first fits on all rows, including validation folds, which leaks. Inside the pipeline, cross-validation refits the scaler on each training fold only.",
+     "explanation": ""
+    },
+    {
+     "input": "What does a ColumnTransformer do with the outputs?",
+     "output": "It fits one transformer per column subset, transforms each subset, and concatenates the results side by side in the order given.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the difference between fit_transform and fit then transform?",
+     "output": "Usually none in value; fit_transform is a shortcut and may be faster. It is applied to training data only, never to test data.",
+     "explanation": ""
+    },
+    {
+     "input": "Why clone a transformer before fitting it?",
+     "output": "A fitted object holds state from its rows. Fitting a copy lets one unfitted template be reused for every fold without leftover statistics.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Which columns go to which transformer",
+    "How unseen categories are handled at transform time",
+    "What happens to the remaining, unlisted columns (drop or pass through)",
+    "The order of pipeline steps"
+   ],
+   "edgeCases": [
+    "Calling fit or fit_transform on validation or test data silently recomputes the statistics and leaks",
+    "An unseen category at test time breaks or silently shifts a naive encoder; real encoders need an ignore option",
+    "Column order matters: the output block order follows the transformer list, not the input columns, so mappings of features to coefficients must use the output order",
+    "Standardising a constant column divides by $\\sigma = 0$; real scalers guard against it"
+   ],
+   "related": [
+    "feature-scaling",
+    "data-leakage",
+    "cross-validation"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "sliding-window-attention",
    "title": "Sliding-Window (Local) Attention",
    "platform": "LLM",
@@ -12535,6 +14206,91 @@
     "autoregressive-decoding",
     "kv-cache",
     "temperature-sampling"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "statistics-hypothesis-testing",
+   "title": "Hypothesis Testing, Welch's t-Test, Bootstrap and FDR",
+   "platform": "Math",
+   "url": "https://www.itl.nist.gov/div898/handbook/eda/section3/eda353.htm",
+   "difficulty": "Medium",
+   "topics": [
+    "Statistics",
+    "Hypothesis Testing",
+    "Bootstrap",
+    "Multiple Comparisons"
+   ],
+   "patterns": [],
+   "summary": "Test whether two samples differ with Welch's t-test, put an interval on any statistic with the bootstrap, and control false positives when running many tests with Bonferroni or Benjamini-Hochberg.",
+   "bruteForce": "Binary outcomes (see the A/B test card, a two-proportion $z$-test), tiny or heavy-tailed samples where the $t$ approximation fails, dependent observations, and the bootstrap for extreme order statistics such as the maximum. A small $p$-value says nothing about whether the effect is large enough to matter.",
+   "intuition": "A test asks how surprising the data would be if nothing were going on. The $p$-value is the probability, assuming the null hypothesis, of a result at least as extreme as the one seen. It is not the probability that the null is true. The catch with many tests is arithmetic: run 100 true nulls at $\\alpha = 0.05$ and about 5 will look significant, so the threshold must tighten, either to protect against any false positive (Bonferroni) or to cap the fraction of false discoveries among the rejections (Benjamini-Hochberg). Flow: data → statistic under the null → $p$-value → corrected decision.",
+   "whyItWorks": "Under the null the Welch statistic is approximately $t$-distributed, with the Welch-Satterthwaite degrees of freedom matching its variance when the group variances differ. Under a true null a continuous $p$-value is uniform, so rejecting at $p \\leq \\alpha$ errs with probability $\\alpha$. Bonferroni follows from the union bound. Benjamini-Hochberg compares the sorted $p$-values to a rising line and, for independent tests, keeps the expected false discovery proportion at most $\\alpha$. The bootstrap resamples the data with replacement to imitate drawing new samples, so the spread of the statistic over resamples estimates its sampling spread.",
+   "approach": [
+    "Compute the two sample means and variances — the statistic compares means in units of their noise",
+    "Divide the mean gap by $\\sqrt{s_x^2/n_x + s_y^2/n_y}$ — Welch does not assume equal variances",
+    "Estimate the degrees of freedom with Welch-Satterthwaite — gives the right $t$ tail when variances differ",
+    "Take the two-sided tail probability as the $p$-value — how extreme the data is under the null",
+    "For an interval, resample with replacement $B$ times and take quantiles of the statistic — no formula needed",
+    "For many tests, compare against $\\alpha/m$ (Bonferroni) or the BH step-up line — controls false positives across the family"
+   ],
+   "time": "O(n) for the t-test, O(B·n) for the bootstrap, O(m log m) for BH (sort), O(m) for Bonferroni",
+   "space": "O(B·n) for the resampled indices, O(m) for the p-values",
+   "solution": "import numpy as np\nfrom scipy.stats import t as t_dist\n\ndef welch_t(x, y):\n    nx, ny = len(x), len(y)\n    a, b = x.var(ddof=1) / nx, y.var(ddof=1) / ny\n    t = (x.mean() - y.mean()) / np.sqrt(a + b)\n    df = (a + b) ** 2 / (a**2 / (nx - 1) + b**2 / (ny - 1))\n    return t, df, 2 * t_dist.sf(abs(t), df)\n\ndef bootstrap_ci(x, stat, B, alpha, seed):\n    rng = np.random.default_rng(seed)\n    idx = rng.integers(0, len(x), size=(B, len(x)))\n    s = np.array([stat(x[i]) for i in idx])\n    return tuple(np.quantile(s, [alpha / 2, 1 - alpha / 2]))\n\ndef bonferroni(pvals, alpha):\n    return np.asarray(pvals) <= alpha / len(pvals)\n\ndef bh_fdr(pvals, alpha):\n    p = np.asarray(pvals)\n    m = len(p)\n    order = np.argsort(p)\n    ok = p[order] <= alpha * np.arange(1, m + 1) / m\n    k = np.nonzero(ok)[0].max() + 1 if ok.any() else 0\n    reject = np.zeros(m, bool)\n    reject[order[:k]] = True\n    return reject",
+   "keyLines": [
+    8,
+    24,
+    25
+   ],
+   "dryRun": [
+    "$t = \\frac{\\bar{x}-\\bar{y}}{\\sqrt{s_x^2/n_x + s_y^2/n_y}}$",
+    "$a = s_x^2/n_x,\\; b = s_y^2/n_y$",
+    "Welch df: $\\frac{(a+b)^2}{a^2/(n_x-1) + b^2/(n_y-1)}$",
+    "p-value: $P(|T| \\geq |t|)$ computed under $H_0$",
+    "Power $= 1-\\beta = P(\\mathrm{reject}\\ H_0\\ \\mathrm{when}\\ H_1)$",
+    "Bonferroni: reject if $p_i \\leq \\alpha/m$",
+    "BH: $k = \\max\\{i : p_{(i)} \\leq i\\alpha/m\\}$",
+    "Bootstrap CI: $\\alpha/2$ and $1-\\alpha/2$ quantiles of $\\hat{\\theta}^*$"
+   ],
+   "description": "Comparing two group means with unequal variances or sizes (Welch's test is a safe default), getting a confidence interval for a median or other awkward statistic (bootstrap), and screening many features, genes or metrics at once (Bonferroni or BH).",
+   "examples": [
+    {
+     "input": "What does a p-value mean?",
+     "output": "The probability, under the null hypothesis, of a test statistic at least as extreme as the one observed. It is not the probability that the null is true or that the result is a fluke.",
+     "explanation": ""
+    },
+    {
+     "input": "What are Type I and Type II errors, and power?",
+     "output": "Type I is rejecting a true null, with probability $\\alpha$. Type II is missing a real effect, with probability $\\beta$. Power is $1-\\beta$, the chance of detecting a real effect, and it grows with sample size and effect size.",
+     "explanation": ""
+    },
+    {
+     "input": "Why use Welch over the pooled t-test?",
+     "output": "It does not assume equal variances and loses little when they are equal, so it is a safe default with unequal group sizes or spreads.",
+     "explanation": ""
+    },
+    {
+     "input": "Bonferroni versus Benjamini-Hochberg?",
+     "output": "Bonferroni controls the probability of any false positive by testing each at $\\alpha/m$. BH controls the expected fraction of false discoveries among rejections, which is less strict and has more power when many effects are real.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Significance level $\\alpha$ — tolerated false-positive rate (or FDR for BH)",
+    "Number of bootstrap resamples $B$ — more resamples give smoother interval ends",
+    "Number of tests $m$ — sets the Bonferroni threshold and the BH line",
+    "Two-sided or one-sided alternative — fixed before looking at the data"
+   ],
+   "edgeCases": [
+    "A $p$-value is not the probability that the null is true, and \"not significant\" is not evidence that there is no effect (low power looks the same)",
+    "Testing many hypotheses and reporting only the significant ones inflates false positives; correct across the whole family",
+    "BH guarantees hold for independent or positively dependent tests; Bonferroni controls the chance of any false rejection and is more conservative",
+    "The percentile bootstrap undercovers for small samples and for statistics that depend on the extremes"
+   ],
+   "related": [
+    "ab-test-significance",
+    "maximum-likelihood",
+    "bias-variance-tradeoff"
    ],
    "diagram": []
   },
@@ -13793,6 +15549,85 @@
    "diagram": []
   },
   {
+   "slug": "vectors-norms-distances",
+   "title": "Vectors, Norms and Distances",
+   "platform": "Math",
+   "url": "https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.mahalanobis.html",
+   "difficulty": "Easy",
+   "topics": [
+    "Linear Algebra",
+    "Distance",
+    "Geometry"
+   ],
+   "patterns": [],
+   "summary": "A vector is a point with a length and a direction. Norms measure length, the dot product measures alignment, and distances compare two points, each with different assumptions about the data.",
+   "bruteForce": "Distances on unscaled mixed-unit features without normalising, and Mahalanobis when the covariance is singular or estimated from too few samples. In very high dimension any distance carries less contrast, so reduce dimension first.",
+   "intuition": "Every distance answers a different question: $L_1$ adds up coordinate gaps, $L_2$ is straight-line length, $L_\\infty$ is the single worst coordinate, cosine ignores length and keeps direction, and Mahalanobis rescales by the data's covariance so correlated or large-scale directions count less. After scaling vectors to length 1, $\\|u - v\\|^2 = 2 - 2\\cos(u, v)$, so Euclidean and cosine rank neighbours identically. In very high dimension the nearest and farthest points end up almost equally far away. Flow: vectors → norm and dot product → unit vectors → angle → distance → ranking.",
+   "whyItWorks": "Expanding the squared difference gives $\\|u - v\\|^2 = \\|u\\|^2 + \\|v\\|^2 - 2\\,u^{\\top}v$, so with unit vectors it equals $2 - 2\\cos$, a decreasing function of cosine, and rankings agree. Mahalanobis is Euclidean distance after whitening by $\\Sigma^{-1/2}$. In high dimension squared distance is a sum of many independent terms, so it concentrates around its mean and the spread relative to the mean shrinks.",
+   "approach": [
+    "Compute $\\|x\\|_p = (\\sum_i |x_i|^p)^{1/p}$, with a max for $p = \\infty$ — the length under the chosen geometry",
+    "Divide a vector by its $L_2$ norm — a unit vector keeps direction only",
+    "Take the dot product of two unit vectors — this is the cosine of their angle",
+    "Use $1 - \\cos$ as the cosine distance — zero for equal directions, 2 for opposite ones",
+    "Solve with the covariance instead of inverting it — Mahalanobis whitens the difference stably"
+   ],
+   "time": "O(d) per norm or distance; O(d³) once to factor the covariance, O(d²) per query",
+   "space": "O(d) for vectors, O(d²) for the covariance matrix",
+   "solution": "import numpy as np\n\ndef norm(x, p):\n    x = np.abs(x)\n    if np.isinf(p):\n        return x.max()\n    return (x ** p).sum() ** (1 / p)\n\ndef unit(x):\n    return x / norm(x, 2)\n\ndef cosine_dist(u, v):\n    return 1 - unit(u) @ unit(v)\n\ndef mahalanobis(x, y, cov):\n    d = x - y\n    return np.sqrt(d @ np.linalg.solve(cov, d))",
+   "keyLines": [
+    7,
+    13,
+    17
+   ],
+   "dryRun": [
+    "$\\|x\\|_p = (\\sum_i |x_i|^p)^{1/p}$",
+    "$\\|x\\|_{\\infty} = \\max_i |x_i|$, the limit $p \\rightarrow \\infty$",
+    "$\\cos(u, v) = \\frac{u^{\\top} v}{\\|u\\| \\|v\\|}$, distance $= 1 - \\cos$",
+    "Unit vectors: $\\|u - v\\|^2 = 2 - 2\\cos(u, v)$",
+    "$d_M(x, y) = \\sqrt{(x-y)^{\\top} \\Sigma^{-1} (x-y)}$",
+    "High dimension: $\\frac{d_{\\max}}{d_{\\min}} \\rightarrow 1$"
+   ],
+   "description": "Choosing a similarity for nearest-neighbour search, clustering or anomaly detection: $L_2$ for raw geometry, cosine for embeddings, $L_1$ for robustness to a few large coordinates, and Mahalanobis for correlated features with a known covariance.",
+   "examples": [
+    {
+     "input": "When do Euclidean and cosine give the same neighbours?",
+     "output": "When the vectors are normalised to unit length. Then the squared Euclidean distance equals 2 minus 2 times the cosine, so the ordering is identical.",
+     "explanation": ""
+    },
+    {
+     "input": "How is Mahalanobis different from Euclidean distance?",
+     "output": "It uses the inverse covariance, so directions with large variance or strong correlation count less. With an identity covariance it reduces to Euclidean distance.",
+     "explanation": ""
+    },
+    {
+     "input": "Why do distances lose meaning in high dimension?",
+     "output": "Distances to a query concentrate: the farthest point is barely farther than the nearest, so nearest-neighbour contrast fades and k-NN gets unreliable.",
+     "explanation": ""
+    },
+    {
+     "input": "Why use $L_1$ instead of $L_2$?",
+     "output": "$L_1$ grows linearly with each coordinate gap, so a few large deviations dominate less than under the squared $L_2$, and it can be more robust to outliers.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Norm order $p$ (1, 2, $\\infty$)",
+    "Whether to normalise vectors to unit length first",
+    "Covariance estimate and its regularisation for Mahalanobis"
+   ],
+   "edgeCases": [
+    "Cosine distance is undefined for a zero vector; guard against dividing by zero",
+    "Cosine distance is not a true metric; the triangle inequality can fail",
+    "Invert-free solve is safer than inv(cov), and a singular covariance needs a small ridge",
+    "Unscaled features let the largest-range coordinate decide every $L_p$ distance"
+   ],
+   "related": [
+    "cosine-similarity-embeddings",
+    "knn"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "vision-transformer-patch-embed",
    "title": "ViT Patch Embedding and CLS Token",
    "platform": "Vision",
@@ -14320,464 +16155,699 @@
    "description": "The LLM engineer roadmap: language, transformers, how LLMs work and tokenisation.",
    "entries": [
     {
+     "slug": "numpy-broadcasting-vectorisation",
+     "section": "1. Programming foundations",
+     "order": 1
+    },
+    {
+     "slug": "pandas-groupby-merge-window",
+     "section": "1. Programming foundations",
+     "order": 2
+    },
+    {
+     "slug": "python-generators-functional",
+     "section": "1. Programming foundations",
+     "order": 3
+    },
+    {
+     "slug": "python-oop-protocols-dataclasses",
+     "section": "1. Programming foundations",
+     "order": 4
+    },
+    {
+     "slug": "json-api-requests-retries",
+     "section": "1. Programming foundations",
+     "order": 5
+    },
+    {
+     "slug": "git-object-model",
+     "section": "1. Programming foundations",
+     "order": 6
+    },
+    {
+     "slug": "big-o-empirical-complexity",
+     "section": "1. Programming foundations",
+     "order": 7
+    },
+    {
+     "slug": "linux-command-line",
+     "section": "1. Programming foundations",
+     "order": 8
+    },
+    {
+     "slug": "data-structures-algorithms",
+     "section": "1. Programming foundations",
+     "order": 9
+    },
+    {
+     "slug": "vectors-norms-distances",
+     "section": "2. Mathematics for LLMs",
+     "order": 10
+    },
+    {
+     "slug": "dot-product-matrix-multiplication",
+     "section": "2. Mathematics for LLMs",
+     "order": 11
+    },
+    {
+     "slug": "eigen-decomposition-power-iteration",
+     "section": "2. Mathematics for LLMs",
+     "order": 12
+    },
+    {
+     "slug": "svd",
+     "section": "2. Mathematics for LLMs",
+     "order": 13
+    },
+    {
+     "slug": "derivatives-chain-rule-gradient-check",
+     "section": "2. Mathematics for LLMs",
+     "order": 14
+    },
+    {
+     "slug": "gradient-descent",
+     "section": "2. Mathematics for LLMs",
+     "order": 15
+    },
+    {
+     "slug": "probability-distributions-sampling",
+     "section": "2. Mathematics for LLMs",
+     "order": 16
+    },
+    {
+     "slug": "bayes-theorem",
+     "section": "2. Mathematics for LLMs",
+     "order": 17
+    },
+    {
+     "slug": "maximum-likelihood",
+     "section": "2. Mathematics for LLMs",
+     "order": 18
+    },
+    {
+     "slug": "entropy-kl-divergence",
+     "section": "2. Mathematics for LLMs",
+     "order": 19
+    },
+    {
+     "slug": "statistics-hypothesis-testing",
+     "section": "2. Mathematics for LLMs",
+     "order": 20
+    },
+    {
+     "slug": "convex-optimisation-lagrange",
+     "section": "2. Mathematics for LLMs",
+     "order": 21
+    },
+    {
+     "slug": "linear-regression",
+     "section": "3. Machine learning fundamentals",
+     "order": 22
+    },
+    {
+     "slug": "logistic-regression",
+     "section": "3. Machine learning fundamentals",
+     "order": 23
+    },
+    {
+     "slug": "k-means",
+     "section": "3. Machine learning fundamentals",
+     "order": 24
+    },
+    {
+     "slug": "pca",
+     "section": "3. Machine learning fundamentals",
+     "order": 25
+    },
+    {
+     "slug": "feature-engineering-encoding",
+     "section": "3. Machine learning fundamentals",
+     "order": 26
+    },
+    {
+     "slug": "stratified-split",
+     "section": "3. Machine learning fundamentals",
+     "order": 27
+    },
+    {
+     "slug": "cross-validation",
+     "section": "3. Machine learning fundamentals",
+     "order": 28
+    },
+    {
+     "slug": "bias-variance-tradeoff",
+     "section": "3. Machine learning fundamentals",
+     "order": 29
+    },
+    {
+     "slug": "loss-functions-regression-classification",
+     "section": "3. Machine learning fundamentals",
+     "order": 30
+    },
+    {
+     "slug": "precision-recall-f1",
+     "section": "3. Machine learning fundamentals",
+     "order": 31
+    },
+    {
+     "slug": "roc-auc",
+     "section": "3. Machine learning fundamentals",
+     "order": 32
+    },
+    {
+     "slug": "sklearn-pipeline-column-transformer",
+     "section": "3. Machine learning fundamentals",
+     "order": 33
+    },
+    {
+     "slug": "perceptron-learning-rule",
+     "section": "4. Deep learning foundations",
+     "order": 34
+    },
+    {
+     "slug": "activation-functions",
+     "section": "4. Deep learning foundations",
+     "order": 35
+    },
+    {
+     "slug": "mlp-forward-pass",
+     "section": "4. Deep learning foundations",
+     "order": 36
+    },
+    {
+     "slug": "softmax-cross-entropy",
+     "section": "4. Deep learning foundations",
+     "order": 37
+    },
+    {
+     "slug": "backpropagation",
+     "section": "4. Deep learning foundations",
+     "order": 38
+    },
+    {
+     "slug": "micrograd-autograd-engine",
+     "section": "4. Deep learning foundations",
+     "order": 39
+    },
+    {
+     "slug": "weight-initialization",
+     "section": "4. Deep learning foundations",
+     "order": 40
+    },
+    {
+     "slug": "momentum-sgd",
+     "section": "4. Deep learning foundations",
+     "order": 41
+    },
+    {
+     "slug": "adam-optimizer",
+     "section": "4. Deep learning foundations",
+     "order": 42
+    },
+    {
+     "slug": "adamw-decoupled-weight-decay",
+     "section": "4. Deep learning foundations",
+     "order": 43
+    },
+    {
+     "slug": "dropout",
+     "section": "4. Deep learning foundations",
+     "order": 44
+    },
+    {
+     "slug": "batch-normalization",
+     "section": "4. Deep learning foundations",
+     "order": 45
+    },
+    {
+     "slug": "pytorch-training-loop-anatomy",
+     "section": "4. Deep learning foundations",
+     "order": 46
+    },
+    {
+     "slug": "gpu-computing-roofline",
+     "section": "4. Deep learning foundations",
+     "order": 47
+    },
+    {
      "slug": "text-preprocessing-stemming",
      "section": "5. Natural language processing",
-     "order": 1
+     "order": 48
     },
     {
      "slug": "bag-of-words-ngram-lm",
      "section": "5. Natural language processing",
-     "order": 2
+     "order": 49
     },
     {
      "slug": "tf-idf",
      "section": "5. Natural language processing",
-     "order": 3
+     "order": 50
     },
     {
      "slug": "word2vec-skipgram",
      "section": "5. Natural language processing",
-     "order": 4
+     "order": 51
     },
     {
      "slug": "glove-embeddings",
      "section": "5. Natural language processing",
-     "order": 5
+     "order": 52
     },
     {
      "slug": "rnn-cell",
      "section": "5. Natural language processing",
-     "order": 6
+     "order": 53
     },
     {
      "slug": "lstm-cell",
      "section": "5. Natural language processing",
-     "order": 7
+     "order": 54
     },
     {
      "slug": "gru-cell",
      "section": "5. Natural language processing",
-     "order": 8
+     "order": 55
     },
     {
      "slug": "perplexity",
      "section": "5. Natural language processing",
-     "order": 9
+     "order": 56
     },
     {
      "slug": "self-attention",
      "section": "6. Transformer architecture",
-     "order": 10
+     "order": 57
     },
     {
      "slug": "multi-head-attention",
      "section": "6. Transformer architecture",
-     "order": 11
+     "order": 58
     },
     {
      "slug": "positional-encoding",
      "section": "6. Transformer architecture",
-     "order": 12
+     "order": 59
     },
     {
      "slug": "feed-forward-gelu-swiglu",
      "section": "6. Transformer architecture",
-     "order": 13
+     "order": 60
     },
     {
      "slug": "layer-normalization",
      "section": "6. Transformer architecture",
-     "order": 14
+     "order": 61
     },
     {
      "slug": "residual-connections",
      "section": "6. Transformer architecture",
-     "order": 15
+     "order": 62
     },
     {
      "slug": "causal-masking",
      "section": "6. Transformer architecture",
-     "order": 16
+     "order": 63
     },
     {
      "slug": "transformer-block",
      "section": "6. Transformer architecture",
-     "order": 17
+     "order": 64
     },
     {
      "slug": "decoder-only-block",
      "section": "6. Transformer architecture",
-     "order": 18
+     "order": 65
     },
     {
      "slug": "cross-attention-encoder-decoder",
      "section": "6. Transformer architecture",
-     "order": 19
+     "order": 66
     },
     {
      "slug": "next-token-prediction-loss",
      "section": "7. Understanding large language models",
-     "order": 20
+     "order": 67
     },
     {
      "slug": "autoregressive-decoding",
      "section": "7. Understanding large language models",
-     "order": 21
+     "order": 68
     },
     {
      "slug": "temperature-sampling",
      "section": "7. Understanding large language models",
-     "order": 22
+     "order": 69
     },
     {
      "slug": "top-k-top-p-sampling",
      "section": "7. Understanding large language models",
-     "order": 23
+     "order": 70
     },
     {
      "slug": "kv-cache",
      "section": "7. Understanding large language models",
-     "order": 24
+     "order": 71
     },
     {
      "slug": "scaling-laws",
      "section": "7. Understanding large language models",
-     "order": 25
+     "order": 72
     },
     {
      "slug": "parameter-count-flops",
      "section": "7. Understanding large language models",
-     "order": 26
+     "order": 73
     },
     {
      "slug": "context-window-limits",
      "section": "7. Understanding large language models",
-     "order": 27
+     "order": 74
     },
     {
      "slug": "hallucination-detection",
      "section": "7. Understanding large language models",
-     "order": 28
+     "order": 75
     },
     {
      "slug": "bpe-tokenization",
      "section": "8. Tokenisation and embeddings",
-     "order": 29
+     "order": 76
     },
     {
      "slug": "wordpiece",
      "section": "8. Tokenisation and embeddings",
-     "order": 30
+     "order": 77
     },
     {
      "slug": "sentencepiece-unigram",
      "section": "8. Tokenisation and embeddings",
-     "order": 31
+     "order": 78
     },
     {
      "slug": "cosine-similarity-embeddings",
      "section": "8. Tokenisation and embeddings",
-     "order": 32
+     "order": 79
     },
     {
      "slug": "contextual-embeddings",
      "section": "8. Tokenisation and embeddings",
-     "order": 33
+     "order": 80
     },
     {
      "slug": "bert-masked-lm",
      "section": "9. Models and architectures",
-     "order": 34
+     "order": 81
     },
     {
      "slug": "gpt-decoder-only",
      "section": "9. Models and architectures",
-     "order": 35
+     "order": 82
     },
     {
      "slug": "t5-span-corruption",
      "section": "9. Models and architectures",
-     "order": 36
+     "order": 83
     },
     {
      "slug": "llama-rmsnorm-gqa",
      "section": "9. Models and architectures",
-     "order": 37
+     "order": 84
     },
     {
      "slug": "rotary-position-embedding",
      "section": "9. Models and architectures",
-     "order": 38
+     "order": 85
     },
     {
      "slug": "sliding-window-attention",
      "section": "9. Models and architectures",
-     "order": 39
+     "order": 86
     },
     {
      "slug": "mixture-of-experts-routing",
      "section": "9. Models and architectures",
-     "order": 40
+     "order": 87
     },
     {
      "slug": "model-landscape",
      "section": "9. Models and architectures",
-     "order": 41
+     "order": 88
     },
     {
      "slug": "few-shot-prompting",
      "section": "10. Prompt engineering",
-     "order": 42
+     "order": 89
     },
     {
      "slug": "chain-of-thought-self-consistency",
      "section": "10. Prompt engineering",
-     "order": 43
+     "order": 90
     },
     {
      "slug": "role-system-prompts",
      "section": "10. Prompt engineering",
-     "order": 44
+     "order": 91
     },
     {
      "slug": "context-engineering",
      "section": "10. Prompt engineering",
-     "order": 45
+     "order": 92
     },
     {
      "slug": "structured-outputs-json-schema",
      "section": "10. Prompt engineering",
-     "order": 46
+     "order": 93
     },
     {
      "slug": "prompt-templates",
      "section": "10. Prompt engineering",
-     "order": 47
+     "order": 94
     },
     {
      "slug": "prompt-optimization",
      "section": "10. Prompt engineering",
-     "order": 48
+     "order": 95
     },
     {
      "slug": "prompt-injection-defense",
      "section": "10. Prompt engineering",
-     "order": 49
+     "order": 96
     },
     {
      "slug": "transfer-learning-fine-tuning",
      "section": "12. Fine-tuning and adaptation",
-     "order": 50
+     "order": 97
     },
     {
      "slug": "sft-loss-masking",
      "section": "12. Fine-tuning and adaptation",
-     "order": 51
+     "order": 98
     },
     {
      "slug": "instruction-tuning-chat-templates",
      "section": "12. Fine-tuning and adaptation",
-     "order": 52
+     "order": 99
     },
     {
      "slug": "finetune-dataset-prep",
      "section": "12. Fine-tuning and adaptation",
-     "order": 53
+     "order": 100
     },
     {
      "slug": "lora-low-rank-adaptation",
      "section": "12. Fine-tuning and adaptation",
-     "order": 54
+     "order": 101
     },
     {
      "slug": "qlora-nf4-quantization",
      "section": "12. Fine-tuning and adaptation",
-     "order": 55
+     "order": 102
     },
     {
      "slug": "adapter-layers",
      "section": "12. Fine-tuning and adaptation",
-     "order": 56
+     "order": 103
     },
     {
      "slug": "int8-quantization",
      "section": "12. Fine-tuning and adaptation",
-     "order": 57
+     "order": 104
     },
     {
      "slug": "knowledge-distillation",
      "section": "12. Fine-tuning and adaptation",
-     "order": 58
+     "order": 105
     },
     {
      "slug": "reward-model-bradley-terry",
      "section": "12. Fine-tuning and adaptation",
-     "order": 59
+     "order": 106
     },
     {
      "slug": "rlhf-kl-penalty",
      "section": "12. Fine-tuning and adaptation",
-     "order": 60
+     "order": 107
     },
     {
      "slug": "dpo-loss",
      "section": "12. Fine-tuning and adaptation",
-     "order": 61
+     "order": 108
     },
     {
      "slug": "finetune-evaluation",
      "section": "12. Fine-tuning and adaptation",
-     "order": 62
+     "order": 109
     },
     {
      "slug": "rag-dense-retrieval",
      "section": "13. Retrieval-augmented generation",
-     "order": 63
+     "order": 110
     },
     {
      "slug": "document-loading-extraction",
      "section": "13. Retrieval-augmented generation",
-     "order": 64
+     "order": 111
     },
     {
      "slug": "document-chunking",
      "section": "13. Retrieval-augmented generation",
-     "order": 65
+     "order": 112
     },
     {
      "slug": "ann-vector-index",
      "section": "13. Retrieval-augmented generation",
-     "order": 66
+     "order": 113
     },
     {
      "slug": "metadata-filtering",
      "section": "13. Retrieval-augmented generation",
-     "order": 67
+     "order": 114
     },
     {
      "slug": "hybrid-search-rrf",
      "section": "13. Retrieval-augmented generation",
-     "order": 68
+     "order": 115
     },
     {
      "slug": "reranking-mmr",
      "section": "13. Retrieval-augmented generation",
-     "order": 69
+     "order": 116
     },
     {
      "slug": "query-transformation-hyde",
      "section": "13. Retrieval-augmented generation",
-     "order": 70
+     "order": 117
     },
     {
      "slug": "retrieval-metrics-recall-at-k",
      "section": "13. Retrieval-augmented generation",
-     "order": 71
+     "order": 118
     },
     {
      "slug": "rag-evaluation-faithfulness",
      "section": "13. Retrieval-augmented generation",
-     "order": 72
+     "order": 119
     },
     {
      "slug": "bleu-score",
      "section": "16. Evaluation and observability",
-     "order": 73
+     "order": 120
     },
     {
      "slug": "rouge-score",
      "section": "16. Evaluation and observability",
-     "order": 74
+     "order": 121
     },
     {
      "slug": "llm-as-judge",
      "section": "16. Evaluation and observability",
-     "order": 75
+     "order": 122
     },
     {
      "slug": "elo-pairwise-ranking",
      "section": "16. Evaluation and observability",
-     "order": 76
+     "order": 123
     },
     {
      "slug": "benchmark-contamination",
      "section": "16. Evaluation and observability",
-     "order": 77
+     "order": 124
     },
     {
      "slug": "tracing-and-logging",
      "section": "16. Evaluation and observability",
-     "order": 78
+     "order": 125
     },
     {
      "slug": "prompt-versioning",
      "section": "16. Evaluation and observability",
-     "order": 79
+     "order": 126
     },
     {
      "slug": "concept-drift",
      "section": "16. Evaluation and observability",
-     "order": 80
+     "order": 127
     },
     {
      "slug": "magnitude-pruning",
      "section": "17. Inference and optimisation",
-     "order": 81
+     "order": 128
     },
     {
      "slug": "gpu-memory-estimation",
      "section": "17. Inference and optimisation",
-     "order": 82
+     "order": 129
     },
     {
      "slug": "continuous-batching",
      "section": "17. Inference and optimisation",
-     "order": 83
+     "order": 130
     },
     {
      "slug": "speculative-decoding",
      "section": "17. Inference and optimisation",
-     "order": 84
+     "order": 131
     },
     {
      "slug": "flash-attention-online-softmax",
      "section": "17. Inference and optimisation",
-     "order": 85
+     "order": 132
     },
     {
      "slug": "tensor-parallel-matmul",
      "section": "17. Inference and optimisation",
-     "order": 86
+     "order": 133
     },
     {
      "slug": "pipeline-parallel-schedule",
      "section": "17. Inference and optimisation",
-     "order": 87
+     "order": 134
     },
     {
      "slug": "jailbreak-and-red-teaming",
      "section": "18. Security and responsible AI",
-     "order": 88
+     "order": 135
     },
     {
      "slug": "pii-redaction",
      "section": "18. Security and responsible AI",
-     "order": 89
+     "order": 136
     },
     {
      "slug": "output-validation-guardrails",
      "section": "18. Security and responsible AI",
-     "order": 90
+     "order": 137
     },
     {
      "slug": "content-safety-classifiers",
      "section": "18. Security and responsible AI",
-     "order": 91
+     "order": 138
     },
     {
      "slug": "fairness-metrics",
      "section": "18. Security and responsible AI",
-     "order": 92
+     "order": 139
     }
    ]
   },

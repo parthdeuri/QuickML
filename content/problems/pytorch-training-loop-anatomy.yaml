@@ -1,0 +1,101 @@
+slug: pytorch-training-loop-anatomy
+title: PyTorch Training Loop Anatomy
+url: https://docs.pytorch.org/tutorials/recipes/recipes/zeroing_out_gradients.html
+difficulty: Easy
+area: Deep Learning
+topics: [PyTorch, Training Loop, Gradient Accumulation, Evaluation]
+summary: |
+  One training step is zero the gradients, forward, loss, backward,
+  optionally clip, then step. Evaluation switches to eval mode and
+  turns off gradient tracking.
+intuition: |
+  PyTorch accumulates into .grad on every backward call instead of
+  overwriting it, so the order of the steps carries the meaning. Clear
+  first, or old gradients leak into the new step. Clip after backward
+  (the gradient must exist) and before step (it must be used). The same
+  accumulation lets $k$ microbatches imitate one large batch: scale
+  each loss by $1/k$ and the summed gradient is the mean over all of
+  the data. Dropout and batch norm act differently in train and eval
+  mode, so evaluation also needs the mode switch.
+  Flow: zero_grad → forward → loss → backward → clip → step.
+approach:
+  - 'Call $\mathrm{zero\_grad}$ — backward adds to existing gradients'
+  - 'Run the forward pass in train mode and compute the loss — builds the graph'
+  - 'Call backward — fills .grad for every parameter'
+  - 'Clip the global gradient norm if wanted — after backward, before step'
+  - 'Call the optimiser step — updates parameters from the gradients'
+code: |
+  import torch
+
+  def train_step(model, xb, yb, loss_fn, opt, clip=None):
+      model.train()
+      opt.zero_grad()
+      loss = loss_fn(model(xb), yb)
+      loss.backward()
+      if clip is not None:
+          torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
+      opt.step()
+      return loss.item()
+
+  def accumulate_step(model, microbatches, loss_fn, opt):
+      model.train()
+      opt.zero_grad()
+      k = len(microbatches)
+      for xb, yb in microbatches:
+          (loss_fn(model(xb), yb) / k).backward()
+      opt.step()
+
+  def evaluate(model, loader, loss_fn):
+      model.eval()
+      total, n = 0.0, 0
+      with torch.no_grad():
+          for xb, yb in loader:
+              total += loss_fn(model(xb), yb).item() * len(xb)
+              n += len(xb)
+      return total / n
+key_lines: [5, 9, 18]
+time: "One forward and backward pass per microbatch plus one optimiser step"
+space: "Activations of one microbatch; accumulation avoids holding the full batch"
+when_to_use: |
+  Every PyTorch training job; gradient accumulation when the desired
+  batch does not fit in memory, clipping when loss spikes appear.
+when_not_to_use: |
+  Accumulation does not reproduce batch statistics for batch norm, and
+  with a sum-reduced or uneven microbatch loss the $1/k$ scaling must be
+  adjusted. Clipping hides problems if gradients are constantly clipped.
+why_it_works: |
+  Gradients are linear in the loss, so the sum of gradients of
+  $L_i/k$ over $k$ equal microbatches equals the gradient of their
+  mean loss, which is the gradient of the large batch. Calling
+  $\mathrm{zero\_grad}$ before backward makes each step start from
+  zero, and no_grad prevents building a graph that evaluation does
+  not need.
+math:
+  - "Large-batch gradient: g = (1/N) Σᵢ ∇ℓᵢ"
+  - "Microbatch j of equal size, k in total: Lⱼ = mean loss of batch j"
+  - "Accumulated: Σⱼ ∇(Lⱼ / k) = (1/k) Σⱼ ∇Lⱼ = g"
+  - "Clip by global norm: g ← g · min(1, τ / ‖g‖)"
+math_tex:
+- 'Large batch: $g = \frac{1}{N}\sum_{i}\nabla \ell_i$'
+- 'Microbatch $j$ loss $L_j$ (mean over its samples)'
+- 'Accumulated: $\sum_{j}\nabla\frac{L_j}{k} = \frac{1}{k}\sum_{j}\nabla L_j = g$'
+- 'Clip: $g \leftarrow g\cdot\min\left(1,\frac{\tau}{\|g\|}\right)$'
+hyperparameters:
+  - "Batch size and number of accumulation steps $k$"
+  - "Learning rate"
+  - "Clipping threshold $\\tau$"
+pitfalls:
+  - "Forgetting zero_grad, so each step uses the sum of all past gradients"
+  - "Forgetting model.eval() or no_grad, which keeps dropout active and wastes memory in evaluation"
+  - "Not dividing each microbatch loss by $k$, which makes the update $k$ times too large"
+  - "Clipping before backward or after step, which has no effect on the update"
+interview_qa:
+  - q: "Why must zero_grad be called every step?"
+    a: "Backward adds into the existing gradients rather than replacing them, so without clearing, the gradient is the sum over steps."
+  - q: "How does gradient accumulation match a large batch?"
+    a: "Scale each microbatch mean loss by $1/k$, call backward on each, and step once; the summed gradient equals the gradient of the mean over all samples."
+  - q: "What do model.eval() and torch.no_grad() each do?"
+    a: "eval switches layers such as dropout and batch norm to inference behaviour; no_grad stops graph construction. They are independent, so evaluation needs both."
+  - q: "Where does gradient clipping go?"
+    a: "After backward, so gradients exist, and before the optimiser step, so the step uses the clipped values."
+related: [gradient-clipping, dropout, backpropagation]

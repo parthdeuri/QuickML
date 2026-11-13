@@ -1,0 +1,124 @@
+slug: big-o-empirical-complexity
+title: Measuring Big-O Empirically
+url: https://docs.python.org/3/library/bisect.html
+difficulty: Easy
+area: Programming
+topics: [Complexity, Algorithms, Benchmarking]
+summary: |
+  Count the operations an algorithm performs at growing input sizes and
+  fit a straight line to the log-log plot: the slope is the exponent
+  of the growth, so Big-O becomes something you can measure.
+intuition: |
+  If cost grows like $c \cdot n^{k}$, taking logs gives
+  $\log \text{cost} = \log c + k \log n$, a straight line whose slope is
+  the exponent $k$. Counting comparisons instead of seconds removes
+  machine noise, so linear search shows slope 1, insertion sort 2, merge
+  sort a little above 1, and binary search nearly 0 because its cost is
+  $\log n$, which a log-log fit cannot tell from a tiny power.
+  Flow: input size n → operation count → log-log points → fitted slope → complexity class.
+approach:
+  - 'Instrument each algorithm to return (result, op_count) — the count is deterministic, unlike wall time'
+  - 'Generate seeded random inputs at doubling sizes — the same data on every run'
+  - 'Take logs of sizes and costs — power laws become straight lines'
+  - 'Fit a line with least squares and read the slope — the empirical exponent'
+  - 'For logarithmic growth, divide the cost by $\log_2 n$ — a flat ratio confirms it'
+code: |
+  import numpy as np
+
+  def fit_loglog_slope(ns, costs):
+      return float(np.polyfit(np.log(ns), np.log(costs), 1)[0])
+
+  def linear_search(a, x):
+      ops = 0
+      for i, v in enumerate(a):
+          ops += 1
+          if v == x:
+              return i, ops
+      return -1, ops
+
+  def binary_search(a, x):
+      lo, hi, ops = 0, len(a), 0
+      while lo < hi:
+          mid = (lo + hi) // 2
+          ops += 1
+          if a[mid] < x:
+              lo = mid + 1
+          else:
+              hi = mid
+      found = lo < len(a) and a[lo] == x
+      return (lo if found else -1), ops
+
+  def insertion_sort(a):
+      a, ops = list(a), 0
+      for i in range(1, len(a)):
+          j = i
+          while j > 0:
+              ops += 1
+              if a[j - 1] <= a[j]:
+                  break
+              a[j - 1], a[j] = a[j], a[j - 1]
+              j -= 1
+      return a, ops
+
+  def merge_sort(a):
+      if len(a) <= 1:
+          return list(a), 0
+      m = len(a) // 2
+      L, cl = merge_sort(a[:m])
+      R, cr = merge_sort(a[m:])
+      out, i, j, ops = [], 0, 0, cl + cr
+      while i < len(L) and j < len(R):
+          ops += 1
+          if L[i] <= R[j]:
+              out.append(L[i]); i += 1
+          else:
+              out.append(R[j]); j += 1
+      return out + L[i:] + R[j:], ops
+key_lines: [4, 17, 31]
+time: "O(n), O(log n), O(n²), O(n log n) for the four algorithms measured"
+space: "O(1) extra for the searches and insertion sort, O(n) for merge sort"
+when_to_use: |
+  Checking that code scales the way you claim, comparing two
+  implementations, and building intuition for costs such as quadratic
+  self-attention before running anything on a GPU.
+when_not_to_use: |
+  Predicting wall-clock time, which also depends on caches, memory
+  layout and constants. A fitted slope only says how cost grows over the
+  sizes you tried, so it cannot prove an asymptotic bound.
+why_it_works: |
+  For a cost of the form $c \cdot n^{k}$ the log-log plot is exactly a
+  line of slope $k$, and least squares recovers it. For
+  $n \log n$ the local slope is $1 + 1/\ln n$, which stays slightly above
+  1 and slowly falls toward it, and for $\log n$ the slope is
+  $1/\ln n$, near 0 and shrinking.
+math:
+  - "cost ≈ c · nᵏ ⇒ log cost = log c + k · log n"
+  - "slope k̂ = Σ(xᵢ − x̄)(yᵢ − ȳ) / Σ(xᵢ − x̄)², x = log n, y = log cost"
+  - "n log n has local slope 1 + 1 / ln n;  log n has slope 1 / ln n"
+  - "binary search ≤ ⌈log₂(n + 1)⌉ comparisons;  merge sort ≤ n⌈log₂ n⌉"
+  - "attention scores T²·d per layer; one KV-cache step T·d"
+interview_qa:
+  - q: "Why count operations instead of timing the code?"
+    a: "Wall time is noisy and depends on the machine, caches and the interpreter. An operation count is deterministic and reflects the algorithm itself."
+  - q: "What slope do you expect for O(n log n)?"
+    a: "Slightly above 1, for example about 1.1 to 1.2 at moderate sizes, falling toward 1 as n grows, because the extra factor log n adds a small exponent."
+  - q: "How does Big-O relate to transformers?"
+    a: "Self-attention compares every token with every other, so cost is quadratic in sequence length. With a KV cache, each new token attends once over the stored rows, which is linear."
+  - q: "Does a measured slope prove the complexity?"
+    a: "No. It only describes the sizes tested. Worst cases, small-n effects and different input distributions can all change the exponent."
+hyperparameters:
+  - "Input sizes (use doubling, for example 256 to 4096)"
+  - "Random seed and input distribution"
+  - "Which operation to count (comparisons or swaps)"
+pitfalls:
+  - 'Random input shows the average case; sorted input makes insertion sort linear, so choose the case deliberately'
+  - 'Very small sizes are dominated by constants and distort the fit; use a wide range of n'
+  - 'Python slicing in merge_sort copies data, so its time is higher than its comparison count suggests'
+  - 'A flat cost-versus-$\log n$ ratio, not a slope near 0, is the evidence for logarithmic growth'
+related: [kv-cache, self-attention]
+math_tex:
+- '$\log \mathrm{cost} = \log c + k \log n$'
+- 'Slope: $\hat{k} = \frac{\sum (x_i - \bar{x})(y_i - \bar{y})}{\sum (x_i - \bar{x})^2}$'
+- 'Local slope: $n \log n$ gives $1 + \frac{1}{\ln n}$'
+- 'Bounds: $\lceil \log_2 (n+1) \rceil$ and $n \lceil \log_2 n \rceil$'
+- 'Attention $T^2 d$ vs KV-cache step $T d$'

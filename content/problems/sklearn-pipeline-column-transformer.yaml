@@ -1,0 +1,146 @@
+slug: sklearn-pipeline-column-transformer
+title: Pipelines and ColumnTransformer (Leakage-Safe Preprocessing)
+url: https://scikit-learn.org/stable/modules/compose.html
+difficulty: Medium
+area: Classical ML
+topics: [Preprocessing, Pipelines, Leakage, Cross-Validation]
+summary: |
+  Every transformer learns its statistics in fit and applies them in
+  transform. A Pipeline chains steps, a ColumnTransformer routes column
+  subsets to different transformers, and fitting only on training rows
+  keeps validation and test data out of the preprocessing.
+intuition: |
+  Preprocessing is a learned function, not a fixed one: the mean, the
+  scale and the category list are parameters estimated from data. If
+  they are estimated on rows the model is later scored on, information
+  leaks. Packing preprocessing and model into one object makes the
+  right order automatic, because a single $\mathrm{fit}$ call sees
+  only the rows it was handed, and a single $\mathrm{predict}$ reuses
+  those frozen statistics.
+  Flow: fit on train → transform train → transform val/test with train stats.
+approach:
+  - "Give every transformer fit (learn parameters) and transform (apply them) — fit_transform is just the two in a row"
+  - "In a ColumnTransformer, fit each transformer on its own column subset and hstack the outputs — numeric and categorical columns need different treatment"
+  - "In a Pipeline, call fit_transform on every step but the last and fit on the last — each step trains on the previous step's output"
+  - "At predict time call only transform on the fitted steps — validation and test rows never change the statistics"
+  - "Deep-copy each step before fitting — one template can be refit in every CV fold without carrying state over"
+code: |
+  import copy
+  import numpy as np
+
+  class FitTransform:
+      def fit_transform(self, X, y=None):
+          return self.fit(X, y).transform(X)
+
+  class StandardScaler(FitTransform):
+      def fit(self, X, y=None):
+          X = np.asarray(X, float)
+          self.mean_, self.std_ = X.mean(0), X.std(0)
+          return self
+
+      def transform(self, X):
+          X = np.asarray(X, float)
+          return (X - self.mean_) / self.std_
+
+  class OneHot(FitTransform):
+      def fit(self, X, y=None):
+          self.cats_ = [np.unique(c) for c in X.T]
+          return self
+
+      def transform(self, X):
+          return np.hstack([(c[:, None] == u).astype(float)
+                            for c, u in zip(X.T, self.cats_)])
+
+  class ColumnTransformer(FitTransform):
+      def __init__(self, parts):
+          self.parts = parts  # list of (transformer, columns)
+
+      def fit(self, X, y=None):
+          self.fitted_ = [(copy.deepcopy(t).fit(X[:, c]), c)
+                          for t, c in self.parts]
+          return self
+
+      def transform(self, X):
+          return np.hstack([t.transform(X[:, c])
+                            for t, c in self.fitted_])
+
+  class Pipeline:
+      def __init__(self, steps):
+          self.steps = steps
+
+      def fit(self, X, y):
+          self.fitted_ = [copy.deepcopy(s) for s in self.steps]
+          for s in self.fitted_[:-1]:
+              X = s.fit_transform(X)
+          self.fitted_[-1].fit(X, y)
+          return self
+
+      def predict(self, X):
+          for s in self.fitted_[:-1]:
+              X = s.transform(X)
+          return self.fitted_[-1].predict(X)
+
+  class LinearReg:
+      def fit(self, X, y):
+          xm, ym = X.mean(0), y.mean()
+          A, t = X - xm, y - ym
+          self.coef_ = np.linalg.lstsq(A, t, rcond=None)[0]
+          self.b_ = ym - xm @ self.coef_
+          return self
+
+      def predict(self, X):
+          return X @ self.coef_ + self.b_
+key_lines: [32, 47, 48]
+time: "O(n·d) per transformer fit and transform; the final model dominates"
+space: "O(d) statistics per scaler plus the O(n·d') transformed matrix"
+when_to_use: |
+  Any workflow with preprocessing before a model, especially mixed
+  numeric and categorical tables, cross-validation and hyperparameter
+  search, where preprocessing must be refit inside every fold.
+when_not_to_use: |
+  Stateless transforms such as a fixed $\log$ need no fitting, and a
+  model that handles raw categories natively (some tree libraries) may
+  not need an encoder. Do not use one global fit just because it is
+  convenient.
+why_it_works: |
+  A fitted transformer is a deterministic function of the rows it saw
+  in fit. If fit sees only training rows, the transformed validation
+  rows are a function of training data alone, so the score is an honest
+  estimate. A Pipeline composes these functions, and a ColumnTransformer
+  applies them to disjoint column blocks, so the whole is again one
+  fit and predict interface that cross-validation can clone and refit
+  per fold.
+math:
+  - "z = (x − μ_train) / σ_train"
+  - "μ_train = mean of x over training rows only"
+  - "onehot(x)_k = 1 if x = c_k else 0"
+  - "X′ = [ T₁(X[:, S₁]) | T₂(X[:, S₂]) | … ]"
+  - "Xᵢ₊₁ = Tᵢ.transform(Xᵢ),   ŷ = f(X_L)"
+  - "minimise ‖Aβ − t‖² with A = X − x̄, t = y − ȳ,   b = ȳ − x̄ᵀβ"
+interview_qa:
+  - q: "Why put the scaler inside the pipeline instead of scaling first?"
+    a: "Scaling first fits on all rows, including validation folds, which leaks. Inside the pipeline, cross-validation refits the scaler on each training fold only."
+  - q: "What does a ColumnTransformer do with the outputs?"
+    a: "It fits one transformer per column subset, transforms each subset, and concatenates the results side by side in the order given."
+  - q: "What is the difference between fit_transform and fit then transform?"
+    a: "Usually none in value; fit_transform is a shortcut and may be faster. It is applied to training data only, never to test data."
+  - q: "Why clone a transformer before fitting it?"
+    a: "A fitted object holds state from its rows. Fitting a copy lets one unfitted template be reused for every fold without leftover statistics."
+hyperparameters:
+  - "Which columns go to which transformer"
+  - "How unseen categories are handled at transform time"
+  - "What happens to the remaining, unlisted columns (drop or pass through)"
+  - "The order of pipeline steps"
+pitfalls:
+  - "Calling fit or fit_transform on validation or test data silently recomputes the statistics and leaks"
+  - "An unseen category at test time breaks or silently shifts a naive encoder; real encoders need an ignore option"
+  - "Column order matters: the output block order follows the transformer list, not the input columns, so mappings of features to coefficients must use the output order"
+  - 'Standardising a constant column divides by $\sigma = 0$; real scalers guard against it'
+related: [feature-scaling, data-leakage, cross-validation]
+math_tex:
+- '$z = \frac{x - \mu_{\mathrm{train}}}{\sigma_{\mathrm{train}}}$'
+- 'Statistics from training rows only: $\mu_{\mathrm{train}}$'
+- 'One-hot: $\mathrm{onehot}(x)_k = [x = c_k]$'
+- 'Concat: $X^{\prime} = [\,T_1(X_{S_1}) \,|\, T_2(X_{S_2})\,]$'
+- 'Chain: $X_{i+1} = T_i(X_i)$, then $\hat{y} = f(X_L)$'
+- 'Centred fit: minimise $\|A\beta - t\|^2$'

@@ -1,0 +1,122 @@
+slug: json-api-requests-retries
+title: JSON APIs, Retries and Backoff
+url: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Retry-After
+difficulty: Medium
+area: Programming
+topics: [HTTP, JSON, Reliability]
+summary: |
+  Call an HTTP JSON API safely: retry only failures that can succeed
+  later (429 and 5xx), wait with exponential backoff and full jitter,
+  honour Retry-After, page through results, and validate the body.
+intuition: |
+  A request is a method, URL, headers and optional JSON body; the status
+  class tells you whose fault a failure is. A 4xx means your request is
+  wrong, so repeating it is pointless, while 429 and 5xx mean the server
+  is busy or broken and may recover. If every client retries on the same
+  schedule they hammer the server in waves, so the wait grows
+  exponentially up to a cap and is drawn uniformly from zero to that
+  bound (full jitter), which spreads the retries out in time.
+  Flow: send → status class → retryable? → jittered wait → resend or stop.
+approach:
+  - 'Classify the status with is_retryable — 429 and 5xx may succeed later, other 4xx never will'
+  - 'Compute the delay as $U(0, \min(c, b \cdot 2^{a}))$ — exponential growth with full jitter'
+  - 'If Retry-After is present, wait at least that long — the server knows its own recovery time'
+  - 'Retry timeouts and stop after max_tries — bounded total time, then raise a clear error'
+  - 'Loop on the next cursor in paginate until it is None — collects every page'
+  - 'Check that the body is valid JSON with the expected keys — never trust a response blindly'
+code: |
+  import httpx
+
+  def backoff_delay(attempt, base, cap, rng):
+      return rng.uniform(0, min(cap, base * 2 ** attempt))
+
+  def is_retryable(status):
+      return status == 429 or 500 <= status < 600
+
+  def call_with_retries(send, max_tries, sleep, rng,
+                        base=0.5, cap=8.0):
+      for attempt in range(max_tries):
+          try:
+              r = send()
+              if not is_retryable(r.status_code):
+                  return r
+              wait = backoff_delay(attempt, base, cap, rng)
+              ra = r.headers.get("Retry-After", "")
+              if ra.isdigit():
+                  wait = max(wait, float(ra))
+          except httpx.TimeoutException:
+              wait = backoff_delay(attempt, base, cap, rng)
+          if attempt < max_tries - 1:
+              sleep(wait)
+      raise RuntimeError(f"gave up after {max_tries} tries")
+
+  def parse_json(r, keys):
+      try:
+          data = r.json()
+      except ValueError:
+          raise ValueError("response body is not valid JSON")
+      missing = [k for k in keys if k not in data]
+      if missing:
+          raise ValueError(f"missing keys: {missing}")
+      return data
+
+  def paginate(fetch_page):
+      items, cursor = [], None
+      while True:
+          page = fetch_page(cursor)
+          items += page["items"]
+          cursor = page["next"]
+          if cursor is None:
+              return items
+key_lines: [4, 7, 19]
+time: "O(P) requests for P pages; a retry loop waits at most the sum of capped delays"
+space: "O(N) to hold N collected items; O(1) for the retry state"
+when_to_use: |
+  Any client of an HTTP JSON service, especially over flaky networks or
+  rate-limited APIs, where transient 429, 5xx and timeouts are normal
+  and a bare request would turn them into user-visible failures.
+when_not_to_use: |
+  Non-idempotent calls such as a payment POST unless the server accepts
+  an idempotency key, and 4xx errors, which are your bug and retrying
+  only wastes quota. Provider-specific LLM rate limits need their own
+  handling.
+why_it_works: |
+  Failures from overload are transient, so a later attempt often
+  succeeds, and the growing delay gives the server time to recover.
+  Randomising the wait de-synchronises clients: with full jitter the
+  expected wait is half the exponential bound, and the total load is
+  spread out instead of arriving in synchronised bursts. Idempotent
+  methods (GET, PUT, DELETE) give the same server state however many
+  times they run, which is what makes repeating them safe.
+math:
+  - "delay_a = u · min(cap, base · 2ᵃ),  u uniform in [0, 1]"
+  - "worst-case total wait = Σ_{a=0}^{n−2} min(cap, base · 2ᵃ)"
+  - "with Retry-After r:  delay = max(delay_a, r)"
+  - "requests for N items, page size s:  ⌈N / s⌉"
+  - "success within n tries (failure prob p):  1 − pⁿ"
+interview_qa:
+  - q: "Which requests are safe to retry?"
+    a: "Idempotent ones: GET, PUT and DELETE give the same final state however often they run. A plain POST may create duplicates unless the API supports an idempotency key."
+  - q: "Why add jitter to exponential backoff?"
+    a: "Without it, clients that failed together retry together and overload the server again. Random delays spread the retries over time."
+  - q: "Which status codes do you retry?"
+    a: "429 and 5xx, plus timeouts and connection errors. Other 4xx codes such as 400, 401 and 404 mean the request itself is wrong, so retrying cannot help."
+  - q: "What does Retry-After do?"
+    a: "The server tells you how many seconds (or until which date) to wait. Use at least that delay instead of guessing."
+hyperparameters:
+  - "Maximum number of tries"
+  - "Base delay $b$ and cap $c$ of the backoff"
+  - "Per-request timeout"
+  - "Page size for pagination"
+pitfalls:
+  - 'Retrying a non-idempotent POST can create duplicates; send an idempotency key or do not retry'
+  - 'Retry-After may be an HTTP date as well as seconds; this code handles only seconds'
+  - 'No timeout means a hung connection blocks forever, so always set one on the client'
+  - 'Retrying at several layers multiplies attempts, for example $3 \cdot 3 = 9$ calls'
+related: [structured-outputs-json-schema, output-validation-guardrails]
+math_tex:
+- 'Delay: $d_a = u \cdot \min(c,\ b \cdot 2^{a})$, $u \in [0, 1]$'
+- 'Worst-case wait: $\sum_{a=0}^{n-2} \min(c,\ b \cdot 2^{a})$'
+- 'Retry-After $r$: $d = \max(d_a,\ r)$'
+- 'Requests: $\lceil N / s \rceil$'
+- 'Success within $n$ tries: $1 - p^{n}$'

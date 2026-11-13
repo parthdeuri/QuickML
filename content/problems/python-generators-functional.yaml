@@ -1,0 +1,107 @@
+slug: python-generators-functional
+title: Generators and Functional Python for Data Pipelines
+url: https://docs.python.org/3/howto/functional.html
+difficulty: Easy
+area: Programming
+topics: [Python, Generators, Functional Programming]
+summary: |
+  Generators produce items one at a time on demand, so a pipeline of
+  small generator stages streams data of any size in constant memory.
+  Closures, partial, caching and decorators compose the stages.
+intuition: |
+  A generator function is a paused computation: each `next` runs it to
+  the next `yield` and freezes its state. Chaining generators makes
+  every item flow through all stages before the next item is read, so
+  nothing is materialised. The price is that a generator is one-shot:
+  once consumed it is empty.
+  Flow: source → clean (lazy) → batch (lazy) → consumer pulls.
+approach:
+  - "Write each stage as a generator that takes an iterable and yields items — stages stay small and testable"
+  - "Chain stages by passing one generator into the next — nothing runs until a consumer pulls"
+  - "Group items with batched using islice on one shared iterator — each batch continues where the last stopped"
+  - "Combine functions with compose or functools.partial — fixes arguments and builds a pipeline from parts"
+  - "Wrap pure, expensive functions with a memoize decorator — repeated arguments return the stored result"
+code: |
+  import itertools, functools
+  from functools import reduce
+
+  def batched(iterable, n):
+      it = iter(iterable)
+      while batch := list(itertools.islice(it, n)):
+          yield batch
+
+  def compose(*fns):
+      return lambda x: reduce(lambda acc, f: f(acc), fns, x)
+
+  def memoize(fn):
+      cache = {}
+      @functools.wraps(fn)
+      def wrapper(*args):
+          if args not in cache:
+              cache[args] = fn(*args)
+          return cache[args]
+      return wrapper
+
+  def read_lines(lines):
+      for line in lines:
+          yield line
+
+  def clean(lines):
+      for line in lines:
+          line = line.strip().lower()
+          if line:
+              yield line
+
+  def flatten(batches):
+      for b in batches:
+          yield from b
+
+  def pipeline(lines, n):
+      return batched(clean(read_lines(lines)), n)
+key_lines: [6, 10, 17]
+time: "O(1) per item pulled; whole pipeline O(N) time"
+space: "O(1) for the stages plus O(n) for one batch, instead of O(N) for the full list"
+when_to_use: |
+  Reading files, streams or database cursors too large for memory,
+  feeding mini-batches to training, and any multi-stage transform
+  where you want one pass and early exit.
+when_not_to_use: |
+  When you need random access, the length, or several passes over the
+  same data: a generator is one-shot, so materialise it as a list.
+  Memoising impure functions or unhashable arguments is also wrong.
+why_it_works: |
+  Calling a generator function returns an iterator that holds only its
+  frame, not the results. Each `next` resumes the frame, so work
+  happens when a value is demanded. `islice` on a shared iterator
+  advances it, which is why consecutive batches do not overlap.
+  `reduce` threads one value through the list of functions in order.
+math:
+  - "List of n items of size s: n · s bytes; generator: constant"
+  - "Batches = ⌈n / b⌉ for batch size b"
+  - "compose(f, g, h)(x) = h(g(f(x)))"
+  - "k distinct arguments in c calls: k evaluations, c − k cache hits"
+interview_qa:
+  - q: "Difference between an iterator and a generator?"
+    a: "An iterator is any object with __next__ and __iter__. A generator is an iterator created by a function with yield or a generator expression, which keeps its local state between calls."
+  - q: "Why does a generator give nothing the second time?"
+    a: "It is a one-shot iterator: after StopIteration its frame is finished. Re-create it or store the items in a list if you need another pass."
+  - q: "What does yield from do?"
+    a: "It delegates to a sub-iterator, yielding each of its items, and returns the sub-generator's return value. It replaces a for loop with yield."
+  - q: "When is lru_cache or a memoize decorator safe?"
+    a: "For pure functions with hashable arguments. A cache of an impure function returns stale results and an unbounded cache grows without limit."
+hyperparameters:
+  - "Batch size $n$ for batched"
+  - "maxsize of lru_cache (None means unbounded)"
+  - "Order of stages in compose"
+  - "Prefetch or buffer size when overlapping reading with compute"
+pitfalls:
+  - "Iterating a generator twice silently yields nothing the second time, for example calling len or sum then looping"
+  - "Late binding in closures: lambdas created in a loop all see the final loop variable unless it is bound as a default argument"
+  - "Memoizing with unhashable arguments such as lists raises TypeError, and unbounded caches leak memory"
+  - "An exception inside a stage surfaces only when the consumer pulls, which can hide the real source of the bug"
+related: [data-leakage, hyperparameter-search, text-preprocessing-stemming]
+math_tex:
+- 'List of $n$ items of size $s$: $n \cdot s$ bytes'
+- 'Batches: $\lceil n/b \rceil$ for batch size $b$'
+- 'compose(f, g, h)(x) $= h(g(f(x)))$'
+- '$k$ distinct args, $c$ calls: $k$ runs, $c-k$ hits'

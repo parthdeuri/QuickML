@@ -1,0 +1,93 @@
+slug: eigen-decomposition-power-iteration
+title: Eigen-Decomposition and Power Iteration
+url: https://en.wikipedia.org/wiki/Power_iteration
+difficulty: Medium
+area: Math
+topics: [Linear Algebra, Eigenvectors, PCA]
+summary: |
+  Eigenvectors are directions a matrix only stretches. Power iteration
+  applies the matrix again and again and normalises, which converges to
+  the eigenvector with the largest eigenvalue in magnitude.
+intuition: |
+  Write a start vector in the eigenbasis. Each multiplication by $A$
+  scales the component along eigenvector $i$ by $\lambda_i$, so the
+  biggest eigenvalue gradually wins and the vector aligns with its
+  eigenvector. Normalising only stops the numbers overflowing. A
+  symmetric matrix has real eigenvalues and orthonormal eigenvectors,
+  which is why PCA can read principal axes off the covariance matrix.
+  Flow: matrix → apply repeatedly → normalise → dominant direction.
+approach:
+  - 'Start from a random unit vector $v$ — it almost surely has a component along the top eigenvector'
+  - 'Replace $v$ by $Av$ — each eigen-component is scaled by its eigenvalue'
+  - 'Divide by $\|v\|$ — keeps the length at 1 so nothing overflows'
+  - 'After enough steps read the eigenvalue as $v^\top A v$ — the Rayleigh quotient of a unit vector'
+  - 'Subtract $\lambda v v^\top$ to deflate and repeat — removes the found direction to expose the next'
+code: |
+  import numpy as np
+
+  def rayleigh(A, v):
+      return v @ A @ v / (v @ v)
+
+  def power_iteration(A, iters, seed=0):
+      v = np.random.default_rng(seed).normal(size=A.shape[0])
+      v = v / np.linalg.norm(v)
+      for _ in range(iters):
+          v = A @ v
+          v = v / np.linalg.norm(v)
+      return rayleigh(A, v), v
+
+  def deflate(A, lam, v):
+      # valid for symmetric A and unit-length v
+      return A - lam * np.outer(v, v)
+key_lines: [10, 11, 16]
+time: "O(n²) per iteration for a dense matrix, O(nnz) for a sparse one"
+space: "O(n) beyond the matrix itself"
+when_to_use: |
+  Finding the top eigenpair of a huge or sparse matrix, as in PageRank
+  or the first principal component, where a full decomposition is too
+  costly and only a few eigenvectors are needed.
+when_not_to_use: |
+  When you need all eigenpairs of a small dense matrix (use a direct
+  solver such as symmetric eigendecomposition), or when the top two
+  eigenvalues have nearly equal magnitude and convergence is very slow.
+why_it_works: |
+  For a symmetric matrix, $A^k v = \sum_{i} c_i \lambda_i^k u_i$ with
+  orthonormal eigenvectors $u_i$. Dividing by $\lambda_1^k$ shrinks every
+  term except the first by $(\lambda_i/\lambda_1)^k$, so the direction
+  converges to $u_1$ at rate $|\lambda_2/\lambda_1|$ per step, provided
+  $c_1 \neq 0$ and $|\lambda_1| > |\lambda_2|$. The Rayleigh quotient of a
+  vector lies between the smallest and largest eigenvalue.
+math:
+  - "A v = λ v"
+  - "A = Q Λ Qᵀ, QᵀQ = I (symmetric A)"
+  - "vₖ₊₁ = A vₖ / ‖A vₖ‖"
+  - "error after k steps ∝ |λ₂/λ₁|ᵏ"
+  - "R(v) = vᵀ A v / vᵀ v"
+  - "λ_min ≤ R(v) ≤ λ_max"
+  - "deflated A − λ₁ u₁ u₁ᵀ has eigenvalues 0, λ₂, …, λₙ"
+interview_qa:
+  - q: "Why does power iteration converge to the dominant eigenvector?"
+    a: 'Each step multiplies the component along eigenvector $i$ by $\lambda_i$, so the largest in magnitude dominates, and the error shrinks like $|\lambda_2/\lambda_1|^k$.'
+  - q: "When does power iteration fail?"
+    a: "If the start vector has no component along the top eigenvector, or if the top two eigenvalues have equal magnitude, such as $+1$ and $-1$: the vector then keeps oscillating instead of settling."
+  - q: "What is the Rayleigh quotient used for?"
+    a: "It estimates an eigenvalue from an approximate eigenvector, and for symmetric matrices it is always between the smallest and largest eigenvalue."
+  - q: "How does this relate to PCA?"
+    a: "The principal components are the eigenvectors of the symmetric covariance matrix, ordered by eigenvalue; power iteration with deflation finds them one at a time."
+hyperparameters:
+  - "Number of iterations"
+  - "Random seed for the start vector"
+  - "Convergence tolerance on the change in $v$"
+pitfalls:
+  - 'Slow when $|\lambda_2/\lambda_1|$ is close to 1; shifted or inverse iteration can help'
+  - "Equal-magnitude top eigenvalues give no convergence; the vector flips between two directions"
+  - "Deflation as written needs a symmetric matrix and accurate eigenvectors; errors accumulate with each deflation"
+related: [pca, svd]
+math_tex:
+- 'Eigenpair: $A v = \lambda v$'
+- 'Symmetric $A$: $A = Q \Lambda Q^\top$, $Q^\top Q = I$'
+- 'Update: $v_{k+1} = \frac{A v_k}{\|A v_k\|}$'
+- 'Error after $k$ steps $\propto |\lambda_2/\lambda_1|^k$'
+- 'Rayleigh: $R(v) = \frac{v^\top A v}{v^\top v}$'
+- 'Bounds: $\lambda_{\min} \leq R(v) \leq \lambda_{\max}$'
+- 'Deflated: $A - \lambda_1 u_1 u_1^\top$ has $\lambda_1 \rightarrow 0$'

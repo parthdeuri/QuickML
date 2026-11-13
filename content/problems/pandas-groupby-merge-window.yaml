@@ -1,0 +1,109 @@
+slug: pandas-groupby-merge-window
+title: Pandas Groupby, Merge and Window Features
+url: https://pandas.pydata.org/docs/user_guide/groupby.html
+difficulty: Easy
+area: Programming
+topics: [Pandas, Feature Engineering, Time Series]
+summary: |
+  Groupby aggregates rows per key, merge joins tables on a key, and
+  rolling or shift builds features from earlier rows. Together they
+  produce most tabular features.
+intuition: |
+  All three are index operations on a table. Groupby splits rows by key,
+  applies a function per group and combines the results; a join looks up
+  each left row's key in the right table, so a duplicated right key
+  multiplies the left row; a window or lag reads earlier rows. The
+  danger is time: a feature for time $t$ may only use data up to
+  $t-1$, otherwise the model sees the answer.
+  Flow: table → group keys → aggregate → join back → lag features.
+approach:
+  - "Split rows by key into groups — every row lands in exactly one group"
+  - "Apply the aggregate to each group and combine into one value per key — a single pass, $O(N)$"
+  - "Index the right table by key, then look up each left row — a dict makes the join $O(N+M)$"
+  - "Emit one output row per matching right row, or one row of NaN if none — this is a left join"
+  - "Build rolling and lag features, then shift by at least 1 — the feature at $t$ must not contain $x_t$"
+code: |
+  import numpy as np
+
+  def groupby_agg(keys, values, fn):
+      groups = {}
+      for k, v in zip(keys, values):
+          groups.setdefault(k, []).append(v)
+      return {k: fn(vs) for k, vs in sorted(groups.items())}
+
+  def left_join(left_rows, right_rows, key):
+      index = {}
+      for r in right_rows:
+          index.setdefault(r[key], []).append(r)
+      cols = [c for c in right_rows[0] if c != key]
+      miss = [dict.fromkeys(cols, np.nan)]
+      out = []
+      for l in left_rows:
+          for r in index.get(l[key], miss):
+              out.append({**l, **{c: r[c] for c in cols}})
+      return out
+
+  def rolling_mean(x, w):
+      x = np.asarray(x, dtype=float)
+      out = np.full(len(x), np.nan)
+      if len(x) >= w:
+          win = np.lib.stride_tricks.sliding_window_view(x, w)
+          out[w - 1:] = win.mean(axis=1)
+      return out
+
+  def lag(x, k):
+      x = np.asarray(x, dtype=float)
+      out = np.full(len(x), np.nan)
+      if k < len(x):
+          out[k:] = x[:len(x) - k]
+      return out
+key_lines: [12, 17, 33]
+time: 'groupby and join O(N+M) with hashing; rolling mean O(N·w) as written, O(N) with cumulative sums'
+space: "O(N) for the groups or the join index and the output"
+when_to_use: |
+  Turning raw event or transaction tables into model features: per-user
+  statistics, enriching rows with a lookup table, and lagged or rolling
+  features for time series and forecasting.
+when_not_to_use: |
+  Data too large for memory (use a database or a distributed engine),
+  or when order does not exist: rolling and lag features only make
+  sense on data sorted by time within each group.
+why_it_works: |
+  Hashing the key turns matching into a lookup, so no pairwise
+  comparison of rows is needed. The rolling mean averages each
+  length-$w$ window, and a NaN poisons only the windows containing it.
+  Shifting the
+  feature by one step guarantees that row $t$ was computed only from
+  rows before it.
+math:
+  - "One pass over rows: Σₖ nₖ = N, cost O(N)"
+  - "Left join rows = Σₖ lₖ · max(rₖ, 1)"
+  - "Inner join rows = Σₖ lₖ · rₖ"
+  - "x̄ₜ = (1/w) Σᵢ₌₀^(w−1) xₜ₋ᵢ,  NaN for t < w − 1"
+  - "lagₖ(x)ₜ = xₜ₋ₖ,  need k ≥ 1 to avoid look-ahead"
+interview_qa:
+  - q: "What happens to row counts when the right table has duplicate keys?"
+    a: "Each left row is repeated once per matching right row, so a join can grow the table. Check key uniqueness on the side that should be unique."
+  - q: "Difference between inner and left join?"
+    a: "An inner join keeps only keys present on both sides. A left join keeps every left row and fills right columns with missing values when no match exists."
+  - q: "How does a rolling feature leak the future?"
+    a: "A window ending at $t$ includes $x_t$, which is the value being predicted at $t$. Shift the feature by at least one step before using it."
+  - q: "How do you compute group statistics without leaking across a train/test split?"
+    a: "Compute them on the training rows only and join them onto both sets, or use out-of-fold statistics for target-based aggregates."
+hyperparameters:
+  - "Window size $w$ for rolling features"
+  - "Lag $k$ (at least 1 when predicting the current step)"
+  - "Join type (inner, left) and the key columns"
+  - "Aggregate function (mean, sum, count, std)"
+pitfalls:
+  - "Computing the rolling mean on $x$ and aligning it to the same row leaks $x_t$ into the feature for $t$"
+  - "Rolling or lag across several entities without grouping first mixes the end of one series with the start of the next"
+  - "Joining on a key with duplicates silently multiplies rows and inflates later sums"
+  - "Target-based group means computed on all data leak labels; compute them within training folds"
+related: [data-leakage, feature-scaling, exponential-smoothing]
+math_tex:
+- 'One pass over rows: $\sum_k n_k = N$, cost O(N)'
+- 'Left join rows: $\sum_k l_k \cdot \max(r_k, 1)$'
+- 'Inner join rows: $\sum_k l_k \cdot r_k$'
+- 'Rolling: $\bar{x}_t = \frac{1}{w}\sum_{i=0}^{w-1} x_{t-i}$'
+- 'Lag: $\mathrm{lag}_k(x)_t = x_{t-k}$, with $k \geq 1$'

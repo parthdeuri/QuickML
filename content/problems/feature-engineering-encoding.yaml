@@ -1,0 +1,122 @@
+slug: feature-engineering-encoding
+title: Feature Encoding (One-Hot, Target, Cyclical, Binning)
+url: https://scikit-learn.org/stable/modules/preprocessing.html
+difficulty: Medium
+area: Classical ML
+topics: [Feature Engineering, Encoding, Target Encoding, Leakage]
+summary: |
+  Turn raw columns into numeric model inputs: one-hot for categories,
+  leak-safe out-of-fold target encoding for high-cardinality ones,
+  sine and cosine for periodic values, and equal-width bins.
+intuition: |
+  An encoding is a claim about geometry. One-hot says categories are
+  equally far apart. Sine and cosine say hour 23 sits next to hour 0,
+  which a raw number gets wrong. Target encoding replaces a category by
+  its average label, which is powerful for thousands of categories but
+  dangerous: if a row's own label is inside its own encoding, the model
+  is handed the answer. Computing each row's encoding from the other
+  folds, and shrinking rare categories toward the global mean, keeps
+  the signal and removes the leak.
+  Flow: raw column → encode → leak-safe fit → model input.
+why_it_works: |
+  Out-of-fold encoding makes the feature for row $i$ a function of rows
+  that do not include row $i$, so the same statistic computed at test
+  time (from training labels only) has the same distribution as the one
+  seen in training. Smoothing $\frac{n\bar{y}_c + a\bar{y}}{n + a}$ is a
+  weighted average of the category mean and the prior, trusting the
+  category more as $n$ grows. The pair $(\sin, \cos)$ places a period
+  on the unit circle, so values one step apart across the wrap-around
+  are close.
+when_to_use: |
+  One-hot for low-cardinality categories and linear models, target or
+  frequency encoding for high-cardinality ones with tree or linear
+  models, cyclical encoding for hour, weekday or angle, binning when a
+  nonlinear step-like effect is expected, a log transform for skewed
+  positive values.
+when_not_to_use: |
+  One-hot on very high-cardinality columns (huge sparse matrices),
+  ordinal codes for unordered categories in linear models (they invent
+  an order), and target encoding on tiny data where fold estimates are
+  noisy. Tree ensembles often need no scaling or binning at all.
+math:
+  - "One-hot: eₖ[j] = 1 if k = j, else 0"
+  - "Target encoding: ĉ = (n·ȳ_c + a·ȳ) / (n + a)"
+  - "n = rows of the category in other folds, a = smoothing"
+  - "Cyclical: (sin(2πx/P), cos(2πx/P))"
+  - "Chord distance on the circle: 2 |sin(πΔ/P)|"
+  - "Bin width w = (x_max − x_min) / k"
+  - "Bin id = floor of (x − x_min)/w, max goes in the last bin"
+  - "Log transform: z = ln(1 + x), x ≥ 0"
+approach:
+  - Fit the category list on training data only — the model never sees test categories
+  - One-hot each category into its own indicator column — no false ordering between categories
+  - For target encoding, split rows into $K$ folds and encode each fold from the other folds — a row never sees its own label
+  - Shrink with $\frac{n\bar{y}_c + a\bar{y}}{n + a}$ — rare categories fall back to the global mean
+  - Map a periodic feature to $(\sin, \cos)$ of $2\pi x / P$ — keeps the wrap-around neighbours close
+  - Cut a numeric column into equal-width bins from the training min and max — captures step-like effects
+code: |
+  import numpy as np
+
+  def one_hot(values, categories):
+      values = np.asarray(values)
+      eq = values[:, None] == np.asarray(categories)[None, :]
+      return eq.astype(float)
+
+  def equal_width_bins(x, k):
+      x = np.asarray(x, float)
+      edges = np.linspace(x.min(), x.max(), k + 1)
+      return np.searchsorted(edges[1:-1], x, side="right")
+
+  def cyclical(x, period):
+      a = 2 * np.pi * np.asarray(x) / period
+      return np.column_stack([np.sin(a), np.cos(a)])
+
+  def target_encode_oof(cat, y, n_folds, smoothing, seed):
+      cat, y = np.asarray(cat), np.asarray(y, float)
+      rng = np.random.default_rng(seed)
+      folds = rng.integers(0, n_folds, len(y))
+      out = np.empty(len(y))
+      for f in range(n_folds):
+          tr, te = folds != f, folds == f
+          prior = y[tr].mean()
+          s, n = {}, {}
+          for c, v in zip(cat[tr], y[tr]):
+              s[c] = s.get(c, 0.0) + v
+              n[c] = n.get(c, 0) + 1
+          for i in np.nonzero(te)[0]:
+              c = cat[i]
+              num = s.get(c, 0.0) + smoothing * prior
+              out[i] = num / (n.get(c, 0) + smoothing)
+      return out
+key_lines: [14, 24, 32]
+time: "O(n·K) for one-hot with K categories, O(n) for target encoding, cyclical and binning"
+space: "O(n·K) for the one-hot matrix, O(K) for the category statistics"
+hyperparameters:
+  - 'Smoothing strength $a$ — larger values pull rare categories toward the global mean'
+  - 'Number of folds for out-of-fold target encoding'
+  - 'Period $P$ of the cyclical feature (24 for hour, 7 for weekday)'
+  - 'Number of bins $k$ and the binning strategy (uniform or quantile)'
+pitfalls:
+  - 'Fitting target encoding on all rows and then training on it leaks each label into its own feature; the model overfits and fails on new data'
+  - 'Unseen categories at test time need a fallback, here the prior mean through $n=0$; one-hot needs an unknown-category rule'
+  - 'Encoding statistics (categories, bin edges, prior) must come from training data only, never from validation or test'
+  - 'A single raw number for a cyclical feature puts 23h and 0h far apart; $\sin$ alone is ambiguous, so use both $\sin$ and $\cos$'
+interview_qa:
+  - q: 'Why does naive target encoding leak?'
+    a: 'Each row''s encoding includes its own label, so the feature already contains the answer. The model looks accurate on training data and collapses on test data, where the label is not available.'
+  - q: 'How does out-of-fold encoding fix it?'
+    a: 'Each row is encoded using only the other folds, so it never sees its own label, and the training feature has the same noise level as the feature at test time.'
+  - q: 'Why encode hour with sine and cosine?'
+    a: 'Hour 23 and hour 0 are one step apart but numerically 23 apart. Placing hours on a circle with $(\sin, \cos)$ makes neighbours close, and both are needed to tell positions apart.'
+  - q: 'When prefer one-hot over ordinal encoding?'
+    a: 'When the categories have no order, particularly with linear models, which would otherwise treat the codes as magnitudes. Trees can cope with ordinal codes more easily.'
+related: [feature-scaling, data-leakage, cross-validation]
+math_tex:
+- 'One-hot: $e_k[j] = 1$ if $k = j$, else $0$'
+- 'Target enc.: $\hat{c} = \frac{n\bar{y}_c + a\bar{y}}{n + a}$'
+- 'Here $n$ counts rows in other folds, $a$ smooths'
+- 'Cyclical: $(\sin\frac{2\pi x}{P}, \cos\frac{2\pi x}{P})$'
+- 'Chord distance: $2\,|\sin(\pi\Delta/P)|$'
+- 'Bin width $w = (x_{max}-x_{min})/k$'
+- 'Bin id = floor of $(x - x_{min})/w$, max in last bin'
+- 'Log transform: $z = \ln(1+x)$, $x \geq 0$'

@@ -1,0 +1,95 @@
+slug: git-object-model
+title: Git Object Model (Blobs, Trees, Commits)
+url: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
+difficulty: Medium
+area: Programming
+topics: [Git, Hashing, Data Structures]
+summary: |
+  Git is a content-addressed store: blobs hold file bytes, trees list
+  names and ids, commits point to a tree and parent commits, and each
+  id is the SHA-1 of the object's header plus its content.
+intuition: |
+  Because the id is computed from the content, an object cannot change
+  without changing its name, and a commit's id covers its tree and its
+  parents' ids. Editing one old file therefore changes its blob id, its
+  tree ids, and every later commit id, so history is tamper evident.
+  Identical content is stored once, and a branch is only a file holding
+  one commit id, which is why creating branches is nearly free.
+  Flow: content → header + hash → object id → tree lists ids → commit points to tree.
+approach:
+  - 'Hash a blob as SHA-1 of "blob size" NUL then bytes — the id depends only on content'
+  - 'Sort tree entries as Git does, directories as if their name ended in "/" — the bytes must match exactly'
+  - 'Write each entry as mode, space, name, NUL, then the 20-byte raw id — the binary tree format'
+  - 'Build the commit text with tree, parent, author, committer lines, a blank line and the message — all hashed'
+  - 'Point a branch file at the new commit id — moving a branch is just writing 41 bytes'
+code: |
+  import hashlib
+
+  def hash_object(kind, data):
+      header = b"%s %d\0" % (kind.encode(), len(data))
+      return hashlib.sha1(header + data).hexdigest()
+
+  def tree_hash(entries):
+      def order(e):
+          mode, name, _ = e
+          return name.encode() + (b"/" if mode == "40000" else b"")
+      body = b""
+      for mode, name, oid in sorted(entries, key=order):
+          body += mode.encode() + b" " + name.encode() + b"\0"
+          body += bytes.fromhex(oid)
+      return hash_object("tree", body)
+
+  def commit_hash(tree, parents, author, committer, message):
+      lines = ["tree " + tree]
+      lines += ["parent " + p for p in parents]
+      lines += ["author " + author, "committer " + committer]
+      text = "\n".join(lines) + "\n\n" + message
+      return hash_object("commit", text.encode())
+key_lines: [5, 10, 19]
+time: "O(n) in the object size to hash it; O(k log k) to sort k tree entries"
+space: "O(size) per object; unchanged content is shared, not copied"
+when_to_use: |
+  Understanding what git commit, branch, merge and rebase really do,
+  debugging odd repository states, and building tools that read or
+  write repositories directly, such as dataset or model versioning.
+when_not_to_use: |
+  Day-to-day work: use the porcelain commands. This model also omits
+  packfiles, delta compression, refs files and the index, and newer
+  repositories may use a different hash function than SHA-1.
+why_it_works: |
+  The id is a cryptographic hash of the full object, so equal ids mean
+  equal content for practical purposes and any change gives a new id.
+  A tree stores the ids of its children and a commit stores the ids of
+  its tree and parents, which forms a Merkle DAG: one id at the tip
+  authenticates the entire history below it.
+math:
+  - "id = SHA-1( type ␣ size NUL ‖ content )"
+  - "tree entry = mode ␣ name NUL ‖ id (20 raw bytes)"
+  - "id(commit) = SHA-1( header ‖ tree, parents, author, message )"
+  - "blob changes ⇒ tree id changes ⇒ every descendant commit id changes"
+  - "40 hex digits = 160 bits = 20 bytes per id"
+interview_qa:
+  - q: "What is a Git branch?"
+    a: "A small file under refs/heads holding the id of one commit. Committing moves it forward, and creating a branch just writes a new file."
+  - q: "Why do two files with the same content share one object?"
+    a: "The id comes from the content alone, not the file name, so identical bytes hash to the same blob and are stored once. Names live in the tree."
+  - q: "How does Git detect tampering with history?"
+    a: "Each commit id covers its tree and parent ids. Altering an old object changes its id and every id above it, so it no longer matches the id you trust."
+  - q: "What does a commit contain?"
+    a: "One tree id, zero or more parent ids, author and committer with timestamps, and the message. The parents make the history a DAG."
+hyperparameters:
+  - "Hash function (SHA-1 or SHA-256 repositories)"
+  - "File mode of each tree entry (100644, 100755, 40000)"
+  - "Author and committer name, email and timestamp"
+pitfalls:
+  - 'Tree ids inside a tree are raw 20 bytes, not 40 hex characters'
+  - 'Directories sort as if their name ended in "/", so "a" comes after "a.txt"'
+  - 'The commit message must end in a newline exactly as Git stores it, or the id differs'
+  - 'Two commits with the same tree but different time or parents get different ids'
+related: [prompt-versioning, tracing-and-logging]
+math_tex:
+- '$\mathrm{id} = \mathrm{SHA1}(\mathrm{type}\ \mathrm{size}\ \mathrm{NUL}\ \|\ \mathrm{content})$'
+- 'Entry: $\mathrm{mode}\ \mathrm{name}\ \mathrm{NUL}\ \|\ \mathrm{id}_{20}$ (raw bytes)'
+- 'Commit: $\mathrm{SHA1}(\mathrm{header}\ \|\ \mathrm{tree}, \mathrm{parents}, \mathrm{msg})$'
+- 'Edit $\Rightarrow$ new blob id $\Rightarrow$ new tree ids $\Rightarrow$ new commit ids'
+- 'Id size: $40\ \mathrm{hex} = 160\ \mathrm{bits} = 20\ \mathrm{bytes}$'

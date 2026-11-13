@@ -1,0 +1,96 @@
+slug: convex-optimisation-lagrange
+title: Convex Optimisation and Lagrange Multipliers
+url: https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf
+difficulty: Hard
+area: Math
+topics: [Optimisation, Convexity, KKT Conditions]
+summary: |
+  For a convex objective every local minimum is global. Lagrange
+  multipliers turn a constrained problem into stationarity of a
+  Lagrangian, and the KKT conditions extend this to inequality
+  constraints, as used in the SVM dual.
+intuition: |
+  At a constrained optimum you cannot slide along the constraint
+  surface and improve, so the objective gradient has no component along
+  the surface: it points straight along the constraint normals, and the
+  multipliers are the weights. A multiplier is also a price: it says how
+  much the optimal value changes when the constraint is relaxed. For an
+  inequality constraint, either it is tight and has a price, or it is
+  slack and its price is zero (complementary slackness).
+  Flow: objective + constraints → Lagrangian → stationarity → solve → multipliers as prices.
+approach:
+  - 'Check convexity — a quadratic is convex when $Q$ has no negative eigenvalue, so a stationary point is the global minimum'
+  - 'Form the Lagrangian $\mathcal{L} = \frac{1}{2}x^\top Q x + c^\top x + \lambda^\top (Ax - b)$ — folds constraints into the objective'
+  - 'Set the gradient in $x$ to zero and keep $Ax = b$ — stationarity plus feasibility'
+  - 'Stack both into one linear KKT system and solve — a quadratic program with equalities is just linear algebra'
+  - 'Check residuals and read $\lambda$ — a good solution makes both residuals near 0 and $\lambda$ is the price'
+code: |
+  import numpy as np
+
+  def is_convex_quadratic(Q, tol=1e-10):
+      return bool(np.linalg.eigvalsh((Q + Q.T) / 2).min() >= -tol)
+
+  def solve_eq_qp(Q, c, A, b):
+      n, m = len(c), len(b)
+      K = np.block([[Q, A.T], [A, np.zeros((m, m))]])
+      sol = np.linalg.solve(K, np.concatenate([-c, b]))
+      return sol[:n], sol[n:]
+
+  def kkt_residuals(Q, c, A, b, x, lam):
+      stationarity = Q @ x + c + A.T @ lam
+      feasibility = A @ x - b
+      return (np.linalg.norm(stationarity),
+              np.linalg.norm(feasibility))
+key_lines: [8, 9, 13]
+time: "O((n+m)³) to solve the dense KKT system"
+space: "O((n+m)²) for the KKT matrix"
+when_to_use: |
+  Equality-constrained quadratic problems, understanding duals and
+  support vectors in the SVM, and reading any constrained optimum as
+  stationarity of a Lagrangian with multipliers as prices.
+when_not_to_use: |
+  Large sparse or inequality-constrained problems, where you would use
+  an iterative or interior-point solver, and non-convex problems where
+  a KKT point need not be a global minimum.
+why_it_works: |
+  If the Hessian $Q$ is positive semidefinite, the objective lies below
+  every chord, so any stationary point on the feasible set is a global
+  minimum. Stationarity says $\nabla f = -A^\top \lambda$ at the optimum.
+  Perturbing $b$ to $b + \delta$ changes the optimal value by about
+  $-\lambda^\top \delta$ with this sign convention, which makes $\lambda$ the
+  shadow price. For inequalities, KKT adds $\lambda_i \geq 0$ and
+  $\lambda_i g_i = 0$.
+math:
+  - "f(θx + (1−θ)y) ≤ θ f(x) + (1−θ) f(y)"
+  - "convex ⇔ ∇²f ⪰ 0 (all Hessian eigenvalues ≥ 0)"
+  - "L(x, λ) = ½ xᵀQx + cᵀx + λᵀ(Ax − b)"
+  - "stationarity: Qx + c + Aᵀλ = 0,  feasibility: Ax = b"
+  - "[[Q, Aᵀ],[A, 0]] [x; λ] = [−c; b]"
+  - "KKT: g(x) ≤ 0, λ ≥ 0, λᵢ gᵢ(x) = 0, ∇f + Σ λᵢ ∇gᵢ = 0"
+  - "dp*/db = −λ  (shadow price)"
+interview_qa:
+  - q: "Why do we care about convexity?"
+    a: 'In a convex problem every local minimum is a global minimum, so gradient methods and stationarity conditions are enough to find the best solution.'
+  - q: "What do Lagrange multipliers mean?"
+    a: 'They weight the constraint normals in the stationarity condition, and they are the sensitivity of the optimal value to the constraint level, a shadow price.'
+  - q: "What is complementary slackness?"
+    a: 'For each inequality constraint either the constraint is tight or its multiplier is zero. In the SVM this means only support vectors, which lie on the margin, have non-zero dual variables.'
+  - q: "How do you test whether a quadratic is convex?"
+    a: 'Its Hessian $Q$ must be positive semidefinite: all eigenvalues of the symmetrised matrix are at least 0.'
+hyperparameters:
+  - "Objective matrix $Q$ and vector $c$"
+  - "Constraint matrix $A$ and level $b$"
+  - "Tolerance for the eigenvalue convexity test"
+pitfalls:
+  - "The KKT system is singular if the constraints in $A$ are linearly dependent; remove redundant rows"
+  - 'Sign conventions for $\lambda$ differ between texts, so the sign of the shadow price flips with them'
+  - "For non-convex $Q$ a KKT point can be a saddle or a maximum, not the minimum"
+related: [svm, gradient-descent]
+math_tex:
+- 'Convex: $f(\theta x + (1-\theta)y) \leq \theta f(x) + (1-\theta) f(y)$'
+- 'Convex iff Hessian $\nabla^2 f$ is PSD'
+- 'Lagrangian: $\frac{1}{2}x^\top Q x + c^\top x + \lambda^\top (Ax - b)$'
+- 'Stationary: $Qx + c + A^\top \lambda = 0$, $Ax = b$'
+- 'KKT system: $[Q, A^\top; A, 0]\,[x; \lambda] = [-c; b]$'
+- 'KKT: $g(x) \leq 0$, $\lambda \geq 0$, $\lambda_i g_i(x) = 0$'
+- 'Shadow price: $dp^{*}/db = -\lambda$'

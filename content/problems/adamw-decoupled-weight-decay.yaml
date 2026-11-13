@@ -1,0 +1,93 @@
+slug: adamw-decoupled-weight-decay
+title: AdamW Decoupled Weight Decay
+url: https://arxiv.org/abs/1711.05101
+difficulty: Medium
+area: Deep Learning
+topics: [Optimisation, Regularisation, Weight Decay, Adaptive Learning Rates]
+summary: |
+  Adam with L2 puts the decay term inside the gradient, where the
+  adaptive denominator rescales it. AdamW subtracts the decay from the
+  weights directly, so every weight shrinks at the same rate.
+intuition: |
+  With L2 regularisation the penalty gradient $\lambda w$ is added to
+  $g$ and then divided by $\sqrt{\hat{v}}$ like everything else, so a
+  weight with a large gradient history is decayed less, and one with a
+  small history is decayed more. That is not what weight decay means.
+  AdamW takes the decay out of the gradient and applies it as a
+  separate shrink $-\eta\lambda w$, so the regularisation strength no
+  longer depends on the gradient scale and is easier to tune.
+  Flow: gradient + history → adaptive step → separate decay → update.
+approach:
+  - 'Form the gradient $g$ of the loss alone — in AdamW the penalty is not added to it'
+  - 'Update $m$ and $v$ with bias correction as in Adam — the adaptive part is unchanged'
+  - 'Compute the adaptive step $\hat{m}/(\sqrt{\hat{v}}+\epsilon)$ — scaled per parameter'
+  - 'Add $\lambda w$ outside the adaptive ratio — the decay bypasses the denominator'
+  - 'Update $w \leftarrow w - \eta(\ldots)$ — decay and step share only the learning rate'
+code: |
+  import numpy as np
+
+  def init_state(w):
+      return {"m": np.zeros_like(w), "v": np.zeros_like(w), "t": 0}
+
+  def _adam_dir(st, g, b1, b2, eps):
+      st["t"] += 1
+      st["m"] = b1 * st["m"] + (1 - b1) * g
+      st["v"] = b2 * st["v"] + (1 - b2) * g * g
+      m_hat = st["m"] / (1 - b1 ** st["t"])
+      v_hat = st["v"] / (1 - b2 ** st["t"])
+      return m_hat / (np.sqrt(v_hat) + eps)
+
+  def adam_l2_step(st, w, g, lr=1e-3, b1=0.9, b2=0.999,
+                   eps=1e-8, wd=0.0):
+      d = _adam_dir(st, g + wd * w, b1, b2, eps)
+      return w - lr * d
+
+  def adamw_step(st, w, g, lr=1e-3, b1=0.9, b2=0.999,
+                 eps=1e-8, wd=0.0):
+      d = _adam_dir(st, g, b1, b2, eps)
+      return w - lr * (d + wd * w)
+key_lines: [16, 21, 22]
+time: "O(d) per step for d parameters"
+space: "O(d) extra, two moment buffers"
+when_to_use: |
+  Training transformers and most modern networks with Adam-style
+  optimisers when weight decay is wanted; it is the standard choice.
+when_not_to_use: |
+  With plain SGD, where L2 regularisation and weight decay are
+  equivalent and no change is needed. Decay is also usually skipped for
+  biases and normalisation parameters.
+why_it_works: |
+  For SGD, adding $\lambda w$ to the gradient gives the update
+  $-\eta\lambda w$, so L2 and weight decay coincide. In Adam the added
+  term is divided by $\sqrt{\hat{v}}+\epsilon$, so the effective decay
+  is $\eta\lambda w/(\sqrt{\hat{v}}+\epsilon)$, which differs per
+  weight and is entangled with the gradient scale. AdamW restores the
+  fixed decay $\eta\lambda w$, which also makes the best $\lambda$
+  less dependent on the learning rate, as reported in the paper.
+math:
+  - "Adam + L2:  g' = g + λw,  w ← w − η m̂′ / (√v̂′ + ε)"
+  - "Effective L2 decay ≈ η λ w / (√v̂′ + ε)"
+  - "AdamW:  w ← w − η ( m̂ / (√v̂ + ε) + λ w )"
+  - "AdamW decay with g = 0 per step: w ← w (1 − ηλ) before the step"
+math_tex:
+- 'Adam+L2: $g^{\prime} = g + \lambda w$, then the Adam step'
+- 'Effective L2 decay: $\frac{\eta\lambda w}{\sqrt{\hat{v}}+\epsilon}$'
+- 'AdamW: $w \leftarrow w - \eta\left(\frac{\hat{m}}{\sqrt{\hat{v}}+\epsilon} + \lambda w\right)$'
+- 'Decay alone shrinks $w$ by $(1-\eta\lambda)$'
+hyperparameters:
+  - "Learning rate $\\eta$"
+  - "Weight decay $\\lambda$"
+  - "$\\beta_1$ and $\\beta_2$"
+  - "$\\epsilon$"
+pitfalls:
+  - "Passing the L2 coefficient to Adam and calling it weight decay; the behaviour differs from AdamW"
+  - "Applying the decay to biases and normalisation scales, which usually should not be decayed"
+  - "Assuming $\\lambda$ is comparable across libraries; some scale the decay by the learning rate and some do not"
+interview_qa:
+  - q: "Why is L2 regularisation not the same as weight decay in Adam?"
+    a: "The L2 term enters the gradient and is divided by the adaptive denominator, so weights with large gradient history are decayed less. Weight decay should shrink all weights by the same factor."
+  - q: "What does AdamW change in the update?"
+    a: "It adds $\\lambda w$ to the final step, outside the ratio $\\hat{m}/(\\sqrt{\\hat{v}}+\\epsilon)$, instead of to the gradient."
+  - q: "What happens to AdamW weights when the gradient is zero?"
+    a: "The moments decay but the decay term still applies, so the weight keeps shrinking by about $\\eta\\lambda w$ each step."
+related: [adam-optimizer, ridge-lasso-regularization, gradient-descent]

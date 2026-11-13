@@ -12,9 +12,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import validate  # noqa: E402
+import flashcards  # noqa: E402
 
 OUT_FILE = (validate.CONTENT_DIR.parent / "app" / "src" / "main"
             / "assets" / "problems.json")
+FLASH_FILE = OUT_FILE.with_name("flashcards.json")
 
 
 def convert_problem(p):
@@ -145,6 +147,21 @@ def main():
     with open(OUT_FILE, "w", encoding="utf-8", newline="\n") as f:
         json.dump(doc, f, ensure_ascii=False, indent=1)
         f.write("\n")
+
+    cards = flashcards.derive(out_problems, out_sheets, out_patterns)
+    flash_errors = flashcards.check(cards, {p["slug"] for p in out_problems},
+                                    {s["id"] for s in out_sheets})
+    if flash_errors:
+        for e in flash_errors:
+            print(f"error: {e}", file=sys.stderr)
+        return 1
+    with open(FLASH_FILE, "w", encoding="utf-8", newline="\n") as f:
+        json.dump({"contentVersion": version, "cards": cards}, f, ensure_ascii=False)
+        f.write("\n")
+    kinds = {}
+    for c in cards:
+        kinds[c["kind"]] = kinds.get(c["kind"], 0) + 1
+    print(f"wrote {FLASH_FILE} flash_cards={len(cards)} {kinds}")
 
     full = sum(1 for p in out_problems
                if p["intuition"] and p["approach"] and p["solution"])

@@ -44,19 +44,19 @@ communities, articles, papers, interview prep). New cards have no image diagram 
 ends the Intuition text). Several cards cite abstract pages only; facts beyond them are checked by the
 card's own tests, not by the cited page.
 Families and compare cards done (11 new families, 11 new compare cards; project blueprints and link-only entries stay untagged).
-To do, in order: flash cards, image diagrams for the new cards.
 
-## Next: flash cards (planned, nothing started)
-Auto-generated from the existing cards, spaced repetition, new bottom tab.
-1. Content: `build.py` derives about 800-900 cards (interview Q&A, key insight, when to use,
-   pitfalls, formulas, compare cards) into `flashcards.json`; validator and `test_flashcards.py`.
-2. Data: DB migration 7 to 8 (`flashcards` content table, `flash_review` user table, kept apart from
-   `review_state` so Revise counts are unaffected), `FlashDao`/`FlashRepository` on `Sm2Scheduler`,
-   importer keeps reviews, backup includes them.
-3. UI: Flash tab with deck picker and type chips, due then new cards up to a daily limit, tap to
-   flip, Forgot/Hard/Good/Easy with interval preview, session summary, "Open concept" link.
-   Move `RatingRow` to a shared file. Use `MathText` for formulas.
-4. Wrap-up: dashboard due count, daily-limit setting, README/PLAN update, version bump.
+## Done: flash cards (new Flash tab)
+`content/scripts/flashcards.py` derives 2157 cards from the concept cards at build time (definition,
+key insight, each interview question, use/avoid, pitfalls, formulas, plus a card per compare card and
+family) into `flashcards.json`. Room DB v8: `flashcards` (content, replaced on import) and
+`flash_review` (own SM-2 schedule, separate from the concept reviews), `FlashRepository`, backup includes
+the schedules, Dashboard shows flash cards due. The tab has a deck picker (sheets), card-type chips, a
+daily new-card limit (10/20/30/50), tap to flip, Forgot/Hard/Good/Easy with interval preview, a session
+summary and "Open the full card". Not yet verified on a device (needs a CI build and a phone check).
+
+## Next: image diagrams for the roadmap cards (planned, nothing started)
+New cards have an arrow-flow line instead of a picture; real diagrams (same renderer as the existing
+17) come after the flash cards.
 
 ## Not done
 - Scenario quiz ("which loss or metric fits this?", "what does this curve show?") needs a new quiz

@@ -26,3 +26,8 @@ Bump `content/version.txt` after any content change so installed apps re-import.
 ## Signing
 `python tools/make_signing_key.py` creates the permanent key outside the repo; put it in the
 `QUICKML_KEYSTORE_BASE64` / `QUICKML_KEYSTORE_PASSWORD` GitHub secrets. Never commit keys.
+
+## Flash cards
+The Flash tab quizzes recall with spaced repetition. The 2157 cards are derived from the concept cards by
+`content/scripts/flashcards.py` (written to `app/src/main/assets/flashcards.json` by `build.py`); nothing
+is hand-written. Run `python content/tests/test_flashcards.py` after `build.py`.

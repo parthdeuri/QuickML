@@ -79,6 +79,8 @@ data class DashboardState(
     val weekMillis: Long = 0L,
     val cardsToday: Int = 0,
     val dueToday: Int = 0,
+    /** Flash card reviews due today (all decks). */
+    val flashDue: Int = 0,
     /** Share of the last 30 days' reviews rated Good or Easy (0..100); null without reviews. */
     val recallPercent: Int? = null,
     val reviewCount30: Int = 0,
@@ -96,6 +98,7 @@ data class DashboardState(
 @OptIn(ExperimentalCoroutinesApi::class)
 class DashboardViewModel(container: AppContainer) : ViewModel() {
     private val repository = container.repository
+    private val flashRepository = container.flashRepository
     private val settings = container.studySettings
     private val refreshTick = MutableStateFlow(0)
 
@@ -109,9 +112,10 @@ class DashboardViewModel(container: AppContainer) : ViewModel() {
                 .toEpochMilli()
             combine(
                 repository.observeFeed(settings.selectedSheetId),
-                repository.observeActivitySince(since)
-            ) { feed, logs ->
-                compute(feed, logs, System.currentTimeMillis())
+                repository.observeActivitySince(since),
+                flashRepository.observeDueTotal()
+            ) { feed, logs, flashDue ->
+                compute(feed, logs, System.currentTimeMillis()).copy(flashDue = flashDue)
             }
         }
         .flowOn(Dispatchers.Default)

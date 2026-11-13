@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -114,6 +115,15 @@ private fun DashboardContent(state: DashboardState, modifier: Modifier = Modifie
                 subtext = state.reviewCount30.toString() + (if (state.reviewCount30 == 1) " review" else " reviews"),
                 modifier = Modifier.weight(1f)
             )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            StatTile(
+                value = state.flashDue.toString(),
+                label = "Flash cards due",
+                subtext = "open the Flash tab",
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             StatTile(

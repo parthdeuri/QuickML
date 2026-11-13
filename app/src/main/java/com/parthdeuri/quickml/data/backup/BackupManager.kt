@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.room.withTransaction
 import com.parthdeuri.quickml.data.db.ActivityLogEntity
 import com.parthdeuri.quickml.data.db.ConceptEntity
+import com.parthdeuri.quickml.data.db.FlashReviewEntity
 import com.parthdeuri.quickml.data.db.ReviewStateEntity
 import com.parthdeuri.quickml.data.db.QuickMLDatabase
 import com.parthdeuri.quickml.data.db.UserProgressEntity
@@ -28,6 +29,8 @@ data class BackupFile(
     val appVersion: String = "",
     val userProgress: List<BackupProgress> = emptyList(),
     val reviewState: List<BackupReview> = emptyList(),
+    /** Flash card schedules; absent in backups made before the Flash tab existed. */
+    val flashReview: List<BackupFlashReview> = emptyList(),
     val activityLog: List<BackupActivity> = emptyList(),
     /** Full rows of the user's own problems. */
     val userConcepts: List<BackupConcept> = emptyList(),
@@ -43,6 +46,19 @@ data class BackupProgress(
     val updatedAt: Long = 0L,
     val solvedAt: Long? = null,
     val mySolution: String? = null
+)
+
+@Serializable
+data class BackupFlashReview(
+    val cardId: String,
+    val ease: Double = 2.5,
+    val intervalDays: Int = 0,
+    val reps: Int = 0,
+    val lapses: Int = 0,
+    val dueDay: Long = 0L,
+    val lastRating: String? = null,
+    val lastReviewedAt: Long? = null,
+    val firstSeenDay: Long = 0L
 )
 
 @Serializable
@@ -110,13 +126,15 @@ data class BackupSummary(
     val reviews: Int,
     val activity: Int,
     val notes: Int,
-    val ownConcepts: Int
+    val ownConcepts: Int,
+    val flashReviews: Int = 0
 ) {
     fun describe(): String = buildList {
         add(plural(solved, "learned card", "learned cards"))
         add(plural(reviews, "review schedule", "review schedules"))
         if (notes > 0) add(plural(notes, "note", "notes"))
         if (ownConcepts > 0) add(plural(ownConcepts, "own card", "own cards"))
+        if (flashReviews > 0) add(plural(flashReviews, "flash card schedule", "flash card schedules"))
         add(plural(activity, "activity entry", "activity entries"))
     }.joinToString(", ")
 
@@ -190,7 +208,8 @@ class BackupManager(
         reviews = backup.reviewState.size,
         activity = backup.activityLog.size,
         notes = backup.userProgress.count { !it.note.isNullOrBlank() },
-        ownConcepts = backup.userConcepts.size
+        ownConcepts = backup.userConcepts.size,
+        flashReviews = backup.flashReview.size
     )
 
     /**
@@ -207,6 +226,10 @@ class BackupManager(
             val reviews = backup.reviewState
                 .filter { it.slug.isNotBlank() }
                 .distinctBy { it.slug }
+                .map { it.toEntity() }
+            val flashReviews = backup.flashReview
+                .filter { it.cardId.isNotBlank() }
+                .distinctBy { it.cardId }
                 .map { it.toEntity() }
             val activity = backup.activityLog
                 .filter { it.slug.isNotBlank() && it.type.isNotBlank() }
@@ -227,6 +250,11 @@ class BackupManager(
                     db.contentDao().insertConcepts(problems)
                     progressDao.insertAll(progress)
                     reviewDao.insertAll(reviews)
+                    // A backup from before the Flash tab has none: keep the current schedules.
+                    if (flashReviews.isNotEmpty()) {
+                        db.flashDao().clearReviews()
+                        db.flashDao().insertReviews(flashReviews)
+                    }
                     activityDao.insertAll(activity)
                 }
             } catch (e: Exception) {
@@ -268,6 +296,7 @@ class BackupManager(
             appVersion = appVersionName(),
             userProgress = progress.map { it.toBackup() },
             reviewState = reviews.map { it.toBackup() },
+            flashReview = db.flashDao().getAllReviews().map { it.toBackup() },
             activityLog = activity.map { it.toBackup() },
             userConcepts = problems.map { it.toBackup() },
             settings = BackupSettings(
@@ -317,6 +346,30 @@ private fun BackupProgress.toEntity() = UserProgressEntity(
     updatedAt = updatedAt,
     solvedAt = solvedAt,
     mySolution = mySolution
+)
+
+private fun FlashReviewEntity.toBackup() = BackupFlashReview(
+    cardId = cardId,
+    ease = ease,
+    intervalDays = intervalDays,
+    reps = reps,
+    lapses = lapses,
+    dueDay = dueDay,
+    lastRating = lastRating,
+    lastReviewedAt = lastReviewedAt,
+    firstSeenDay = firstSeenDay
+)
+
+private fun BackupFlashReview.toEntity() = FlashReviewEntity(
+    cardId = cardId,
+    ease = ease,
+    intervalDays = intervalDays,
+    reps = reps,
+    lapses = lapses,
+    dueDay = dueDay,
+    lastRating = lastRating,
+    lastReviewedAt = lastReviewedAt,
+    firstSeenDay = firstSeenDay
 )
 
 private fun ReviewStateEntity.toBackup() = BackupReview(

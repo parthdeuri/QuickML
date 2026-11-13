@@ -152,3 +152,21 @@ data class SheetEntryJson(
     val section: String,
     val order: Int
 )
+
+/** flashcards.json: flash cards derived from the concept cards at build time. */
+@Serializable
+data class FlashFile(
+    val contentVersion: Int,
+    val cards: List<FlashCardJson> = emptyList()
+)
+
+@Serializable
+data class FlashCardJson(
+    val id: String,
+    val slug: String,
+    val kind: String = "qa",
+    val front: String,
+    val back: String,
+    val decks: List<String> = emptyList(),
+    val order: Int = 0
+)

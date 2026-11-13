@@ -151,3 +151,78 @@ interface ReviewDao {
     @Query("SELECT COUNT(*) FROM review_state WHERE dueDay <= :day")
     suspend fun countDue(day: Long): Int
 }
+
+@Dao
+interface FlashDao {
+    @Query("SELECT COUNT(*) FROM flashcards")
+    suspend fun countCards(): Int
+
+    @Query("DELETE FROM flashcards")
+    suspend fun clearCards()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCards(items: List<FlashcardEntity>)
+
+    @Query("SELECT * FROM flashcards WHERE id = :id")
+    suspend fun getCard(id: String): FlashcardEntity?
+
+    /** Cards whose review is due, most overdue first. [deck] is "%" or "%|sheet-id|%". */
+    @Query(
+        "SELECT f.* FROM flashcards f JOIN flash_review r ON r.cardId = f.id " +
+            "WHERE r.dueDay <= :today AND f.decks LIKE :deck AND f.kind IN (:kinds) " +
+            "ORDER BY r.dueDay, f.sortOrder LIMIT :limit"
+    )
+    suspend fun dueCards(
+        deck: String,
+        kinds: List<String>,
+        today: Long,
+        limit: Int
+    ): List<FlashcardEntity>
+
+    /** Cards never rated, in curriculum order. */
+    @Query(
+        "SELECT f.* FROM flashcards f WHERE f.id NOT IN (SELECT cardId FROM flash_review) " +
+            "AND f.decks LIKE :deck AND f.kind IN (:kinds) ORDER BY f.sortOrder LIMIT :limit"
+    )
+    suspend fun newCards(deck: String, kinds: List<String>, limit: Int): List<FlashcardEntity>
+
+    @Query(
+        "SELECT COUNT(*) FROM flashcards f JOIN flash_review r ON r.cardId = f.id " +
+            "WHERE r.dueDay <= :today AND f.decks LIKE :deck AND f.kind IN (:kinds)"
+    )
+    suspend fun countDue(deck: String, kinds: List<String>, today: Long): Int
+
+    @Query(
+        "SELECT COUNT(*) FROM flashcards f WHERE f.id NOT IN (SELECT cardId FROM flash_review) " +
+            "AND f.decks LIKE :deck AND f.kind IN (:kinds)"
+    )
+    suspend fun countNew(deck: String, kinds: List<String>): Int
+
+    @Query(
+        "SELECT COUNT(*) FROM flashcards f " +
+            "WHERE f.decks LIKE :deck AND f.kind IN (:kinds)"
+    )
+    suspend fun countAll(deck: String, kinds: List<String>): Int
+
+    /** All reviews due (any deck), for the dashboard. */
+    @Query("SELECT COUNT(*) FROM flash_review WHERE dueDay <= :today")
+    fun observeDueTotal(today: Long): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM flash_review WHERE firstSeenDay = :today")
+    suspend fun countIntroducedOn(today: Long): Int
+
+    @Query("SELECT * FROM flash_review WHERE cardId = :id")
+    suspend fun getReview(id: String): FlashReviewEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertReview(item: FlashReviewEntity)
+
+    @Query("SELECT * FROM flash_review")
+    suspend fun getAllReviews(): List<FlashReviewEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReviews(items: List<FlashReviewEntity>)
+
+    @Query("DELETE FROM flash_review")
+    suspend fun clearReviews()
+}

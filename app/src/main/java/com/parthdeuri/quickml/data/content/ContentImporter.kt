@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.room.withTransaction
 import com.parthdeuri.quickml.data.db.PatternEntity
 import com.parthdeuri.quickml.data.db.ConceptEntity
+import com.parthdeuri.quickml.data.db.FlashcardEntity
 import com.parthdeuri.quickml.data.db.QuickMLDatabase
 import com.parthdeuri.quickml.data.db.SheetEntity
 import com.parthdeuri.quickml.data.db.SheetEntryEntity
@@ -28,6 +29,11 @@ class ContentImporter(
      * the bundled contentVersion is newer than the stored one.
      */
     suspend fun importIfNeeded() {
+        importConcepts()
+        importFlashIfNeeded()
+    }
+
+    private suspend fun importConcepts() {
         withContext(Dispatchers.IO) {
             val text = context.assets.open(ASSET_NAME).bufferedReader().use { it.readText() }
             val file = json.decodeFromString(ContentFile.serializer(), text)
@@ -88,6 +94,43 @@ class ContentImporter(
         }
     }
 
+    /**
+     * Replaces the flash card table when flashcards.json is newer than the stored version. The
+     * user's schedule (flash_review) is never touched. Any problem here is swallowed: the flash
+     * tab simply stays empty rather than blocking the app.
+     */
+    private suspend fun importFlashIfNeeded() {
+        withContext(Dispatchers.IO) {
+            try {
+                val text = context.assets.open(FLASH_ASSET).bufferedReader().use { it.readText() }
+                val file = json.decodeFromString(FlashFile.serializer(), text)
+                val flashDao = db.flashDao()
+                val stored = prefs.getInt(KEY_FLASH_VERSION, 0)
+                if (stored >= file.contentVersion && flashDao.countCards() > 0) {
+                    return@withContext
+                }
+                val cards = file.cards.map { c ->
+                    FlashcardEntity(
+                        id = c.id,
+                        slug = c.slug,
+                        kind = c.kind,
+                        front = c.front,
+                        back = c.back,
+                        decks = c.decks.joinToString(separator = "|", prefix = "|", postfix = "|"),
+                        sortOrder = c.order
+                    )
+                }
+                db.withTransaction {
+                    flashDao.clearCards()
+                    flashDao.insertCards(cards)
+                }
+                prefs.edit().putInt(KEY_FLASH_VERSION, file.contentVersion).apply()
+            } catch (e: Exception) {
+                // keep whatever flash cards are already stored
+            }
+        }
+    }
+
     /** The pattern library; a missing list gives none, a malformed item is skipped. */
     private fun decodePatterns(file: ContentFile): List<PatternEntity> {
         val array = file.patterns as? JsonArray ?: return emptyList()
@@ -120,5 +163,7 @@ class ContentImporter(
     companion object {
         private const val ASSET_NAME = "problems.json"
         private const val KEY_VERSION = "content_version"
+        private const val FLASH_ASSET = "flashcards.json"
+        private const val KEY_FLASH_VERSION = "flash_content_version"
     }
 }

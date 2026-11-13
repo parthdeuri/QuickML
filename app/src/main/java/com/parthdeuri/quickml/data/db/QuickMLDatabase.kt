@@ -15,9 +15,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ActivityLogEntity::class,
         ReviewStateEntity::class,
         PatternEntity::class,
-        ChatEntity::class
+        ChatEntity::class,
+        FlashcardEntity::class,
+        FlashReviewEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -27,6 +29,41 @@ abstract class QuickMLDatabase : RoomDatabase() {
     abstract fun activityDao(): ActivityDao
     abstract fun reviewDao(): ReviewDao
     abstract fun chatDao(): ChatDao
+    abstract fun flashDao(): FlashDao
+}
+
+/**
+ * v7 -> v8: flash cards. Two new tables, SQL identical to what Room generates for
+ * FlashcardEntity and FlashReviewEntity. Existing tables and rows are never touched; the
+ * flash cards are imported from flashcards.json afterwards.
+ */
+val MIGRATION_7_8: Migration = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `flashcards` (" +
+                "`id` TEXT NOT NULL, " +
+                "`slug` TEXT NOT NULL, " +
+                "`kind` TEXT NOT NULL, " +
+                "`front` TEXT NOT NULL, " +
+                "`back` TEXT NOT NULL, " +
+                "`decks` TEXT NOT NULL, " +
+                "`sortOrder` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `flash_review` (" +
+                "`cardId` TEXT NOT NULL, " +
+                "`ease` REAL NOT NULL, " +
+                "`intervalDays` INTEGER NOT NULL, " +
+                "`reps` INTEGER NOT NULL, " +
+                "`lapses` INTEGER NOT NULL, " +
+                "`dueDay` INTEGER NOT NULL, " +
+                "`lastRating` TEXT, " +
+                "`lastReviewedAt` INTEGER, " +
+                "`firstSeenDay` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`cardId`))"
+        )
+    }
 }
 
 /**

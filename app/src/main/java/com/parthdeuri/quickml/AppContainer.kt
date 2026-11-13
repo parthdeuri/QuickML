@@ -15,8 +15,10 @@ import com.parthdeuri.quickml.data.db.MIGRATION_3_4
 import com.parthdeuri.quickml.data.db.MIGRATION_4_5
 import com.parthdeuri.quickml.data.db.MIGRATION_5_6
 import com.parthdeuri.quickml.data.db.MIGRATION_6_7
+import com.parthdeuri.quickml.data.db.MIGRATION_7_8
 import com.parthdeuri.quickml.data.db.QuickMLDatabase
 import com.parthdeuri.quickml.data.repo.ConceptRepository
+import com.parthdeuri.quickml.data.repo.FlashRepository
 import com.parthdeuri.quickml.data.settings.StudySettings
 import com.parthdeuri.quickml.domain.srs.ReviewScheduler
 import com.parthdeuri.quickml.domain.srs.Sm2Scheduler
@@ -34,7 +36,7 @@ class AppContainer(context: Context) {
         Room.databaseBuilder(appContext, QuickMLDatabase::class.java, "quickml.db")
             .addMigrations(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
-                MIGRATION_6_7
+                MIGRATION_6_7, MIGRATION_7_8
             )
             .build()
 
@@ -50,6 +52,9 @@ class AppContainer(context: Context) {
     val repository: ConceptRepository = ConceptRepository(database, scheduler) {
         QuickMLWidgetProvider.refresh(appContext)
     }
+
+    /** Flash cards: own SM-2 schedule (flash_review), separate from the concept reviews. */
+    val flashRepository: FlashRepository = FlashRepository(database, scheduler)
 
     val reminderSettings: ReminderSettings = ReminderSettings(prefs)
 

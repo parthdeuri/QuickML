@@ -143,3 +143,37 @@ data class ChatEntity(
     val text: String,
     val timestamp: Long
 )
+
+/**
+ * Content table: one flash card (derived from the concept cards at build time). Replaced when
+ * the flash content version increases; the user's schedule lives in [FlashReviewEntity].
+ */
+@Entity(tableName = "flashcards")
+data class FlashcardEntity(
+    @PrimaryKey val id: String,
+    /** The concept card this flash card was made from ("Open concept"). */
+    val slug: String,
+    /** define, idea, qa, use, pitfalls, math, compare or family. */
+    val kind: String,
+    val front: String,
+    val back: String,
+    /** Sheet ids as "|dl-core|llm-engineer|" so a deck filter is a LIKE query. */
+    val decks: String,
+    val sortOrder: Int
+)
+
+/** User table: SM-2 scheduling state of one flash card; never touched by content import. */
+@Entity(tableName = "flash_review")
+data class FlashReviewEntity(
+    @PrimaryKey val cardId: String,
+    val ease: Double,
+    val intervalDays: Int,
+    val reps: Int,
+    val lapses: Int,
+    /** Local epoch day (LocalDate.toEpochDay()). */
+    val dueDay: Long,
+    val lastRating: String? = null,
+    val lastReviewedAt: Long? = null,
+    /** Local epoch day of the first rating: counts against the daily new-card limit. */
+    val firstSeenDay: Long
+)

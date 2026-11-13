@@ -1,0 +1,120 @@
+slug: document-chunking
+title: Document Chunking Strategies
+url: https://docs.langchain.com/oss/python/integrations/splitters/recursive_text_splitter
+difficulty: Medium
+area: LLM
+topics: [Retrieval-Augmented Generation, Chunking, Text Splitting]
+summary: |
+  Cut documents into retrievable pieces: fixed windows with overlap
+  (stride $\mathrm{size} - \mathrm{overlap}$), or recursive splitting
+  that tries paragraph, line, sentence and word boundaries in turn
+  until every piece fits the size limit.
+intuition: |
+  A chunk is the unit that gets embedded, retrieved and pasted into the
+  prompt, so its size sets a trade-off. Small chunks match a query
+  precisely but lose the context around the fact; large chunks keep the
+  meaning but blur many topics into one vector and waste prompt space.
+  A fact of length $L$ is guaranteed to sit whole inside some chunk only
+  if $\mathrm{overlap} \geq L - 1$, which is why overlap exists. Cutting
+  at natural boundaries (paragraphs before sentences before words)
+  keeps each piece readable and self-contained.
+  Flow: document → split at boundaries → overlapping chunks → embeddings.
+why_it_works: |
+  Fixed windows advance by $\mathrm{size} - \mathrm{overlap}$, so the
+  chunk count is a simple ceiling and every item is covered. Because
+  consecutive windows share exactly the overlap, dropping the repeated
+  prefix of each later chunk rebuilds the input. The recursive splitter
+  tries the coarsest separator first and only falls back to a finer one
+  for pieces that are still too long, so it cuts at the most meaningful
+  boundary that satisfies the limit.
+when_to_use: |
+  Preparing any corpus for embedding and retrieval, where documents are
+  longer than the embedding model's input or than the useful retrieval
+  unit. Use recursive splitting for prose and fixed windows when the
+  text has no structure.
+when_not_to_use: |
+  Short documents that already fit one chunk, or structured data such as
+  tables and code, where the natural unit (a row, a function) should be
+  the chunk instead of a character count.
+math:
+  - "chunks = ⌈(n − overlap) / (size − overlap)⌉"
+  - "start of chunk j = j · (size − overlap)"
+  - "storage blow-up ≈ size / (size − overlap)"
+  - "fact of length L is whole in a chunk if overlap ≥ L − 1"
+  - "P(cut) = (L − 1) / size with no overlap, fact at random place"
+approach:
+  - "Pick the stride as size minus overlap — each window starts one stride after the last"
+  - "Slice tokens[i : i + size] for each start i below n − overlap — the final window then reaches the end"
+  - "Pack whole sentences greedily up to the limit — keeps chunks readable instead of cutting mid-sentence"
+  - "For text, split on the coarsest separator first — paragraphs are the most meaningful boundary"
+  - "Recurse on any piece still too long with the next finer separator — falls back to lines, sentences, words, then characters"
+  - "Merge small neighbouring pieces back up to the limit — avoids a flood of tiny chunks"
+code: |
+  import math
+
+  def fixed_chunks(tokens, size, overlap):
+      step = size - overlap
+      stop = max(len(tokens) - overlap, 1)
+      return [tokens[i:i + size] for i in range(0, stop, step)]
+
+  def chunk_count(n, size, overlap):
+      if n <= size:
+          return 1 if n else 0
+      return math.ceil((n - overlap) / (size - overlap))
+
+  SEPS = ("\n\n", "\n", ". ", " ")
+
+  def recursive_split(text, max_len, separators=SEPS):
+      if len(text) <= max_len:
+          return [text]
+      if not separators:
+          return [text[i:i + max_len]
+                  for i in range(0, len(text), max_len)]
+      sep, rest = separators[0], separators[1:]
+      parts = text.split(sep)
+      parts = [p + sep for p in parts[:-1]] + [parts[-1]]
+      out, cur = [], ""
+      for p in parts:
+          if len(p) > max_len:
+              if cur:
+                  out.append(cur)
+                  cur = ""
+              out.extend(recursive_split(p, max_len, rest))
+          elif len(cur) + len(p) <= max_len:
+              cur += p
+          else:
+              out.append(cur)
+              cur = p
+      if cur:
+          out.append(cur)
+      return out
+key_lines: [4, 11, 22]
+time: "O(n) for one pass over the text; the recursion revisits each oversized piece at most once per separator level"
+space: "O(n + overlap · chunks) because overlapping chunks store boundary items twice"
+hyperparameters:
+  - "Chunk size (tokens or characters)"
+  - "Overlap, often 10 to 20 percent of the size"
+  - "Separator hierarchy for recursive splitting"
+  - "Unit of length (characters versus model tokens)"
+pitfalls:
+  - "Measuring size in characters while the embedding model limit is in tokens; chunks can silently be truncated"
+  - "Overlap multiplies index size by about $\\frac{\\mathrm{size}}{\\mathrm{size}-\\mathrm{overlap}}$ and returns near-duplicate hits"
+  - "Splitting on a separator that is absent (a long line with no spaces) falls back to hard character cuts"
+  - "Splitting tables, code or lists by length destroys their structure; chunk them by their own units"
+interview_qa:
+  - q: "How do chunk size and retrieval quality relate?"
+    a: "Small chunks give precise matches but lack context, and large chunks keep context but dilute the embedding and use more prompt tokens. The best size is found by measuring retrieval recall on a labelled set."
+  - q: "Why use overlap, and what does it cost?"
+    a: "A fact that straddles a boundary would be cut in two; overlap at least as long as the fact guarantees one chunk holds it whole. The cost is a larger index and duplicate-looking results."
+  - q: "How many chunks does a document of n items produce?"
+    a: "With window size s and overlap o the stride is $s - o$, so the count is $\\lceil (n - o)/(s - o) \\rceil$ for $n > s$, and one chunk otherwise."
+  - q: "What does recursive splitting add over fixed windows?"
+    a: "It prefers natural boundaries such as paragraphs and sentences and only cuts finer when a piece is too long, so chunks are more coherent."
+related: [rag-dense-retrieval, retrieval-metrics-recall-at-k, context-engineering]
+math_tex:
+- '$\mathrm{chunks} = \lceil \frac{n - \mathrm{overlap}}{\mathrm{size} - \mathrm{overlap}} \rceil$'
+- 'Start of chunk $j$ = $j \cdot (\mathrm{size} - \mathrm{overlap})$'
+- 'Blow-up $\approx \frac{\mathrm{size}}{\mathrm{size} - \mathrm{overlap}}$'
+- 'Fact of length $L$ whole if $\mathrm{overlap} \geq L - 1$'
+- '$P(\mathrm{cut}) = \frac{L - 1}{\mathrm{size}}$ with no overlap'
+patterns: ["Text evaluation and retrieval"]

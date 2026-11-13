@@ -1,0 +1,106 @@
+slug: query-transformation-hyde
+title: Query Transformation and HyDE
+url: https://arxiv.org/abs/2212.10496
+difficulty: Medium
+area: LLM
+topics: [HyDE, Query Expansion, Reciprocal Rank Fusion, Retrieval]
+summary: |
+  Fix the mismatch between a short question and answer-like documents
+  before searching: embed a hypothetical answer (HyDE), search with
+  several paraphrases and fuse the ranks, or rewrite the query using the
+  chat history.
+intuition: |
+  A question and its answer rarely look alike, and an embedding of a
+  short question can land far from the passage that answers it. HyDE has
+  the language model write a plausible answer first and embeds that
+  instead: it is document-shaped, so it lands in the right neighbourhood
+  even if its facts are wrong, because only the neighbourhood is used and
+  the results are real documents. Multi-query search hedges by asking
+  several ways and fusing the rankings.
+  Flow: question → hypothetical answer → embedding → nearest real documents.
+why_it_works: |
+  The encoder compresses text into a vector that keeps topic and style
+  but discards much exact detail, so an invented answer on the right
+  topic is close to real answers on that topic. The score used here for
+  fusion, $\sum_{r} \frac{1}{k+\mathrm{rank}_r(d)}$, rewards documents
+  ranked high by any list and still favours those found by several, with
+  $k$ damping the lead of a single top rank.
+when_to_use: |
+  Zero-shot retrieval over a new domain with no relevance labels, short
+  or vague user questions, and chat settings where the latest message
+  depends on earlier turns.
+when_not_to_use: |
+  Latency- or cost-sensitive paths, queries that are exact identifiers or
+  keywords, and topics the generator knows nothing about, where its
+  hypothetical text can point the wrong way.
+math:
+  - "HyDE: d̂ = LLM(q);   v = e(d̂) / ‖e(d̂)‖"
+  - "Retrieve top-k of cos(v, e(dᵢ)) over the corpus"
+  - "Multi-query: rankings R₁, …, R_m from paraphrases q₁, …, q_m"
+  - "RRF(d) = Σⱼ 1 / (k + rankⱼ(d)),  rank starts at 1"
+  - "Typical k = 60;  a document missing from Rⱼ adds 0"
+approach:
+  - "Pick the transformation — rewrite from chat history, paraphrase several ways, or generate a hypothetical answer"
+  - "For HyDE, have the generator write a document-like answer to the query — it looks like what we want to find"
+  - "Embed that text with the same encoder as the corpus — query and corpus must share a space"
+  - "Search the corpus vectors with it and take the top k — real documents, not the generated text"
+  - "For multi-query, retrieve a ranked list per paraphrase — each wording finds different documents"
+  - "Fuse the lists with reciprocal rank fusion — ranks are comparable across lists, raw scores are not"
+code: |
+  import numpy as np, zlib
+
+  def embed(text, dim=256, seed=0):
+      v = np.zeros(dim)
+      for w in text.lower().split():
+          h = zlib.crc32(f"{seed}:{w}".encode())
+          v[h % dim] += 1 if (h >> 16) & 1 else -1
+      n = np.linalg.norm(v)
+      return v / n if n else v
+
+  def top_k(v, corpus_vecs, k):
+      order = np.argsort(-(corpus_vecs @ v), kind="stable")
+      return [int(i) for i in order[:k]]
+
+  def hyde_retrieve(query, corpus_vecs, generator, k):
+      return top_k(embed(generator(query)), corpus_vecs, k)
+
+  def rrf(rankings, rrf_k=60):
+      s = {}
+      for r in rankings:
+          for pos, d in enumerate(r, start=1):
+              s[d] = s.get(d, 0.0) + 1.0 / (rrf_k + pos)
+      return sorted(s.items(), key=lambda t: -t[1])
+
+  def multi_query_retrieve(queries, corpus_vecs, k, rrf_k=60):
+      lists = [top_k(embed(q), corpus_vecs, k) for q in queries]
+      return rrf(lists, rrf_k)[:k]
+key_lines: [16, 22, 26]
+time: "HyDE adds one LLM generation plus one embedding per query; multi-query costs one search per paraphrase"
+space: "O(N·d) for the corpus vectors; fusion keeps only a score per seen document"
+hyperparameters:
+  - "Number of paraphrases or hypothetical documents"
+  - "Generator prompt and sampling temperature"
+  - "RRF constant $k$ (60 is common)"
+  - "Number of results k per list"
+pitfalls:
+  - "A hallucinated hypothetical document can pull retrieval to the wrong place, so check it against the original query or fuse it with plain query results"
+  - "HyDE adds an LLM call of latency and cost before every search"
+  - "The generator here is a stub; a real one makes results vary run to run unless temperature is zero"
+  - "Rewriting from chat history must keep the user's intent; an over-eager rewrite can drop a constraint"
+interview_qa:
+  - q: "Why embed a fake answer instead of the question?"
+    a: "Documents look like answers, not questions. The hypothetical text is document-shaped, so its embedding falls near real relevant documents even when its facts are wrong."
+  - q: "Why use ranks instead of scores when fusing multi-query results?"
+    a: "Scores from different queries are not on a common scale. Ranks are, and reciprocal rank fusion needs no tuning beyond the constant $k$."
+  - q: "What does query rewriting from chat history fix?"
+    a: "A follow-up such as 'how much does it cost?' has no standalone meaning. Rewriting resolves pronouns and context into a self-contained query before retrieval."
+  - q: "When does HyDE hurt?"
+    a: "When the generator is wrong about the topic, the hypothetical text points to the wrong neighbourhood. It also adds latency and cost."
+related: [rag-dense-retrieval, cosine-similarity-embeddings, hallucination-detection]
+math_tex:
+- 'HyDE: $\hat{d} = \mathrm{LLM}(q)$, $v = \frac{e(\hat{d})}{\|e(\hat{d})\|}$'
+- 'Retrieve top-$k$ of $\cos(v, e(d_i))$ over the corpus'
+- 'Multi-query: rankings $R_1,\ldots,R_m$'
+- '$\mathrm{RRF}(d) = \sum_{j} \frac{1}{k + \mathrm{rank}_j(d)}$, rank starts at 1'
+- 'Typical $k = 60$; a document missing from $R_j$ adds 0'
+patterns: ["Text evaluation and retrieval"]

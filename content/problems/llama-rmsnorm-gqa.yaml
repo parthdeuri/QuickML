@@ -1,0 +1,96 @@
+slug: llama-rmsnorm-gqa
+title: Llama Blocks - RMSNorm and Grouped-Query Attention
+url: https://arxiv.org/abs/2305.13245
+difficulty: Hard
+area: LLM
+topics: [LLM, Normalization, Attention, Inference]
+summary: |
+  RMSNorm rescales a vector by its root mean square with no mean
+  subtraction and no bias. Grouped-query attention lets several query
+  heads share one key/value head, shrinking the KV cache.
+intuition: |
+  LayerNorm does two jobs, centring and rescaling, and the rescaling
+  is what stabilises training, so RMSNorm keeps only that and saves
+  work. For attention, decoding is limited by reading the KV cache,
+  and queries are cheap while keys and values are what get stored; so
+  many query heads can share a few key/value heads at little quality
+  cost. Multi-head is one extreme and multi-query the other.
+  Flow: x → RMS scale → Q heads → shared KV heads → repeat → causal attention.
+approach:
+  - 'RMSNorm: divide $x$ by $\sqrt{\mathrm{mean}(x^2) + \epsilon}$ and multiply by gain $g$ — rescale only, no centring, no bias'
+  - 'Project to $n_q$ query heads but only $n_{kv}$ key and value heads — the cache stores $n_{kv}$ heads'
+  - 'Repeat each KV head $n_q / n_{kv}$ times along the head axis — every query head gets a matching K and V'
+  - 'Apply the causal mask, softmax and mix values per head — the same as multi-head attention after the repeat'
+  - 'Merge the heads — output shape is $(T, d)$ again'
+code: |
+  import numpy as np
+
+  def rms_norm(x, g, eps=1e-6):
+      ms = (x * x).mean(-1, keepdims=True)
+      return x / np.sqrt(ms + eps) * g
+
+  def gqa(x, Wq, Wk, Wv, n_q, n_kv):
+      T, d = x.shape
+      dh = d // n_q
+      q = (x @ Wq).reshape(T, n_q, dh).transpose(1, 0, 2)
+      k = (x @ Wk).reshape(T, n_kv, dh).transpose(1, 0, 2)
+      v = (x @ Wv).reshape(T, n_kv, dh).transpose(1, 0, 2)
+      r = n_q // n_kv
+      k, v = np.repeat(k, r, axis=0), np.repeat(v, r, axis=0)
+      s = q @ k.transpose(0, 2, 1) / np.sqrt(dh)
+      s = np.where(np.triu(np.ones((T, T), bool), 1), -np.inf, s)
+      e = np.exp(s - s.max(-1, keepdims=True))
+      a = (e / e.sum(-1, keepdims=True)) @ v
+      return a.transpose(1, 0, 2).reshape(T, n_q * dh)
+
+  def kv_bytes(T, n_kv, dh, layers=1, nbytes=2):
+      return 2 * layers * n_kv * T * dh * nbytes
+key_lines: [5, 14, 22]
+time: "O(T²·d) for attention, the same as multi-head; norm is O(d) per token"
+space: "KV cache is $O(n_{kv} \\cdot T \\cdot d_h)$ per layer, $n_q / n_{kv}$ times smaller than multi-head"
+when_to_use: |
+  Decoder LLMs where serving memory and decode speed matter: a few KV
+  heads cut the cache and its memory traffic, and RMSNorm replaces
+  LayerNorm for a slightly cheaper, simpler normalisation.
+when_not_to_use: |
+  Small models or short contexts where the KV cache is not the
+  bottleneck, or when you need the quality of full multi-head
+  attention and can afford its cache.
+why_it_works: |
+  Attention cost in decoding is dominated by loading cached keys and
+  values, which scale with the number of KV heads, not query heads.
+  Sharing them across a group keeps distinct query heads (different
+  attention patterns) while dividing the cache by $n_q / n_{kv}$. With
+  $n_{kv} = n_q$ the layer is exactly multi-head attention and with
+  $n_{kv} = 1$ it is multi-query attention.
+math:
+  - "RMS(x) = √( (1/d) Σᵢ xᵢ² + ε )"
+  - "RMSNorm(x) = x / RMS(x) ⊙ g"
+  - "group size r = n_q / n_kv,  KV head of query head h = ⌊h / r⌋"
+  - "oₕ = softmax(Qₕ K_{⌊h/r⌋}ᵀ / √dₕ + M) V_{⌊h/r⌋}"
+  - "KV bytes = 2 · layers · n_kv · T · dₕ · bytes"
+  - "Cache saving vs MHA = n_q / n_kv"
+interview_qa:
+  - q: "How does RMSNorm differ from LayerNorm?"
+    a: "It skips the mean subtraction and the bias and only divides by the root mean square, so it is cheaper and in practice trains about as well."
+  - q: "What are MHA, GQA and MQA in terms of KV heads?"
+    a: "All have $n_q$ query heads. MHA has $n_{kv} = n_q$, MQA has $n_{kv} = 1$, and GQA uses a value in between, so the cache shrinks by $n_q / n_{kv}$."
+  - q: "Why does GQA help inference but not training FLOPs much?"
+    a: "The saving is in cache size and memory bandwidth while decoding. The score and mixing matmuls still run for all query heads."
+hyperparameters:
+  - "Number of query heads $n_q$ and KV heads $n_{kv}$ (with $n_{kv}$ dividing $n_q$)"
+  - "Head dimension $d_h$"
+  - "RMSNorm epsilon (a small constant such as $10^{-6}$)"
+pitfalls:
+  - "Using $n_{kv}$ that does not divide $n_q$ leaves some query heads without a KV head"
+  - "Repeating heads with tile instead of repeat-interleave pairs query heads with the wrong KV head"
+  - "Adding a mean-subtraction or bias to RMSNorm turns it into LayerNorm and breaks weight compatibility"
+related: [layer-normalization, multi-head-attention, kv-cache]
+math_tex:
+- 'RMS: $\sqrt{\frac{1}{d}\sum_i x_i^2 + \epsilon}$'
+- 'Norm: $\frac{x}{\mathrm{RMS}(x)} \odot g$'
+- 'Group size: $r = \frac{n_q}{n_{kv}}$'
+- 'Head: $\mathrm{softmax}\left(\frac{Q_h K_g^{\top}}{\sqrt{d_h}} + M\right)V_g$'
+- 'KV bytes: $2 \cdot L \cdot n_{kv} \cdot T \cdot d_h \cdot b$'
+- 'Saving vs MHA: $\frac{n_q}{n_{kv}}$'
+patterns: ["Normalisation", "Attention and sequences"]

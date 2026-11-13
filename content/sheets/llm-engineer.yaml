@@ -43,3 +43,50 @@ sections:
   - sentencepiece-unigram
   - cosine-similarity-embeddings
   - contextual-embeddings
+- name: 9. Models and architectures
+  problems:
+  - bert-masked-lm
+  - gpt-decoder-only
+  - t5-span-corruption
+  - llama-rmsnorm-gqa
+  - rotary-position-embedding
+  - sliding-window-attention
+  - mixture-of-experts-routing
+  - model-landscape
+- name: 10. Prompt engineering
+  problems:
+  - few-shot-prompting
+  - chain-of-thought-self-consistency
+  - role-system-prompts
+  - context-engineering
+  - structured-outputs-json-schema
+  - prompt-templates
+  - prompt-optimization
+  - prompt-injection-defense
+- name: 12. Fine-tuning and adaptation
+  problems:
+  - transfer-learning-fine-tuning
+  - sft-loss-masking
+  - instruction-tuning-chat-templates
+  - finetune-dataset-prep
+  - lora-low-rank-adaptation
+  - qlora-nf4-quantization
+  - adapter-layers
+  - int8-quantization
+  - knowledge-distillation
+  - reward-model-bradley-terry
+  - rlhf-kl-penalty
+  - dpo-loss
+  - finetune-evaluation
+- name: 13. Retrieval-augmented generation
+  problems:
+  - rag-dense-retrieval
+  - document-loading-extraction
+  - document-chunking
+  - ann-vector-index
+  - metadata-filtering
+  - hybrid-search-rrf
+  - reranking-mmr
+  - query-transformation-hyde
+  - retrieval-metrics-recall-at-k
+  - rag-evaluation-faithfulness

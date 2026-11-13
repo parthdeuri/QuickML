@@ -1,0 +1,108 @@
+slug: instruction-tuning-chat-templates
+title: Building Instruction-Tuning Examples and Data Mixtures
+url: https://huggingface.co/docs/trl/sft_trainer
+difficulty: Medium
+area: LLM
+topics: [LLM, Fine-Tuning, Chat Templates, Data]
+summary: |
+  Render each (instruction, input, output) record or multi-turn chat
+  into training text with a fixed template, append EOS after every
+  assistant turn, label only assistant spans, and blend datasets with
+  sampling weights $p_i \propto n_i^{\alpha}$.
+intuition: |
+  Inference-time templating only has to start a reply; training-time
+  templating also has to teach the reply to end. If EOS is missing from
+  the labels the model never learns to stop, and if user text is in the
+  labels it learns to write user turns. Mixing is a weighting problem:
+  sampling in proportion to size lets one huge set drown the rest, while
+  a power $\alpha < 1$ flattens the distribution so small sets are seen
+  more often per example.
+  Flow: record → template → text + EOS → role mask → sampled mixture.
+approach:
+  - "Normalise records to messages: instruction and input become one user turn, output the assistant turn — one code path for all formats"
+  - "Render each turn with the model's template — training text must match inference text"
+  - "Append EOS right after each assistant turn — teaches the model when to stop"
+  - "Tag every token with its role and mask to assistant and EOS tokens — the loss rewards only the reply"
+  - "Compute weights $p_i = n_i^{\\alpha} / \\sum_j n_j^{\\alpha}$ — $\\alpha$ interpolates between uniform and proportional"
+  - "Draw each training example from a dataset chosen with probability $p_i$ — controls how often small sets appear"
+code: |
+  import numpy as np
+
+  TEMPLATE = {"turn": "<|{role}|>\n{content}\n", "eos": "</s>"}
+
+  def to_text(record, template=TEMPLATE):
+      if "messages" not in record:
+          user = record["instruction"]
+          if record.get("input"):
+              user += "\n" + record["input"]
+          record = {"messages": [
+              {"role": "user", "content": user},
+              {"role": "assistant", "content": record["output"]}]}
+      out = ""
+      for m in record["messages"]:
+          out += template["turn"].format(**m)
+          if m["role"] == "assistant":
+              out += template["eos"]
+      return out
+
+  def assistant_label_mask(token_roles):
+      on = {"assistant", "eos"}
+      return [int(r in on) for r in token_roles]
+
+  def mixture_weights(sizes, alpha):
+      w = np.asarray(sizes, dtype=float) ** alpha
+      return w / w.sum()
+key_lines: [17, 22, 25]
+time: "O(total characters) to render; O(K) for K mixture weights"
+space: "O(total characters) for the rendered text and one role tag per token"
+when_to_use: |
+  Preparing any instruction or chat fine-tuning set: converting
+  instruction-style records and chat logs to one format, making sure
+  responses terminate, and blending several sources of very different
+  sizes.
+when_not_to_use: |
+  Continued pretraining on raw text, which needs no template or role
+  mask. Do not re-template data for a model that ships its own
+  template unless you are deliberately changing the format.
+why_it_works: |
+  A model only learns what appears as a labelled target. EOS inside the
+  label set gives the stop decision a gradient, while role masking
+  keeps the loss on text the model must generate at inference.
+  Temperature-style weights $p_i \propto n_i^{\alpha}$ trade coverage
+  of small sets against repeating them too often, with $\alpha = 1$
+  recovering plain concatenation of all data.
+math:
+  - "x = [r(m₁); …; r(mₙ)],  EOS appended after each assistant turn"
+  - "aₜ = 1 for assistant and EOS tokens, else 0"
+  - "L = −(Σₜ aₜ log p(xₜ | x<ₜ)) / (Σₜ aₜ)"
+  - "pᵢ = nᵢ^α / Σⱼ nⱼ^α"
+  - "α = 1: pᵢ ∝ nᵢ;   α = 0: pᵢ = 1/K"
+  - "Expected draws from set i in N samples: N · pᵢ"
+interview_qa:
+  - q: "Why append EOS during training?"
+    a: "Generation stops when the model emits EOS. If the label sequence never contains it, the model has no gradient to learn that a reply ends, and it rambles or invents the next user turn."
+  - q: "How is this different from the inference-time chat template?"
+    a: "Inference adds an assistant header and lets the model write. Training renders the full conversation including the answer and EOS, and also needs a label mask."
+  - q: "What does $\\alpha$ do in the mixture weights?"
+    a: 'It sets $p_i \propto n_i^{\alpha}$: $\alpha = 1$ samples in proportion to size, $\alpha = 0$ samples every dataset equally, and values between up-sample small sets.'
+  - q: "What is the risk of strong up-sampling of a small dataset?"
+    a: "It is repeated many times, so the model can memorise it and overfit while larger sets are seen less."
+hyperparameters:
+  - "Template and special tokens (must match the model)"
+  - "Mixture exponent $\\alpha$ in $[0, 1]$"
+  - "Train on assistant turns only, or on the last turn only"
+  - "Maximum sequence length and truncation policy"
+pitfalls:
+  - "Tokenising the rendered text adds BOS or EOS twice if the tokenizer also adds them automatically"
+  - "Content that contains template markers can forge a turn boundary; escape or strip them"
+  - "Masking by token id instead of position removes the real EOS when pad and EOS share an id"
+  - "Weights computed from raw record counts ignore very different average lengths; token counts may be fairer"
+related: [role-system-prompts, next-token-prediction-loss, sft-loss-masking]
+math_tex:
+- 'Text: $x = [r(m_1);\ldots;r(m_n)]$, EOS after assistant'
+- 'Mask: $a_t = 1$ on assistant and EOS tokens'
+- 'Loss: $-\frac{\sum_t a_t \log p(x_t \mid x_{<t})}{\sum_t a_t}$'
+- 'Weights: $p_i = \frac{n_i^{\alpha}}{\sum_j n_j^{\alpha}}$'
+- '$\alpha = 1$: $p_i \propto n_i$;  $\alpha = 0$: $p_i = \frac{1}{K}$'
+- 'Expected draws from set $i$: $N p_i$'
+patterns: ["Transfer and adaptation"]

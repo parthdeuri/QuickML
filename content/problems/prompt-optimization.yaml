@@ -1,0 +1,101 @@
+slug: prompt-optimization
+title: Systematic Prompt Optimisation
+url: https://arxiv.org/abs/2211.01910
+difficulty: Medium
+area: LLM
+topics: [LLM, Prompting, Evaluation]
+summary: |
+  Improve a prompt by search instead of by feel: fix a metric and a dev
+  set, propose candidate prompts, score each, keep the best, and report
+  the uncertainty of every score.
+intuition: |
+  A prompt is a discrete parameter and the dev-set accuracy is a noisy
+  objective, so tuning it is hyperparameter search. With $n$ examples a
+  score has a standard error near $\sqrt{p(1-p)/n}$, so a gain of two
+  points on 100 examples is usually noise. Pair the candidates on the
+  same examples, measure the gap with a bootstrap, and keep a final test
+  set that the search never touched.
+  Flow: metric → candidates → score on dev → keep best → confirm on test.
+approach:
+  - "Define the metric and split the data into dev and test — the test set is touched once, at the end"
+  - "Score the start prompt on dev with $\\hat{p} = k/n$ — a baseline to beat"
+  - "Apply each mutation to the current best prompt — candidates come from edits, not guesses"
+  - "Keep a candidate only if its dev score is higher — greedy, so the history never decreases"
+  - "Compare finalists with a paired bootstrap and Wilson intervals — shows whether the gap is real"
+code: |
+  import numpy as np
+
+  def wilson_interval(k, n, z=1.96):
+      p = k / n
+      d = 1 + z * z / n
+      c = (p + z * z / (2 * n)) / d
+      h = z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
+      return c - h, c + h
+
+  def evaluate(prompt, dataset, model_fn):
+      return np.array([model_fn(prompt, x) == y
+                       for x, y in dataset], float)
+
+  def hill_climb(start, mutations, dataset, model_fn):
+      best = start
+      best_s = evaluate(best, dataset, model_fn).mean()
+      history = [best_s]
+      for mutate in mutations:
+          cand = mutate(best)
+          s = evaluate(cand, dataset, model_fn).mean()
+          if s > best_s:
+              best, best_s = cand, s
+          history.append(best_s)
+      return best, history
+
+  def paired_bootstrap_prob(a, b, n_boot=2000, seed=0):
+      rng = np.random.default_rng(seed)
+      n = len(a)
+      idx = rng.integers(0, n, size=(n_boot, n))
+      gap = (np.asarray(a) - np.asarray(b))[idx].mean(axis=1)
+      return (gap > 0).mean() + 0.5 * (gap == 0).mean()
+key_lines: [7, 21, 30]
+time: "O(m·n) model calls for m candidates on n dev examples; bootstrap adds O(B·n)"
+space: "O(n) per-example correctness vector for each candidate"
+when_to_use: |
+  A prompt is going into a product and you can write a metric and
+  collect a few hundred labelled examples. Also for choosing between a
+  handful of hand-written variants.
+when_not_to_use: |
+  No reliable metric exists, or the dev set is tiny, where the search
+  mostly fits noise. A one-off prompt used once is not worth a search.
+why_it_works: |
+  Scoring candidates on the same examples makes the comparison paired,
+  which cancels example difficulty and shrinks the variance of the gap.
+  The Wilson interval stays inside $[0, 1]$ and behaves well for small
+  $n$ or extreme $p$, unlike the normal approximation. The hill climb
+  only accepts strict improvements, so the dev score cannot fall.
+math:
+  - "p̂ = k / n,  SE ≈ √(p̂(1 − p̂) / n)"
+  - "Wilson centre = (p̂ + z²/2n) / (1 + z²/n)"
+  - "Wilson half-width = z·√(p̂(1−p̂)/n + z²/4n²) / (1 + z²/n)"
+  - "gap = mean(aᵢ − bᵢ) over resampled examples i"
+  - "P(A beats B) ≈ fraction of bootstrap resamples with gap > 0"
+interview_qa:
+  - q: "Why report an interval and not just the accuracy?"
+    a: "On a small dev set the standard error is several points, so two prompts that differ by one or two points are statistically indistinguishable."
+  - q: "Why a paired bootstrap?"
+    a: "Both prompts are scored on the same examples, so resampling examples and comparing the difference removes the shared example difficulty and gives a tighter estimate of the gap."
+  - q: "How do you avoid overfitting the dev set?"
+    a: "Every comparison made against the dev set leaks a little of it into the prompt, so keep a separate test set, score only the final prompt on it, and limit the number of candidates tried."
+hyperparameters:
+  - "Dev and test set sizes"
+  - "Number of candidates and mutation operators"
+  - "Confidence level $z$ (1.96 for 95 percent)"
+  - "Bootstrap resamples $B$ and seed"
+pitfalls:
+  - "Selecting the best of many candidates on the dev set inflates its score, so the winner's dev accuracy overstates its real accuracy"
+  - "A model sampled at nonzero temperature makes scores noisy; fix the seed, or average several runs"
+  - "Greedy hill-climbing stops at the first local optimum; it does not explore edits that only help in combination"
+related: [hallucination-detection, temperature-sampling, hyperparameter-search]
+math_tex:
+- 'Score: $\hat{p} = k/n$, $\mathrm{SE} \approx \sqrt{\hat{p}(1-\hat{p})/n}$'
+- 'Wilson centre: $\frac{\hat{p} + z^2/2n}{1 + z^2/n}$'
+- 'Half-width: $\frac{z\sqrt{\hat{p}(1-\hat{p})/n + z^2/4n^2}}{1 + z^2/n}$'
+- 'Paired gap: $\bar{d} = \frac{1}{n}\sum_{i}(a_i - b_i)$'
+- 'P(A beats B) = share of resamples, $\bar{d} > 0$'

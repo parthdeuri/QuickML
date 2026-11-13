@@ -26,5 +26,6 @@ problems:
 - mlp-forward-pass
 - residual-connections
 - feed-forward-gelu-swiglu
+- mixture-of-experts-routing
 aliases:
 - Network building blocks

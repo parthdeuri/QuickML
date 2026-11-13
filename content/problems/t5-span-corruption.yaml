@@ -1,0 +1,95 @@
+slug: t5-span-corruption
+title: T5 Span Corruption Pretraining Objective
+url: https://arxiv.org/abs/1910.10683
+difficulty: Medium
+area: NLP
+topics: [Pretraining, Encoder-Decoder, Language Modeling]
+summary: |
+  Replace random spans of the input with numbered sentinel tokens and
+  train an encoder-decoder to output the dropped spans, each preceded
+  by its sentinel, followed by an end-of-sequence token.
+intuition: |
+  BERT predicts masked tokens independently in place, and GPT predicts
+  the next token left to right. Span corruption turns denoising into a
+  text-to-text task: the encoder reads the corrupted text once and the
+  decoder writes out only what is missing. The target is short (about
+  the corrupted fraction of the input), so pretraining is cheap, and
+  the decoder must model whole spans jointly, not token by token.
+  Flow: text → drop spans → sentinels → encoder → decoder writes spans.
+approach:
+  - 'Choose non-overlapping spans $(s_i, n_i)$ — each one is dropped as a block'
+  - 'Replace span $i$ in the input with sentinel $i$ — the encoder sees where text is missing'
+  - 'Build the target as sentinel $i$ then the dropped tokens, for every span — sentinels keep the spans ordered'
+  - 'Append an end-of-sequence token to the target — the decoder learns when to stop'
+  - 'Train with cross-entropy on the target only — the input is never a prediction target'
+code: |
+  def corrupt_spans(tokens, spans):
+      inp, tgt, pos = [], [], 0
+      for i, (s, n) in enumerate(spans):
+          sent = f"<extra_id_{i}>"
+          inp += tokens[pos:s] + [sent]
+          tgt += [sent] + tokens[s:s + n]
+          pos = s + n
+      inp += tokens[pos:]
+      return inp, tgt + ["</s>"]
+
+  def reconstruct(inp, tgt):
+      spans, cur = {}, None
+      for t in tgt[:-1]:
+          if t.startswith("<extra_id_"):
+              cur = t
+              spans[cur] = []
+          else:
+              spans[cur].append(t)
+      out = []
+      for t in inp:
+          out += spans.get(t, [t])
+      return out
+key_lines: [5, 6, 21]
+time: "O(n) to build one corrupted example; the loss covers only the short target"
+space: "O(n) for the input and target token lists"
+when_to_use: |
+  Pretraining a text-to-text encoder-decoder, or any model that should
+  learn to fill in missing spans, where the output is far shorter than
+  the input.
+when_not_to_use: |
+  Decoder-only language models, which use the plain next-token loss, or
+  encoder-only models where per-token masked prediction in place is
+  enough and no generation is needed.
+why_it_works: |
+  The sentinel marks each gap, so the corrupted input plus the target
+  carries exactly the information of the original text, and
+  reconstruction is a lossless inverse. Predicting a whole span from
+  its two sides forces the model to use context on both sides, while
+  the target stays much shorter than the input.
+math:
+  - "Input length = n − m + k  (m dropped tokens, k spans)"
+  - "Target length = m + k + 1  (tokens, sentinels, EOS)"
+  - "k ≈ r·n / ℓ̄  (corruption rate r, mean span length ℓ̄)"
+  - "L = −Σⱼ log p(yⱼ | x, y<ⱼ)  over target tokens only"
+  - "BERT: L = −Σ over masked i of log p(xᵢ | x̃)"
+  - "GPT: L = −Σₜ log p(xₜ | x<ₜ)"
+interview_qa:
+  - q: "How does span corruption differ from BERT masking?"
+    a: "BERT replaces tokens in place and predicts each masked token independently from the encoder output. Span corruption drops whole spans, collapses each to one sentinel, and a decoder generates the spans autoregressively."
+  - q: "Why are the sentinels numbered?"
+    a: "The number lets the decoder tie each output span to its gap in the input and keeps the spans in order, so the original text can be rebuilt exactly."
+  - q: "Why is the target shorter than the input?"
+    a: "Only the dropped tokens are emitted, plus one sentinel per span and an end token, so the target length is $m + k + 1$ for $m$ dropped tokens in $k$ spans."
+hyperparameters:
+  - "Corruption rate $r$, the fraction of tokens dropped"
+  - "Mean span length $\\bar{\\ell}$ (longer spans mean fewer sentinels)"
+  - "Number of available sentinel tokens in the vocabulary"
+pitfalls:
+  - "Overlapping or unsorted spans break the sentinel order and the inverse; sort and merge spans first"
+  - "Computing the loss on the corrupted input as well as the target wastes capacity on copying"
+  - "A real tokenizer uses reserved sentinel ids; a literal text token that looks like a sentinel would be ambiguous"
+related: [bert-masked-lm, cross-attention-encoder-decoder, causal-masking]
+math_tex:
+- 'Input length: $n - m + k$'
+- 'Target length: $m + k + 1$'
+- 'Spans: $k \approx \frac{r\,n}{\bar{\ell}}$'
+- 'T5: $L = -\sum_j \log p(y_j \mid x, y_{<j})$'
+- 'BERT: $L = -\sum_{i \in \mathrm{masked}} \log p(x_i \mid \tilde{x})$'
+- 'GPT: $L = -\sum_t \log p(x_t \mid x_{<t})$'
+patterns: ["Text processing"]

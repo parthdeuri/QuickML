@@ -1,0 +1,105 @@
+slug: qlora-nf4-quantization
+title: QLoRA and 4-bit NormalFloat (NF4)
+url: https://arxiv.org/abs/2305.14314
+difficulty: Hard
+area: LLM
+topics: [Quantization, Fine-tuning, Parameter-Efficient Learning]
+summary: |
+  Store a frozen base model in 4 bits using 16 levels placed at normal
+  quantiles, quantised in blocks, and train only 16-bit LoRA adapters on top.
+intuition: |
+  Trained weights are roughly bell shaped, so evenly spaced 4-bit levels
+  waste codes in the sparse tails while crowding too few near zero.
+  Placing the 16 levels at quantiles of $\mathcal{N}(0,1)$ gives each
+  level about equal probability mass, and splitting the weights into small
+  blocks with their own scale keeps the normal assumption true locally
+  and contains outliers to one block.
+  Flow: weights → scale per block → round to levels → dequantise.
+approach:
+  - "Build 16 levels from normal quantiles, normalised to $[-1,1]$ with $0$ included — a level for exact zeros and both extremes"
+  - "Split weights into blocks of 64 — one outlier then only affects its own block"
+  - "Scale each block by its $\\max|w|$ — maps the block into $[-1,1]$ where the levels live"
+  - "Store the index of the nearest level plus the block scale — 4 bits per weight"
+  - "Dequantise by level times scale in the forward pass — the base stays frozen while 16-bit LoRA adapters train"
+code: |
+  import numpy as np
+  from scipy.stats import norm
+
+  def make_nf4_levels(offset=0.9677083):
+      pos = norm.ppf(np.linspace(offset, 0.5, 9)[:-1])
+      neg = -norm.ppf(np.linspace(offset, 0.5, 8)[:-1])
+      lv = np.sort(np.concatenate([pos, [0.0], neg]))
+      return lv / np.abs(lv).max()
+
+  def quantize_blockwise(w, block=64, levels=None):
+      lv = make_nf4_levels() if levels is None else levels
+      b = w.reshape(-1, block)
+      s = np.abs(b).max(axis=1, keepdims=True)
+      s = np.where(s == 0, 1.0, s)
+      idx = np.abs(b[..., None] / s[..., None] - lv).argmin(-1)
+      return idx.astype(np.uint8), s
+
+  def dequantize(idx, s, levels=None):
+      lv = make_nf4_levels() if levels is None else levels
+      return (lv[idx] * s).ravel()
+
+  def bytes_per_param(block=64, double_quant=True):
+      if double_quant:
+          scale_bits = 8 / block + 32 / (block * 256)
+      else:
+          scale_bits = 32 / block
+      return (4 + scale_bits) / 8
+key_lines: [5, 13, 15]
+time: "O(n·16) to quantise n weights by nearest-level search, O(n) to dequantise"
+space: "About 0.5 byte per parameter plus 0.127 bits per parameter for double-quantised scales"
+when_to_use: |
+  Fine-tuning a large model on a GPU too small to hold it in 16 bits: the
+  frozen base sits in 4 bits and only small adapters and their optimiser
+  state use higher precision.
+when_not_to_use: |
+  Weights that are far from normal, very small models where memory is not
+  the constraint, or deployments needing the fastest possible matmul,
+  since 4-bit weights must be dequantised before use.
+why_it_works: |
+  If weights follow $\mathcal{N}(0,\sigma^2)$, then after dividing by the
+  block maximum they sit in $[-1,1]$ with a roughly normal shape. Levels at
+  equal-probability quantiles make the expected rounding error small for
+  that shape. Including $0$ exactly matters because padding and many
+  weights are exactly zero. Blocking limits each scale to 64 weights, so
+  the scale overhead of $32/64 = 0.5$ bits per weight is cut by quantising
+  the scales to 8 bits (double quantisation). Gradients flow through the
+  dequantised weights to the 16-bit LoRA adapters while the 4-bit base is
+  never updated.
+math:
+  - "levels = quantiles of N(0,1), divided by their max |value|"
+  - "ŵ = s_b · L[argmin_k |w/s_b − L_k|],   s_b = max |w_block|"
+  - "Bits per param = 4 + 32 / B   (fp32 scale per block of B)"
+  - "Double quant: 4 + 8/B + 32/(B · 256)"
+  - "Bytes per param = bits / 8   (about 0.5 plus overhead)"
+math_tex:
+- 'levels $=$ quantiles of $\mathcal{N}(0,1)$, divided by max'
+- '$\hat{w} = s_b\, L[\arg\min_k |w/s_b - L_k|],\;\; s_b = \max|w_{block}|$'
+- 'Bits per param $= 4 + 32/B$, fp32 scale'
+- 'Double quant: $4 + 8/B + 32/(256B)$'
+- 'Bytes per param $=$ bits$/8 \approx 0.5$'
+interview_qa:
+  - q: "Why 4-bit NormalFloat instead of uniform 4-bit integers?"
+    a: "Weights are close to normal, so quantile-spaced levels give each code about equal probability and lower average error than evenly spaced levels, which waste codes in the tails."
+  - q: "Why must zero be an exact level?"
+    a: "Zeros and near-zero weights are common, and representing them exactly avoids adding noise. The construction uses 8 positive, 7 negative levels and an explicit zero for this reason."
+  - q: "What does double quantisation save?"
+    a: "The per-block scales cost $32/64 = 0.5$ bits per parameter in fp32. Quantising the scales to 8 bits shrinks that to about $0.127$ bits per parameter."
+  - q: "What is trained in QLoRA?"
+    a: "Only the 16-bit LoRA adapters. The 4-bit base is frozen, dequantised on the fly for forward and backward passes, and gradients reach the adapters through it."
+hyperparameters:
+  - "Block size $B$ (64 in the paper)"
+  - "Whether to use double quantisation"
+  - "LoRA rank and scaling $\\alpha$ for the adapters"
+  - "Compute dtype used after dequantisation (bfloat16, float16)"
+pitfalls:
+  - "The exact level values come from the paper's specific construction (the asymmetric split and the offset); this card reproduces that construction, so treat small differences from a library's table as construction details, not bugs"
+  - "Smaller blocks cut error but raise scale overhead; $B = 64$ is a trade-off"
+  - "This code stores indices as uint8 for clarity; real storage packs two 4-bit codes per byte"
+  - "Dequantisation happens on every forward pass, so 4-bit saves memory, not necessarily time"
+related: [lora-low-rank-adaptation, int8-quantization, transfer-learning-fine-tuning]
+patterns: ["Transfer and adaptation"]

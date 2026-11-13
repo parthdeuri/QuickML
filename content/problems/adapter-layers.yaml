@@ -1,0 +1,88 @@
+slug: adapter-layers
+title: Bottleneck Adapter Layers
+url: https://arxiv.org/abs/1902.00751
+difficulty: Medium
+area: LLM
+topics: [Fine-tuning, Parameter-Efficient Learning, Transformers]
+summary: |
+  Insert a small bottleneck module with a residual connection after a
+  frozen sublayer and train only the module, a few percent of the weights.
+intuition: |
+  A pretrained network already computes useful features, so a task only
+  needs a small correction on top of them. A narrow down-then-up
+  projection with a skip connection is exactly that: it can pass features
+  through unchanged, or add a learned low-dimensional edit. Initialising
+  the up-projection at zero makes the module the identity, so training
+  starts from the pretrained function. Unlike LoRA, the module is a new
+  sequential layer and cannot be merged away.
+  Flow: sublayer output → down-project → nonlinearity → up-project → add back.
+approach:
+  - "Freeze every pretrained weight — only adapters and task heads will train"
+  - "Down-project $d \\rightarrow r$ with $r \\ll d$ — the bottleneck keeps the parameter count small"
+  - "Apply a nonlinearity — lets the adapter learn more than a linear map"
+  - "Up-project $r \\rightarrow d$ and add the input back — the skip makes the adapter a residual correction"
+  - "Zero-initialise the up-projection — the adapter starts as the identity"
+code: |
+  import numpy as np
+
+  def adapter_forward(x, Wd, bd, Wu, bu):
+      h = np.maximum(x @ Wd + bd, 0)
+      return x + h @ Wu + bu
+
+  def param_count(d, r):
+      return 2 * d * r + r + d
+
+  def lora_forward(x, W, A, B, alpha):
+      s = alpha / A.shape[0]
+      return x @ W.T + s * (x @ A.T) @ B.T
+key_lines: [4, 5, 8]
+time: "O(n·d·r) extra per adapter and token, paid at inference too"
+space: "$2dr + r + d$ trainable parameters per adapter"
+when_to_use: |
+  Serving many tasks from one frozen base, where each task stores only
+  small adapter weights, and when adding a task must not disturb earlier
+  ones.
+when_not_to_use: |
+  Latency-critical inference, since adapters add sequential layers that
+  cannot be folded into the weights. LoRA is preferred when merging for
+  zero extra latency matters.
+why_it_works: |
+  With the up-projection at zero, $y = x + W_u\,\sigma(W_d x + b_d) + b_u$
+  reduces to $y = x$ when $W_u = 0$ and $b_u = 0$, so the adapted model
+  equals the pretrained one at step zero. Gradients flow through the skip
+  and the bottleneck to the adapter, while the frozen weights get none.
+  The bottleneck restricts the correction to an $r$-dimensional space,
+  which is enough for many tasks and keeps the parameter count near
+  $2dr$ instead of $d^2$ per layer.
+math:
+  - "y = x + W_u σ(W_d x + b_d) + b_u"
+  - "W_d: d → r,   W_u: r → d,   r ≪ d"
+  - "Params per adapter = 2 d r + r + d"
+  - "W_u = 0, b_u = 0  ⇒  y = x"
+  - "LoRA: y = W x + (α/r) · B A x,   mergeable into W"
+math_tex:
+- '$y = x + W_u\,\sigma(W_d x + b_d) + b_u$'
+- '$W_d: d \rightarrow r,\;\; W_u: r \rightarrow d,\;\; r \ll d$'
+- 'Params per adapter $= 2dr + r + d$'
+- '$W_u = 0,\; b_u = 0 \Rightarrow y = x$'
+- 'LoRA: $y = Wx + \frac{\alpha}{r}\,BAx$, mergeable'
+interview_qa:
+  - q: "Why is the adapter initialised near the identity?"
+    a: "So the model starts exactly as the pretrained one. A random adapter would perturb every layer and destroy the pretrained features before training could help."
+  - q: "How many parameters does one adapter add?"
+    a: "$2dr + r + d$ with hidden size $d$ and bottleneck $r$: two weight matrices plus two bias vectors. For $r \\ll d$ this is far less than $d^2$."
+  - q: "Adapters versus LoRA: what is the trade-off?"
+    a: "LoRA's low-rank update is parallel and merges into $W$, so inference is unchanged. Adapters add sequential layers and extra latency, but they are simple, modular and can use a nonlinearity."
+  - q: "Where are adapters placed in a transformer layer?"
+    a: "In the original design, after the attention sublayer's output projection and after the feed-forward sublayer, before the residual addition and layer norm."
+hyperparameters:
+  - "Bottleneck size $r$"
+  - "Nonlinearity (ReLU, GELU)"
+  - "Placement: after attention, after feed-forward, or both"
+  - "Initial scale of the weights"
+pitfalls:
+  - "Exactly zero initialisation of both $W_u$ and $W_d$ would give zero gradients; zero only the up-projection and keep $W_d$ random"
+  - "Adapters cannot be merged into the base weights, so inference latency grows with depth"
+  - "Remember to unfreeze layer norms or task heads if the recipe trains them; this code covers only the adapter"
+related: [lora-low-rank-adaptation, transfer-learning-fine-tuning, parameter-count-flops]
+patterns: ["Transfer and adaptation"]

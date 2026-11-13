@@ -42,5 +42,8 @@ problems:
 - decoder-only-block
 - contextual-embeddings
 - autoregressive-decoding
+- gpt-decoder-only
+- llama-rmsnorm-gqa
+- sliding-window-attention
 aliases:
 - Attention and sequences

@@ -30,5 +30,9 @@ problems:
 - transfer-learning-fine-tuning
 - lora-low-rank-adaptation
 - knowledge-distillation
+- adapter-layers
+- qlora-nf4-quantization
+- sft-loss-masking
+- instruction-tuning-chat-templates
 aliases:
 - Transfer and adaptation

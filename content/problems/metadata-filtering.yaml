@@ -1,0 +1,94 @@
+slug: metadata-filtering
+title: Metadata Filtering in Vector Search
+url: https://www.pinecone.io/learn/vector-search-filtering/
+difficulty: Medium
+area: LLM
+topics: [Retrieval-Augmented Generation, Vector Search, Access Control]
+summary: |
+  Restrict nearest-neighbour search to rows whose metadata matches a
+  condition (date, tenant, source, access level), either before the
+  search (pre-filter) or after it (post-filter with oversampling).
+intuition: |
+  Pre-filtering searches only the allowed rows, so the answer is exact
+  but the index cannot use its usual shortcuts. Post-filtering searches
+  everything and then discards, which is fast but wasteful: if only a
+  fraction $s$ of rows pass the filter, only about $s$ of the returned
+  hits survive, so asking for $k$ results gives far fewer. The fix is to
+  fetch about $k/s$ candidates first. Because oversampling is only
+  probabilistic, a filter that enforces access control must be applied
+  as a hard pre-filter, never as a best-effort clean-up.
+  Flow: query + filter → candidate rows → top-k scores → allowed results.
+why_it_works: |
+  A candidate list of $c$ items contains a hit that passes the filter
+  with probability $s$, independently if the filter is unrelated to the
+  query, so the number of survivors is Binomial$(c, s)$ with mean $cs$.
+  Setting $c = k/s$ makes the mean equal to $k$, and a larger factor
+  makes a shortfall unlikely. Pre-filtering restricts the candidate set
+  itself, so it returns exactly the best $k$ allowed rows.
+when_to_use: |
+  Pre-filter whenever correctness or security matters (tenant, access
+  level) or the filter is very selective. Post-filter with oversampling
+  when the filter is loose and the index is much faster without it.
+when_not_to_use: |
+  Do not post-filter for access control, since a shortfall or a bug
+  leaks or loses documents. Do not oversample blindly when the filter is
+  correlated with the query, because the formula assumes survivors are
+  spread evenly among the candidates.
+math:
+  - "selectivity s = (rows passing the filter) / N"
+  - "survivors ~ Binomial(c, s),  mean c · s"
+  - "needed candidates c = ⌈k / s⌉ for mean k survivors"
+  - "P(fewer than k) = Σⱼ<ₖ C(c,j) sʲ (1−s)^(c−j)"
+approach:
+  - "Build a boolean mask for the filter — one flag per stored vector"
+  - "Pre-filter: score only masked rows and take the top k among them — exact, respects the filter by construction"
+  - "Post-filter: score all rows and keep the top c = k · oversample — candidates before filtering"
+  - "Drop candidates whose mask is false and return at most k — the filter applied after the search"
+  - "Estimate the selectivity s and set the oversample from k / s — compensates for rows the filter removes"
+  - "Use the pre-filter path for access control — a hard guarantee instead of a probability"
+code: |
+  import math
+  import numpy as np
+
+  def prefilter_topk(q, X, mask, k):
+      idx = np.flatnonzero(mask)
+      scores = X[idx] @ q
+      order = np.argsort(-scores, kind="stable")[:k]
+      return idx[order]
+
+  def postfilter_topk(q, X, mask, k, oversample=1):
+      c = min(k * oversample, len(X))
+      scores = X @ q
+      top = np.argsort(-scores, kind="stable")[:c]
+      return top[mask[top]][:k]
+
+  def needed_candidates(k, s):
+      return math.ceil(k / s)
+key_lines: [5, 11, 14]
+time: "pre-filter O(m·d) over the m matching rows by brute force; post-filter O(N·d) to score all rows plus a sort, or a fast ANN query for the candidates"
+space: "O(N) for the boolean mask beside the O(N·d) vectors"
+hyperparameters:
+  - "Candidate count c (or the oversample factor)"
+  - "Estimated selectivity s of the filter"
+  - "Pre-filter versus post-filter, chosen per query"
+  - "Number of results k"
+pitfalls:
+  - "With oversample $= 1$ and a selective filter, post-filtering can return zero results, not just a few fewer"
+  - "Setting $c = k/s$ only gives $k$ survivors on average; about half of queries still fall short, so use a safety factor such as 2"
+  - "Access control applied after the search is unsafe; enforce it as a pre-filter or inside the index"
+  - "Filtering inside an approximate graph index can disconnect the graph and lower recall, so a very selective filter may need brute force over the subset"
+interview_qa:
+  - q: "What is the difference between pre-filtering and post-filtering?"
+    a: "Pre-filtering restricts the candidate rows and then searches them, which is exact but may be slow. Post-filtering searches all rows and then drops hits that fail the filter, which is fast but can return fewer than k."
+  - q: "How many candidates does post-filtering need to return k results?"
+    a: "About $k/s$ for selectivity $s$, since only a fraction $s$ of candidates survive. A safety factor above 1 is needed because survivors are random."
+  - q: "How should access control be enforced in retrieval?"
+    a: "As a hard pre-filter on every query, using the user's permissions, so documents the user cannot see are never scored or returned."
+  - q: "Why can filtered approximate search lose recall?"
+    a: "A graph or cluster index is built over all vectors. A selective filter removes most nodes, so the remaining ones may not be reachable from the entry point and true neighbours are missed."
+related: [rag-dense-retrieval, cosine-similarity-embeddings, retrieval-metrics-recall-at-k]
+math_tex:
+- 'Selectivity $s = \frac{\mathrm{rows\ passing}}{N}$'
+- 'Survivors $\sim \mathrm{Binomial}(c, s)$, mean $c \cdot s$'
+- 'Needed candidates $c = \lceil k / s \rceil$'
+- '$P(\mathrm{fewer\ than\ }k) = \sum_{j<k} \binom{c}{j} s^{j} (1-s)^{c-j}$'

@@ -1,0 +1,137 @@
+slug: structured-outputs-json-schema
+title: Structured Outputs with JSON Schema
+url: https://json-schema.org/understanding-json-schema/reference/type
+difficulty: Medium
+area: LLM
+topics: [LLM, Structured Output, Validation, Decoding]
+summary: |
+  Ask the model for JSON in a fixed schema, extract it from the reply,
+  validate it, and retry with the errors fed back; constrained decoding
+  makes the output valid by construction instead.
+intuition: |
+  A program downstream cannot parse "Sure, here you go!". Prompting
+  only makes valid JSON likely, so you wrap it in a check: extract,
+  validate, and on failure retry with the error message. Constrained
+  decoding goes further and removes the failure mode: at each step it
+  zeroes the probability of tokens the grammar forbids, so every
+  sampled sequence is valid and no retry is needed.
+  Flow: prompt → reply → extract JSON → validate → retry or accept.
+approach:
+  - "Put the schema and an instruction to reply with JSON only in the prompt — raises the chance of valid output"
+  - "Extract the first balanced $\\{\\dots\\}$ from the reply, ignoring fences and prose — models wrap JSON in chatter"
+  - "Validate the parsed object against the JSON Schema — types, required keys and enums are checked, not trusted"
+  - "On failure append the validator errors to the prompt and retry up to $n$ times — the model can repair a specific error"
+  - "Optionally mask logits of grammar-forbidden tokens before softmax — valid by construction, no retries"
+code: |
+  import json
+  import numpy as np
+  from jsonschema import Draft202012Validator
+
+  def extract_json(text):
+      start = text.find("{")
+      while start != -1:
+          depth, in_str, esc = 0, False, False
+          for i in range(start, len(text)):
+              c = text[i]
+              if in_str:
+                  if esc:
+                      esc = False
+                  elif c == "\\":
+                      esc = True
+                  elif c == '"':
+                      in_str = False
+              elif c == '"':
+                  in_str = True
+              elif c == "{":
+                  depth += 1
+              elif c == "}":
+                  depth -= 1
+                  if depth == 0:
+                      try:
+                          return json.loads(text[start:i + 1])
+                      except ValueError:
+                          break
+          start = text.find("{", start + 1)
+      return None
+
+  def validate(obj, schema):
+      v = Draft202012Validator(schema)
+      return sorted(e.message for e in v.iter_errors(obj))
+
+  def retry(generate, prompt, schema, max_tries=3):
+      p = prompt
+      for attempt in range(max_tries):
+          obj = extract_json(generate(p, attempt))
+          errs = (["no JSON object found"] if obj is None
+                  else validate(obj, schema))
+          if not errs:
+              return obj, attempt + 1
+          p = (prompt + "\nInvalid reply: " + "; ".join(errs)
+               + "\nReturn only the fixed JSON.")
+      return None, max_tries
+
+  def masked_softmax(logits, allowed):
+      z = np.where(allowed, logits, -np.inf)
+      e = np.exp(z - z.max())
+      return e / e.sum()
+
+  VOCAB = ["{", '"a"', ":", "1", "2", "}", "hi"]
+  ALLOWED = [[0], [1], [2], [3, 4], [5]]  # tokens legal per state
+
+  def constrained_decode(logits_per_step):
+      out = []
+      for state, logits in enumerate(logits_per_step):
+          ok = np.zeros(len(VOCAB), bool)
+          ok[ALLOWED[state]] = True
+          p = masked_softmax(logits, ok)
+          out.append(VOCAB[int(p.argmax())])
+      return "".join(out)
+key_lines: [21, 34, 49]
+time: "O(L) to extract and validate a reply of length L; the retry loop costs up to $n$ generations"
+space: "O(L) for the reply plus O(V) for one step's mask over vocabulary size V"
+when_to_use: |
+  Any pipeline where code consumes model output: tool calls, data
+  extraction, classification labels, form filling. Validation plus
+  retry works with any model; constrained decoding when you control
+  the sampler and need a hard guarantee.
+when_not_to_use: |
+  Free-form prose where no downstream parser exists. Constrained
+  decoding is unavailable on hosted models that expose no logits, and
+  a schema valid in shape can still hold wrong values.
+why_it_works: |
+  If one attempt is valid with probability $p$ and attempts are
+  independent, the number of tries is geometric with mean $1/p$ and
+  $P(\text{at least one valid in } n) = 1 - (1-p)^n$, which approaches
+  1 quickly. Masking sets forbidden logits to $-\infty$, so their
+  softmax weight is exactly 0 and the rest renormalise; any sampled
+  sequence stays inside the grammar.
+math:
+  - "E[attempts] = 1/p"
+  - "P(≥1 valid in n) = 1 − (1 − p)ⁿ"
+  - "n ≥ log(1 − q) / log(1 − p) for target q"
+  - "pᵢ = exp(zᵢ) / Σ_{j∈A} exp(zⱼ) for i ∈ A, else 0"
+math_tex:
+- 'Expected tries: $E[N] = \frac{1}{p}$'
+- 'At least one valid: $1 - (1-p)^n$'
+- 'Tries for target $q$: $n \geq \frac{\log(1-q)}{\log(1-p)}$'
+- 'Masked: $p_i = \frac{\exp(z_i)}{\sum_{j \in A}\exp(z_j)}$, $i \in A$'
+interview_qa:
+  - q: "Why is validating the output not enough on its own?"
+    a: "Each retry costs a full generation and independence is optimistic, so with a low $p$ you pay roughly $1/p$ calls and still have no guarantee."
+  - q: "How does constrained decoding guarantee valid JSON?"
+    a: "A grammar or state machine tracks which tokens may come next; logits of all other tokens are set to $-\\infty$ before softmax, so they can never be sampled."
+  - q: "Does a schema-valid reply mean a correct reply?"
+    a: "No. The schema checks shape, types and enums, not truth; the model can still fill valid fields with wrong values."
+  - q: "Why feed the validation errors back on retry?"
+    a: "The specific message, such as a missing key, lets the model fix that error instead of resampling blindly, which raises the success probability on later attempts."
+hyperparameters:
+  - "Maximum number of retries $n$ (bounds cost and latency)"
+  - "Sampling temperature (lower raises $p$ for strict formats)"
+  - "Schema strictness: required keys, enums, additional properties"
+  - "Whether to use constrained decoding or validate-and-retry"
+pitfalls:
+  - "Taking the first brace to the last brace breaks when prose contains braces; track depth and string state"
+  - "Retrying at the same temperature with the same prompt repeats the same mistake; add the error text"
+  - "Masking tokens can force a valid but wrong answer when the model wanted a forbidden token; the content may degrade"
+  - "Treating $1-(1-p)^n$ as exact: failures are often correlated across attempts, so real success is lower"
+related: [temperature-sampling, autoregressive-decoding, top-k-top-p-sampling]

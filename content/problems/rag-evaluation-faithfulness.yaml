@@ -1,0 +1,110 @@
+slug: rag-evaluation-faithfulness
+title: RAG Evaluation - Retrieval, Faithfulness, Relevance
+url: https://arxiv.org/abs/2309.15217
+difficulty: Medium
+area: LLM
+topics: [LLM, RAG, Evaluation, Faithfulness]
+summary: |
+  Score a retrieval-augmented system in parts: did retrieval rank the
+  relevant chunks high and cover the needed facts, is the answer
+  supported by the retrieved text, and does it address the question.
+intuition: |
+  A single end-to-end score cannot tell a retrieval failure from a
+  generation failure. Splitting the pipeline localises the fault: poor
+  context precision or recall means fix the retriever, while good
+  context but unsupported claims means fix the generator. Faithfulness
+  asks only whether the answer follows from the context, not whether
+  the context is true.
+  Flow: query → retrieve → score contexts → split answer into claims → check support.
+approach:
+  - "Label each ranked context as relevant or not — precision needs the ranking, not just the set"
+  - "Context precision is average precision over the ranking — relevant chunks ranked early score higher"
+  - "Context recall is the share of needed facts found in the retrieved text — missing facts cap the answer"
+  - "Split the answer into atomic claims — support is judged per claim, not per answer"
+  - "Faithfulness is the fraction of claims supported by the context — a support function stands in for an entailment judge"
+  - "Answer relevance checks the answer addresses the question — a faithful answer can still be off topic"
+code: |
+  import re
+  import numpy as np
+
+  def context_precision(ranked_relevance):
+      rel = np.asarray(ranked_relevance, float)
+      if rel.sum() == 0:
+          return 0.0
+      prec_at_k = np.cumsum(rel) / np.arange(1, len(rel) + 1)
+      return float((prec_at_k * rel).sum() / rel.sum())
+
+  def toks(s):
+      return set(re.findall(r"[a-z0-9]+", s.lower()))
+
+  def context_recall(needed_facts, retrieved_text):
+      text = retrieved_text.lower()
+      hit = [f.lower() in text for f in needed_facts]
+      return sum(hit) / len(hit)
+
+  def overlap_support(claim, context, thr=0.8):
+      c = toks(claim)
+      return bool(c) and len(c & toks(context)) / len(c) >= thr
+
+  def faithfulness(claims, context, support_fn=overlap_support):
+      ok = [support_fn(c, context) for c in claims]
+      return sum(ok) / len(ok)
+
+  def answer_relevance(question, answer):
+      stop = {"the", "a", "of", "is", "what", "in", "to", "and"}
+      q = toks(question) - stop
+      return len(q & toks(answer)) / len(q)
+
+  def rag_report(ranked_rel, facts, ctx, claims, q, ans):
+      return {"context_precision": context_precision(ranked_rel),
+              "context_recall": context_recall(facts, ctx),
+              "faithfulness": faithfulness(claims, ctx),
+              "answer_relevance": answer_relevance(q, ans)}
+key_lines: [8, 9, 21]
+time: "O(k) for ranking metrics over $k$ contexts; judging claims costs one judge call per claim"
+space: "O(k + c) for $k$ contexts and $c$ claims"
+when_to_use: |
+  Diagnosing a RAG pipeline, comparing retrievers or chunking choices,
+  and regression-testing a pipeline when prompts or indexes change.
+when_not_to_use: |
+  As a measure of factual truth: faithfulness only checks agreement
+  with the retrieved text. Without relevance labels or reference facts
+  the retrieval metrics cannot be computed.
+why_it_works: |
+  Context precision is average precision: the mean of precision at each
+  relevant rank, divided by the number of relevant items, so it rewards
+  placing relevant chunks first and penalises missing ones. Recall and
+  faithfulness are simple proportions over facts and claims, so each
+  metric isolates one stage and is easy to interpret and track.
+math:
+  - "P@k = (1/k) Σ_{i≤k} relᵢ"
+  - "Context precision = Σₖ P@k · relₖ / Σₖ relₖ"
+  - "Context recall = |facts found in context| / |facts needed|"
+  - "Faithfulness = |claims supported by context| / |claims|"
+  - "Overlap support: |claim ∩ context| / |claim| ≥ θ"
+interview_qa:
+  - q: "How do you tell a retrieval failure from a generation failure?"
+    a: "Look at the parts separately. Low context recall or precision points at the retriever. Good context with unsupported claims points at the generator."
+  - q: "Why is context precision computed like average precision?"
+    a: "Order matters, since models attend more to early chunks and context is limited. Average precision rewards ranking relevant chunks first, and dividing by the number of relevant items makes a missed relevant chunk cost score."
+  - q: "Does high faithfulness mean the answer is correct?"
+    a: "No. It only means the claims follow from the retrieved text. If the context is wrong or incomplete, a faithful answer can still be wrong."
+  - q: "How reliable are LLM judges for claim support?"
+    a: "They are useful but imperfect, with their own biases and errors, so validate them against a human-labelled sample and track agreement."
+hyperparameters:
+  - "Support threshold $\\theta$ for the overlap check, or the judge prompt"
+  - "Claim splitting method (granularity of atomic claims)"
+  - "Number of retrieved contexts $k$"
+pitfalls:
+  - "Token overlap is a crude proxy: it passes paraphrased contradictions that share words and fails correct paraphrases that do not"
+  - "An LLM or NLI judge for support has its own errors and biases; treat its scores as estimates and spot-check them against humans"
+  - "Retrieval labels depend on the annotator, so precision and recall are only as good as those labels"
+  - "Faithfulness ignores truth of the context and whether the answer leaves out needed facts"
+related: [retrieval-metrics-recall-at-k, rag-dense-retrieval, hallucination-detection]
+math_tex:
+- '$P@k = \frac{1}{k}\sum_{i \leq k} \mathrm{rel}_i$'
+- 'Precision: $\frac{\sum_k P@k \cdot \mathrm{rel}_k}{\sum_k \mathrm{rel}_k}$'
+- 'Recall: $\frac{\mathrm{facts\ found}}{\mathrm{facts\ needed}}$'
+- 'Faithfulness: $\frac{\mathrm{supported\ claims}}{\mathrm{all\ claims}}$'
+- 'Support: $\frac{|c \cap C|}{|c|} \geq \theta$'
+patterns: ["Text evaluation and retrieval"]

@@ -1,0 +1,107 @@
+slug: mixture-of-experts-routing
+title: Sparse Mixture-of-Experts Routing
+url: https://arxiv.org/abs/2101.03961
+difficulty: Hard
+area: LLM
+topics: [LLM, Mixture of Experts, Routing, Transformers]
+summary: |
+  A router scores $E$ expert networks per token, keeps the top $k$,
+  softmax-normalises their gates and sums the chosen experts' outputs,
+  so parameters scale with $E$ while compute scales with $k$.
+intuition: |
+  Capacity and per-token cost need not grow together. Store many
+  feed-forward experts, but let each token wake up only the few the
+  router likes: the model has the parameters of $E$ experts and the
+  compute of about $k$. The catch is that a greedy router collapses
+  onto a few favourites, so an auxiliary loss pushes the load flat.
+  Flow: token → router scores → top-$k$ → softmax gates → weighted expert sum.
+approach:
+  - "Score the token with the router, $z = xW_r$ — one logit per expert"
+  - "Keep the $k$ largest logits — only those experts will run"
+  - "Softmax over just the kept logits — the gates sum to $1$ for the token"
+  - "Run each chosen expert and sum $g_i\\,e_i(x)$ — the other $E-k$ experts cost nothing"
+  - "Measure load: $f_i$ is the share of assignments to expert $i$, $P_i$ the mean router probability — add $\\alpha E\\sum_i f_i P_i$ to the loss"
+code: |
+  import numpy as np
+
+  def softmax(s):
+      e = np.exp(s - s.max(-1, keepdims=True))
+      return e / e.sum(-1, keepdims=True)
+
+  def top_k_gate(logits, k):
+      idx = np.argsort(-logits, axis=-1)[:, :k]
+      gates = softmax(np.take_along_axis(logits, idx, axis=-1))
+      return idx, gates
+
+  def expert(x, W1, W2):
+      return np.maximum(x @ W1, 0) @ W2
+
+  def moe_layer(x, Wr, experts, k):
+      idx, gates = top_k_gate(x @ Wr, k)
+      out = np.zeros_like(x)
+      for t in range(len(x)):
+          for j in range(k):
+              W1, W2 = experts[idx[t, j]]
+              out[t] += gates[t, j] * expert(x[t], W1, W2)
+      return out
+
+  def balance_loss(logits, k):
+      T, E = logits.shape
+      idx, _ = top_k_gate(logits, k)
+      f = np.bincount(idx.ravel(), minlength=E) / (T * k)
+      P = softmax(logits).mean(0)
+      return E * np.sum(f * P)
+key_lines: [9, 21, 29]
+time: "O(k·d·h) FFN compute per token (plus O(E·d) for the router), independent of E"
+space: "O(E·d·h) expert parameters, all of which must be held in memory"
+when_to_use: |
+  Scaling model capacity under a fixed per-token compute budget, where
+  memory for all experts is available and the batch is large enough to
+  keep every expert busy.
+when_not_to_use: |
+  Memory-bound or on-device deployment, where holding $E$ experts costs
+  more than the saved compute, and small-batch serving where few tokens
+  reach each expert and hardware sits idle.
+why_it_works: |
+  Different experts can specialise on different token types, so the
+  model uses a large parameter pool while each token pays for only $k$
+  experts. Softmax over the kept logits makes the gates a convex
+  combination, and with $k=E$ the layer reduces to a dense weighted sum.
+  The balance loss $E\sum_i f_i P_i$ is minimised, at the value $1$,
+  when both $f$ and $P$ are uniform, and its gradient flows through the
+  differentiable $P_i$.
+math:
+  - "z = x W_r   (one router logit per expert)"
+  - "S = top-k indices of z;  gᵢ = exp(zᵢ) / Σⱼ∈S exp(zⱼ)  for i ∈ S"
+  - "y = Σᵢ∈S gᵢ eᵢ(x),   Σᵢ∈S gᵢ = 1"
+  - "fᵢ = (assignments to expert i) / (T k),   Pᵢ = mean softmax(z)ᵢ"
+  - "L_bal = E Σᵢ fᵢ Pᵢ  ≥ 1,  equal to 1 when fᵢ = Pᵢ = 1/E"
+  - "Capacity per expert = c · T k / E  (c is the capacity factor)"
+interview_qa:
+  - q: "Why does a mixture-of-experts layer add parameters without adding much compute?"
+    a: "Each token runs only $k$ of the $E$ experts, so FLOPs scale with $k$ while the parameter count scales with $E$."
+  - q: "What is expert collapse and how is it prevented?"
+    a: "The router sends most tokens to a few experts, which then train more and win more. An auxiliary loss $E\\sum_i f_i P_i$ penalises uneven load, and capacity limits cap each expert."
+  - q: "What happens to tokens that exceed an expert's capacity?"
+    a: "They are dropped from that expert and typically pass through the residual connection unchanged, so a too-small capacity factor hurts quality."
+  - q: "Why is the balance loss differentiable although $f_i$ is not?"
+    a: "$f_i$ comes from a hard top-$k$ count and carries no gradient, but $P_i$ is the mean softmax probability, so gradients flow through $P_i$."
+hyperparameters:
+  - "Number of experts $E$"
+  - "Experts per token $k$"
+  - "Capacity factor $c$ for each expert's token buffer"
+  - "Balance-loss weight $\\alpha$"
+pitfalls:
+  - "Too small a balance weight lets experts collapse; too large forces uniform routing that ignores token content"
+  - "All $E$ experts must sit in memory even though only $k$ run, so serving cost is memory-bound"
+  - "The Python loop here is for clarity; real layers group tokens by expert and run batched matrix products"
+  - "Taking the softmax over all $E$ logits and then keeping $k$ gives gates that do not sum to $1$"
+related: [feed-forward-gelu-swiglu, decoder-only-block, scaling-laws]
+math_tex:
+- 'Router logits: $z = x W_r$'
+- 'Gates on kept set: $g_i = \frac{e^{z_i}}{\sum_{j \in S} e^{z_j}}$'
+- 'Output: $y = \sum_{i \in S} g_i\, e_i(x)$'
+- 'Load: $f_i = \frac{n_i}{T k}$, $P_i = \bar{p}_i$'
+- 'Balance loss: $E \sum_i f_i P_i \geq 1$'
+- 'Capacity: $c \cdot \frac{T k}{E}$ tokens per expert'
+patterns: ["Network building blocks"]

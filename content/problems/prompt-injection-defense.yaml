@@ -1,0 +1,103 @@
+slug: prompt-injection-defense
+title: Prompt Injection Defence in Depth
+url: https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html
+difficulty: Medium
+area: LLM
+topics: [LLM, Security, Safety]
+summary: |
+  Untrusted text can carry instructions the model may follow. Defend
+  with layers: delimit untrusted data, screen it, restrict tools, ask
+  for confirmation on risky actions, and check outputs.
+intuition: |
+  A language model reads instructions and data as one stream of tokens,
+  so nothing in the model itself marks a sentence in a web page as
+  data rather than a command. Prompt wording can lower the risk but
+  cannot enforce a boundary, so the strong controls live outside the
+  model: what the tools are allowed to do and who confirms. Assume some
+  injection succeeds and limit the damage.
+  Flow: untrusted text → wrap → detect → gate tools → confirm → validate output.
+approach:
+  - "Wrap untrusted text in delimiters with a random nonce — the attacker cannot guess the closing marker"
+  - "Strip the nonce and fake markers from the text — the data cannot close its own wrapper"
+  - "Scan for known injection phrasing and log matches — a weak signal for review, not a boundary"
+  - "Gate every tool call against an allow-list policy — least privilege limits what a hijacked model can do"
+  - "Require human confirmation for dangerous actions and validate outputs — the last layers before real effects"
+code: |
+  import re
+  import numpy as np
+
+  def wrap_untrusted(text, nonce):
+      while nonce in text:
+          text = text.replace(nonce, "")
+      text = re.sub(r"</?\s*DATA[-\w]*\s*>?", "", text, flags=re.I)
+      return (f"<DATA-{nonce}>\n{text}\n</DATA-{nonce}>")
+
+  PATTERNS = {
+      "ignore_prior": r"(ignore|disregard)\s+(all\s+|any\s+|the\s+)?"
+          r"(previous|prior|above)\s+(instructions?|prompts?)",
+      "reveal_prompt": r"(reveal|print|show)\s+(your|the)\s+"
+                       r"(system\s+)?(prompt|instructions)",
+      "role_reset": r"\byou\s+are\s+now\b",
+      "fake_role": r"^\s*(system|assistant)\s*:",
+  }
+
+  def detect_injection(text):
+      return [name for name, pat in PATTERNS.items()
+              if re.search(pat, text, re.I | re.M)]
+
+  def allow(tool, action, policy):
+      if action not in policy["tools"].get(tool, ()):
+          return "deny"
+      if (tool, action) in policy["confirm"]:
+          return "confirm"
+      return "allow"
+
+  def pass_probability(blocks):
+      return float(np.prod(1 - np.asarray(blocks, float)))
+key_lines: [5, 24, 31]
+time: "O(L) for wrapping and regex screening of L characters; O(1) per gate check"
+space: "O(L) for the wrapped copy of the text"
+when_to_use: |
+  Any application that feeds web pages, emails, documents, tool results
+  or user uploads into a model, especially when the model can call
+  tools that read private data or change something.
+when_not_to_use: |
+  Do not rely on these steps alone: delimiters and regex screening do
+  not stop a determined attacker. They are cheap layers to combine
+  with tool restrictions, not a replacement for them.
+why_it_works: |
+  A random nonce delimiter cannot be forged by text written before the
+  nonce exists, and removing it from the data guarantees the wrapper
+  has exactly one closing marker. The tool gate works because it is
+  ordinary code that the model cannot talk its way past. If layer $i$
+  blocks an attack with probability $q_i$ and layers fail independently,
+  the attack passes all of them with probability $\prod_i (1 - q_i)$,
+  so each added layer multiplies the risk down.
+math:
+  - "P(pass all) = ∏ᵢ (1 − qᵢ)"
+  - "P(blocked) = 1 − ∏ᵢ (1 − qᵢ)"
+  - "Two layers, q = 0.5 each: 0.5 × 0.5 = 0.25 pass"
+  - "Layers sharing a weakness: P(pass) ≥ ∏ᵢ (1 − qᵢ)"
+interview_qa:
+  - q: "Why can't a system prompt alone prevent injection?"
+    a: "The model processes instructions and data as one token stream, so a system prompt is only a strong hint. It is not an access control, and a crafted input can still override it."
+  - q: "What is the single most effective control?"
+    a: "Least privilege on tools: if the model cannot send email or read secrets, a successful injection has little to abuse. Confirmation by a human for risky actions adds a hard stop."
+  - q: "Why use a random nonce in the delimiter?"
+    a: "A fixed delimiter can be copied into the untrusted text to close the data block early. A random one is unknown to the attacker, and any copy that appears is removed anyway."
+hyperparameters:
+  - "Which tools and actions the policy allows"
+  - "Which actions require human confirmation"
+  - "Detector pattern list and how matches are used (log, block, or review)"
+  - "Number and independence of defence layers"
+pitfalls:
+  - "Regex detection is trivially bypassed by rephrasing, translation or encoding; treat a match as a signal, never as a guarantee"
+  - "The product formula assumes independent layers; layers that share a weakness, such as the same model, block less than it predicts"
+  - "Model output is untrusted too: rendering it as HTML or running it as a command reopens the hole"
+  - "No prompt-only defence is complete, so design the system to stay safe when an injection succeeds"
+related: [hallucination-detection, context-window-limits, temperature-sampling]
+math_tex:
+- 'Pass all: $P = \prod_{i}(1 - q_i)$'
+- 'Blocked: $1 - \prod_{i}(1 - q_i)$'
+- 'Example: $q = 0.5$ twice gives $0.5 \cdot 0.5 = 0.25$'
+- 'Shared weakness: $P \geq \prod_{i}(1 - q_i)$'

@@ -33,5 +33,6 @@ problems:
 - reward-model-bradley-terry
 - ppo-clipped-objective
 - gae-advantage
+- rlhf-kl-penalty
 aliases:
 - Preference alignment and policy gradients

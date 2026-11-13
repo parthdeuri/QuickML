@@ -1,0 +1,119 @@
+slug: ann-vector-index
+title: Approximate Nearest-Neighbour Vector Index (IVF)
+url: https://arxiv.org/abs/1603.09320
+difficulty: Hard
+area: LLM
+topics: [Vector Search, Approximate Nearest Neighbours, Retrieval]
+summary: |
+  Exact search scans every vector for each query. An IVF index clusters
+  the vectors with k-means, stores each one in its nearest cell, and at
+  query time scans only the $n_{probe}$ cells closest to the query,
+  trading a little recall for a large speed-up.
+intuition: |
+  Nearby vectors tend to fall in the same cluster, so most of the
+  corpus is provably irrelevant to a query that lands far from it. The
+  index pays once to learn the clusters, then each query compares
+  against $n_{list}$ centroids and scans only a few cells instead of all
+  $N$ vectors. The cost is that a true neighbour sitting just across a
+  cell boundary is missed unless a neighbouring cell is probed as well,
+  which is why $n_{probe}$ is the recall-versus-speed dial. Graph
+  indexes such as HNSW take a different route: a layered proximity
+  graph where search greedily walks to closer nodes, from a sparse top
+  layer down to the dense bottom layer, keeping a candidate list of
+  size $ef$. Product quantisation instead compresses each vector into a
+  few small codes so more of the index fits in memory.
+  Flow: query → nearest cells → scan candidates → top-k.
+why_it_works: |
+  If the clustering respects the geometry, the nearest neighbours of a
+  query are concentrated in the few cells whose centroids are closest
+  to it. Scanning those cells gives the exact top-$k$ of that subset,
+  and probing all cells scans everything, so the method degrades
+  smoothly to exact search. The cost is about
+  $n_{list} d + \frac{n_{probe}}{n_{list}} N d$, minimised near
+  $n_{list} \approx \sqrt{N}$ for small $n_{probe}$.
+when_to_use: |
+  Corpora of millions of vectors where brute force per query is too
+  slow or too costly, and a small recall loss is acceptable because the
+  generator or a re-ranker tolerates it.
+when_not_to_use: |
+  Small corpora, where exact search is one matrix product and has no
+  recall loss. Also data that changes constantly with no retraining,
+  since stale centroids hurt recall, and cases that need guaranteed
+  exact results.
+math:
+  - "Exact search per query:  cost = N·d"
+  - "IVF: rank nlist centroids, then scan nprobe cells"
+  - "cost ≈ nlist·d + (nprobe/nlist)·N·d   (balanced cells)"
+  - "Best split:  nlist ≈ √N"
+  - "Lloyd step:  cⱼ ← mean of vectors assigned to cell j"
+  - "recall@k = |approx ∩ exact| / k"
+approach:
+  - "Run k-means on the vectors to get nlist centroids — the cells that partition the space"
+  - "Assign every vector to its nearest centroid — an inverted list per cell, each vector stored once"
+  - "At query time rank the centroids by distance to the query — cheap, only nlist comparisons"
+  - "Take the nprobe nearest cells and scan their vectors — the only exact distance work"
+  - "Return the k closest scanned vectors — approximate top-k"
+  - "Measure recall@k against brute force — tells how much accuracy the speed-up cost"
+code: |
+  import numpy as np
+
+  def dist2(A, B):
+      return (A**2).sum(1)[:, None] - 2 * A @ B.T + (B**2).sum(1)
+
+  def kmeans(X, k, seed=0, iters=20):
+      rng = np.random.default_rng(seed)
+      C = X[rng.choice(len(X), k, replace=False)].copy()
+      for _ in range(iters):
+          a = dist2(X, C).argmin(1)
+          for j in range(k):
+              if (a == j).any():
+                  C[j] = X[a == j].mean(0)
+      return C
+
+  def build_ivf(X, nlist, seed=0):
+      C = kmeans(X, nlist, seed)
+      a = dist2(X, C).argmin(1)
+      cells = [np.where(a == j)[0] for j in range(nlist)]
+      return {"X": X, "C": C, "cells": cells}
+
+  def search_ivf(index, q, k, nprobe):
+      dc = ((index["C"] - q) ** 2).sum(1)
+      probe = np.argsort(dc)[:nprobe]
+      ids = np.concatenate([index["cells"][j] for j in probe])
+      d = ((index["X"][ids] - q) ** 2).sum(1)
+      order = np.argsort(d, kind="stable")[:k]
+      return ids[order], len(index["C"]) + len(ids)
+
+  def recall_at_k(approx_ids, exact_ids):
+      return len(set(approx_ids) & set(exact_ids)) / len(exact_ids)
+key_lines: [24, 25, 27]
+time: "O(nlist·d + (nprobe/nlist)·N·d) per query versus O(N·d) exact; build is k-means"
+space: "O(N·d) for the vectors plus O(nlist·d) for centroids"
+hyperparameters:
+  - "nlist, the number of cells, often about $\\sqrt{N}$"
+  - "nprobe, the number of cells scanned per query"
+  - "k-means iterations and seed"
+  - "HNSW alternative: graph degree $M$ and search width $ef$"
+pitfalls:
+  - "Recall is not guaranteed: a true neighbour in an unprobed cell is lost, so always measure recall@k against brute force on real queries"
+  - "Cells are rarely balanced, so the real cost depends on the sizes of the probed cells, not just the formula"
+  - "Centroids go stale when the data distribution drifts; re-train the quantiser periodically"
+  - "Euclidean cells assume the metric matches the one used to cluster; normalise vectors if you search by cosine"
+interview_qa:
+  - q: "Why does IVF raise recall when nprobe grows?"
+    a: "More cells are scanned, so more of the corpus is searched exactly. At $n_{probe} = n_{list}$ every vector is scanned and the result equals brute force."
+  - q: "How does HNSW differ from IVF?"
+    a: "HNSW is a layered proximity graph. Search enters at the sparse top layer, greedily moves to closer neighbours, then descends, keeping $ef$ candidates at the bottom. It usually gives high recall at low latency but uses more memory and has no training step."
+  - q: "What does product quantisation do?"
+    a: "It splits each vector into sub-vectors and replaces each with the index of its nearest codebook entry, compressing a vector to a few bytes. Distances are approximated from the codes, trading accuracy for memory."
+  - q: "How do you choose nlist and nprobe?"
+    a: "Pick $n_{list}$ near $\\sqrt{N}$, then raise $n_{probe}$ until recall@k on held-out queries meets the target, accepting the latency that results."
+related: [k-means, rag-dense-retrieval, retrieval-metrics-recall-at-k]
+math_tex:
+- 'Exact search per query: cost $= N d$'
+- 'IVF: rank $n_{list}$ centroids, scan $n_{probe}$ cells'
+- 'cost $\approx n_{list} d + \frac{n_{probe}}{n_{list}} N d$'
+- 'Best split: $n_{list} \approx \sqrt{N}$'
+- 'Lloyd step: $c_j \leftarrow$ mean of cell $j$ vectors'
+- '$\mathrm{recall@}k = \frac{|\mathrm{approx} \cap \mathrm{exact}|}{k}$'
+patterns: ["Text evaluation and retrieval"]

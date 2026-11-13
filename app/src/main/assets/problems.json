@@ -1,5 +1,5 @@
 {
- "contentVersion": 10,
+ "contentVersion": 11,
  "problems": [
   {
    "slug": "ab-test-significance",
@@ -319,6 +319,171 @@
     "gradient-descent",
     "backpropagation",
     "mlp-forward-pass"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "adapter-layers",
+   "title": "Bottleneck Adapter Layers",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/1902.00751",
+   "difficulty": "Medium",
+   "topics": [
+    "Fine-tuning",
+    "Parameter-Efficient Learning",
+    "Transformers"
+   ],
+   "patterns": [
+    "Transfer and adaptation"
+   ],
+   "summary": "Insert a small bottleneck module with a residual connection after a frozen sublayer and train only the module, a few percent of the weights.",
+   "bruteForce": "Latency-critical inference, since adapters add sequential layers that cannot be folded into the weights. LoRA is preferred when merging for zero extra latency matters.",
+   "intuition": "A pretrained network already computes useful features, so a task only needs a small correction on top of them. A narrow down-then-up projection with a skip connection is exactly that: it can pass features through unchanged, or add a learned low-dimensional edit. Initialising the up-projection at zero makes the module the identity, so training starts from the pretrained function. Unlike LoRA, the module is a new sequential layer and cannot be merged away. Flow: sublayer output → down-project → nonlinearity → up-project → add back.",
+   "whyItWorks": "With the up-projection at zero, $y = x + W_u\\,\\sigma(W_d x + b_d) + b_u$ reduces to $y = x$ when $W_u = 0$ and $b_u = 0$, so the adapted model equals the pretrained one at step zero. Gradients flow through the skip and the bottleneck to the adapter, while the frozen weights get none. The bottleneck restricts the correction to an $r$-dimensional space, which is enough for many tasks and keeps the parameter count near $2dr$ instead of $d^2$ per layer.",
+   "approach": [
+    "Freeze every pretrained weight — only adapters and task heads will train",
+    "Down-project $d \\rightarrow r$ with $r \\ll d$ — the bottleneck keeps the parameter count small",
+    "Apply a nonlinearity — lets the adapter learn more than a linear map",
+    "Up-project $r \\rightarrow d$ and add the input back — the skip makes the adapter a residual correction",
+    "Zero-initialise the up-projection — the adapter starts as the identity"
+   ],
+   "time": "O(n·d·r) extra per adapter and token, paid at inference too",
+   "space": "$2dr + r + d$ trainable parameters per adapter",
+   "solution": "import numpy as np\n\ndef adapter_forward(x, Wd, bd, Wu, bu):\n    h = np.maximum(x @ Wd + bd, 0)\n    return x + h @ Wu + bu\n\ndef param_count(d, r):\n    return 2 * d * r + r + d\n\ndef lora_forward(x, W, A, B, alpha):\n    s = alpha / A.shape[0]\n    return x @ W.T + s * (x @ A.T) @ B.T",
+   "keyLines": [
+    4,
+    5,
+    8
+   ],
+   "dryRun": [
+    "$y = x + W_u\\,\\sigma(W_d x + b_d) + b_u$",
+    "$W_d: d \\rightarrow r,\\;\\; W_u: r \\rightarrow d,\\;\\; r \\ll d$",
+    "Params per adapter $= 2dr + r + d$",
+    "$W_u = 0,\\; b_u = 0 \\Rightarrow y = x$",
+    "LoRA: $y = Wx + \\frac{\\alpha}{r}\\,BAx$, mergeable"
+   ],
+   "description": "Serving many tasks from one frozen base, where each task stores only small adapter weights, and when adding a task must not disturb earlier ones.",
+   "examples": [
+    {
+     "input": "Why is the adapter initialised near the identity?",
+     "output": "So the model starts exactly as the pretrained one. A random adapter would perturb every layer and destroy the pretrained features before training could help.",
+     "explanation": ""
+    },
+    {
+     "input": "How many parameters does one adapter add?",
+     "output": "$2dr + r + d$ with hidden size $d$ and bottleneck $r$: two weight matrices plus two bias vectors. For $r \\ll d$ this is far less than $d^2$.",
+     "explanation": ""
+    },
+    {
+     "input": "Adapters versus LoRA: what is the trade-off?",
+     "output": "LoRA's low-rank update is parallel and merges into $W$, so inference is unchanged. Adapters add sequential layers and extra latency, but they are simple, modular and can use a nonlinearity.",
+     "explanation": ""
+    },
+    {
+     "input": "Where are adapters placed in a transformer layer?",
+     "output": "In the original design, after the attention sublayer's output projection and after the feed-forward sublayer, before the residual addition and layer norm.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Bottleneck size $r$",
+    "Nonlinearity (ReLU, GELU)",
+    "Placement: after attention, after feed-forward, or both",
+    "Initial scale of the weights"
+   ],
+   "edgeCases": [
+    "Exactly zero initialisation of both $W_u$ and $W_d$ would give zero gradients; zero only the up-projection and keep $W_d$ random",
+    "Adapters cannot be merged into the base weights, so inference latency grows with depth",
+    "Remember to unfreeze layer norms or task heads if the recipe trains them; this code covers only the adapter"
+   ],
+   "related": [
+    "lora-low-rank-adaptation",
+    "transfer-learning-fine-tuning",
+    "parameter-count-flops"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "ann-vector-index",
+   "title": "Approximate Nearest-Neighbour Vector Index (IVF)",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/1603.09320",
+   "difficulty": "Hard",
+   "topics": [
+    "Vector Search",
+    "Approximate Nearest Neighbours",
+    "Retrieval"
+   ],
+   "patterns": [
+    "Text evaluation and retrieval"
+   ],
+   "summary": "Exact search scans every vector for each query. An IVF index clusters the vectors with k-means, stores each one in its nearest cell, and at query time scans only the $n_{probe}$ cells closest to the query, trading a little recall for a large speed-up.",
+   "bruteForce": "Small corpora, where exact search is one matrix product and has no recall loss. Also data that changes constantly with no retraining, since stale centroids hurt recall, and cases that need guaranteed exact results.",
+   "intuition": "Nearby vectors tend to fall in the same cluster, so most of the corpus is provably irrelevant to a query that lands far from it. The index pays once to learn the clusters, then each query compares against $n_{list}$ centroids and scans only a few cells instead of all $N$ vectors. The cost is that a true neighbour sitting just across a cell boundary is missed unless a neighbouring cell is probed as well, which is why $n_{probe}$ is the recall-versus-speed dial. Graph indexes such as HNSW take a different route: a layered proximity graph where search greedily walks to closer nodes, from a sparse top layer down to the dense bottom layer, keeping a candidate list of size $ef$. Product quantisation instead compresses each vector into a few small codes so more of the index fits in memory. Flow: query → nearest cells → scan candidates → top-k.",
+   "whyItWorks": "If the clustering respects the geometry, the nearest neighbours of a query are concentrated in the few cells whose centroids are closest to it. Scanning those cells gives the exact top-$k$ of that subset, and probing all cells scans everything, so the method degrades smoothly to exact search. The cost is about $n_{list} d + \\frac{n_{probe}}{n_{list}} N d$, minimised near $n_{list} \\approx \\sqrt{N}$ for small $n_{probe}$.",
+   "approach": [
+    "Run k-means on the vectors to get nlist centroids — the cells that partition the space",
+    "Assign every vector to its nearest centroid — an inverted list per cell, each vector stored once",
+    "At query time rank the centroids by distance to the query — cheap, only nlist comparisons",
+    "Take the nprobe nearest cells and scan their vectors — the only exact distance work",
+    "Return the k closest scanned vectors — approximate top-k",
+    "Measure recall@k against brute force — tells how much accuracy the speed-up cost"
+   ],
+   "time": "O(nlist·d + (nprobe/nlist)·N·d) per query versus O(N·d) exact; build is k-means",
+   "space": "O(N·d) for the vectors plus O(nlist·d) for centroids",
+   "solution": "import numpy as np\n\ndef dist2(A, B):\n    return (A**2).sum(1)[:, None] - 2 * A @ B.T + (B**2).sum(1)\n\ndef kmeans(X, k, seed=0, iters=20):\n    rng = np.random.default_rng(seed)\n    C = X[rng.choice(len(X), k, replace=False)].copy()\n    for _ in range(iters):\n        a = dist2(X, C).argmin(1)\n        for j in range(k):\n            if (a == j).any():\n                C[j] = X[a == j].mean(0)\n    return C\n\ndef build_ivf(X, nlist, seed=0):\n    C = kmeans(X, nlist, seed)\n    a = dist2(X, C).argmin(1)\n    cells = [np.where(a == j)[0] for j in range(nlist)]\n    return {\"X\": X, \"C\": C, \"cells\": cells}\n\ndef search_ivf(index, q, k, nprobe):\n    dc = ((index[\"C\"] - q) ** 2).sum(1)\n    probe = np.argsort(dc)[:nprobe]\n    ids = np.concatenate([index[\"cells\"][j] for j in probe])\n    d = ((index[\"X\"][ids] - q) ** 2).sum(1)\n    order = np.argsort(d, kind=\"stable\")[:k]\n    return ids[order], len(index[\"C\"]) + len(ids)\n\ndef recall_at_k(approx_ids, exact_ids):\n    return len(set(approx_ids) & set(exact_ids)) / len(exact_ids)",
+   "keyLines": [
+    24,
+    25,
+    27
+   ],
+   "dryRun": [
+    "Exact search per query: cost $= N d$",
+    "IVF: rank $n_{list}$ centroids, scan $n_{probe}$ cells",
+    "cost $\\approx n_{list} d + \\frac{n_{probe}}{n_{list}} N d$",
+    "Best split: $n_{list} \\approx \\sqrt{N}$",
+    "Lloyd step: $c_j \\leftarrow$ mean of cell $j$ vectors",
+    "$\\mathrm{recall@}k = \\frac{|\\mathrm{approx} \\cap \\mathrm{exact}|}{k}$"
+   ],
+   "description": "Corpora of millions of vectors where brute force per query is too slow or too costly, and a small recall loss is acceptable because the generator or a re-ranker tolerates it.",
+   "examples": [
+    {
+     "input": "Why does IVF raise recall when nprobe grows?",
+     "output": "More cells are scanned, so more of the corpus is searched exactly. At $n_{probe} = n_{list}$ every vector is scanned and the result equals brute force.",
+     "explanation": ""
+    },
+    {
+     "input": "How does HNSW differ from IVF?",
+     "output": "HNSW is a layered proximity graph. Search enters at the sparse top layer, greedily moves to closer neighbours, then descends, keeping $ef$ candidates at the bottom. It usually gives high recall at low latency but uses more memory and has no training step.",
+     "explanation": ""
+    },
+    {
+     "input": "What does product quantisation do?",
+     "output": "It splits each vector into sub-vectors and replaces each with the index of its nearest codebook entry, compressing a vector to a few bytes. Distances are approximated from the codes, trading accuracy for memory.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you choose nlist and nprobe?",
+     "output": "Pick $n_{list}$ near $\\sqrt{N}$, then raise $n_{probe}$ until recall@k on held-out queries meets the target, accepting the latency that results.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "nlist, the number of cells, often about $\\sqrt{N}$",
+    "nprobe, the number of cells scanned per query",
+    "k-means iterations and seed",
+    "HNSW alternative: graph degree $M$ and search width $ef$"
+   ],
+   "edgeCases": [
+    "Recall is not guaranteed: a true neighbour in an unprobed cell is lost, so always measure recall@k against brute force on real queries",
+    "Cells are rarely balanced, so the real cost depends on the sizes of the probed cells, not just the formula",
+    "Centroids go stale when the data distribution drifts; re-train the quantiser periodically",
+    "Euclidean cells assume the metric matches the one used to cluster; normalise vectors if you search by cosine"
+   ],
+   "related": [
+    "k-means",
+    "rag-dense-retrieval",
+    "retrieval-metrics-recall-at-k"
    ],
    "diagram": []
   },
@@ -1583,6 +1748,87 @@
    "diagram": []
   },
   {
+   "slug": "chain-of-thought-self-consistency",
+   "title": "Chain-of-Thought and Self-Consistency",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2203.11171",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Prompting",
+    "Reasoning",
+    "Sampling"
+   ],
+   "patterns": [],
+   "summary": "Ask the model to write its reasoning steps before the answer, then sample $n$ such reasoning paths at temperature above zero, parse each final answer and return the most common one.",
+   "bruteForce": "Open-ended generation with no single answer to vote on, latency or cost sensitive paths, and easy questions where one direct answer is already reliable.",
+   "intuition": "Intermediate steps give the model room to compute, because each generated token adds work before the answer is committed. A single path can go wrong anywhere, but wrong paths tend to disagree with each other while correct paths converge on the same result, so a vote over several paths filters out much of the random error. Flow: question → $n$ sampled reasoning paths → parse answers → vote.",
+   "whyItWorks": "If each independent sample is correct with probability $p > 0.5$, the number of correct votes is binomial and the chance that more than half are correct is $\\sum_{k > n/2}\\binom{n}{k}p^k(1-p)^{n-k}$, which rises towards 1 as $n$ grows. When $p < 0.5$ it falls towards 0, so voting amplifies whichever side is more likely. Wrong answers that are spread over many values need even fewer correct votes to win a plurality, so this majority figure is a conservative bound.",
+   "approach": [
+    "Prompt for step-by-step reasoning and a fixed last line such as Answer: X — makes the final answer easy to parse",
+    "Sample $n$ completions at temperature above 0 — greedy decoding would give the same path every time",
+    "Extract the final answer from each completion with a regex — only the answer is compared, never the reasoning text",
+    "Drop completions with no parsable answer — they carry no vote",
+    "Return the most frequent answer, ties broken by first seen — a deterministic majority vote"
+   ],
+   "time": "$n$ model calls (parallelisable), so about $n$ times the cost and tokens of one answer; voting itself is O(n)",
+   "space": "O(n) stored answers, plus the text of each reasoning path if kept",
+   "solution": "import re\nfrom math import comb\nfrom collections import Counter\n\ndef extract_final_answer(text):\n    pat = r\"answer\\s*:\\s*\\$?\\s*(-?[\\d,]*\\.?\\d+|[^\\s.,;]+)\"\n    m = re.findall(pat, text, re.I)\n    return m[-1].replace(\",\", \"\").lower() if m else None\n\ndef majority_vote(answers):\n    votes = Counter(a for a in answers if a is not None)\n    if not votes:\n        return None\n    return votes.most_common(1)[0][0]\n\ndef majority_accuracy(p, n):\n    # P(more than half of n independent votes are correct), odd n\n    return sum(comb(n, k) * p**k * (1 - p)**(n - k)\n               for k in range(n // 2 + 1, n + 1))",
+   "keyLines": [
+    6,
+    14,
+    18
+   ],
+   "dryRun": [
+    "Tail: $\\sum_{k > n/2}\\binom{n}{k}p^k(1-p)^{n-k}$",
+    "Votes $K \\sim \\mathrm{Bin}(n, p)$, win if $K > n/2$",
+    "Vote: $a^{*} = \\arg\\max_a \\sum_i 1[a_i = a]$",
+    "At $p = 0.7$: 0.700, 0.837, 0.974 for $n$ = 1, 5, 21",
+    "For $p < 0.5$ accuracy $\\rightarrow 0$ as $n$ grows"
+   ],
+   "description": "Multi-step problems with a short checkable final answer, such as arithmetic, logic or multiple choice, when accuracy matters more than cost and latency.",
+   "examples": [
+    {
+     "input": "Why does self-consistency need temperature above zero?",
+     "output": "At temperature zero every sample is the same greedy path, so voting adds nothing. Sampling makes the paths differ and the vote averages their errors.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is majority-vote accuracy higher than single-sample accuracy?",
+     "output": "For $p > 0.5$ the binomial tail above $n/2$ exceeds $p$ and grows with $n$, because independent errors rarely line up on the same wrong answer.",
+     "explanation": ""
+    },
+    {
+     "input": "When does self-consistency fail?",
+     "output": "When samples are correlated or the model is systematically wrong, since the same wrong answer repeats and wins the vote, and when $p < 0.5$ the vote makes things worse.",
+     "explanation": ""
+    },
+    {
+     "input": "How is it different from chain-of-thought alone?",
+     "output": "Chain-of-thought is one reasoning path, usually greedy. Self-consistency samples many paths and votes only on the final answers.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of samples $n$ (odd avoids ties; returns diminish)",
+    "Sampling temperature and top-$p$",
+    "Answer-extraction pattern and normalisation",
+    "Tie-break rule"
+   ],
+   "edgeCases": [
+    "Samples from one model are not independent; shared blind spots make the same wrong answer repeat, so the binomial formula is optimistic",
+    "Wrong answers can agree on a popular mistake and win the vote; more samples then make the wrong answer more certain",
+    "Unnormalised answers split votes (such as 1,200 and 1200); normalise before counting",
+    "Cost grows linearly with $n$ in tokens and calls, and a shown reasoning chain need not be the real cause of the answer"
+   ],
+   "related": [
+    "temperature-sampling",
+    "hallucination-detection",
+    "autoregressive-decoding"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "class-imbalance",
    "title": "Class Imbalance",
    "platform": "MLOps",
@@ -1822,6 +2068,88 @@
     "entropy-kl-divergence",
     "data-leakage",
     "roc-auc"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "context-engineering",
+   "title": "Context Engineering and Token Budgeting",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2307.03172",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Context Window",
+    "Prompting",
+    "RAG"
+   ],
+   "patterns": [],
+   "summary": "Treat the context window as a budget: reserve room for the output, spend the rest on the system prompt, recent history and the retrieved chunks with the best score per token, and place key facts at the ends.",
+   "bruteForce": "Short prompts that fit comfortably, or tasks where every source is essential, so nothing can be dropped. When exact optimality matters on a small set, solve the knapsack exactly instead of greedily.",
+   "intuition": "A context window is a fixed number of tokens shared by everything the model reads and writes, so every extra document displaces something else. Choosing what to include is a knapsack problem: take the chunks that give the most relevance per token, keep the most recent turns of history, and never spend the tokens reserved for the answer. Order matters too, since models use the start and end of a long prompt more reliably than the middle. Flow: window → reserve output → budget history → pack chunks by score per token → order.",
+   "whyItWorks": "Greedy by value density is optimal for the fractional knapsack, where a chunk may be split. For whole chunks it can be suboptimal, but the better of the greedy value and the best single chunk is at least half the optimum. Keeping the newest turns reflects that recent context is usually the most relevant, and reserving output tokens guarantees the model has room to answer.",
+   "approach": [
+    "Subtract the output reserve and the system prompt from the window — what remains is the input budget",
+    "Give history a share of that budget and keep the newest turns that fit — recent turns matter most",
+    "Give the rest to retrieved chunks, sorted by value density $v_i / t_i$ — the greedy knapsack rule",
+    "Add a chunk only if it still fits, and keep scanning — a smaller later chunk may fit in the leftover space",
+    "Report tokens used per part and the slack — proves the total never exceeds the window minus the reserve"
+   ],
+   "time": "O(n log n) to sort $n$ chunks, then O(n) to pack; O(m) for $m$ history turns",
+   "space": "O(n + m) for the kept lists",
+   "solution": "def pack_chunks(chunks, budget):\n    order = sorted(chunks, key=lambda c: -c[2] / c[1])\n    kept, used = [], 0\n    for name, tok, score in order:\n        if used + tok <= budget:\n            kept.append(name)\n            used += tok\n    return kept, used\n\ndef truncate_history(turns, budget):\n    kept, used = [], 0\n    for role, tok in reversed(turns):\n        if used + tok > budget:\n            break\n        kept.append((role, tok))\n        used += tok\n    return kept[::-1], used\n\ndef order_for_attention(chunks):\n    ranked = sorted(chunks, key=lambda c: -c[2])\n    front, back = ranked[0::2], ranked[1::2]\n    return front + back[::-1]\n\ndef build_context(window, system, reserve, history, chunks,\n                  share=0.4):\n    avail = window - reserve - system\n    kept_h, used_h = truncate_history(history, int(share * avail))\n    names, used_c = pack_chunks(chunks, avail - used_h)\n    total = system + used_h + used_c\n    return dict(system=system, history=used_h, docs=used_c,\n                reserve=reserve, total_in=total,\n                slack=window - reserve - total, chunks=names)",
+   "keyLines": [
+    2,
+    5,
+    27
+   ],
+   "dryRun": [
+    "Budget: $\\sum_{i \\in S} t_i \\leq W - R - t_{sys}$",
+    "Maximise $\\sum_{i \\in S} v_i$ s.t. $\\sum t_i \\leq B$",
+    "Density: $\\rho_i = \\frac{v_i}{t_i}$, take by decreasing $\\rho_i$",
+    "Bound: $\\max(V_{greedy}, \\max_i v_i) \\geq \\frac{V_{opt}}{2}$",
+    "Docs: $B_{docs} = W - R - t_{sys} - t_{hist}$",
+    "Slack: $W - R - t_{in} \\geq 0$"
+   ],
+   "description": "Any prompt assembled from several sources, such as RAG, chat with long history or tool outputs, where the total can exceed the window or where cost and latency grow with prompt length.",
+   "examples": [
+    {
+     "input": "Why reserve tokens for the output?",
+     "output": "Input and output share the window, so a prompt that fills it leaves no room to generate, which truncates or fails the answer.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is greedy by score per token not always optimal?",
+     "output": "Chunks are indivisible. A dense chunk can use space that would have fit two slightly less dense ones with more total value.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you decide what to drop from long chat history?",
+     "output": "Drop the oldest turns first, or replace them with a summary, and keep the system prompt and recent turns that the next reply depends on.",
+     "explanation": ""
+    },
+    {
+     "input": "Where should the most important facts go in a long prompt?",
+     "output": "Near the start or end, since models tend to use information in the middle of a long context less reliably.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Output reserve $R$ in tokens",
+    "History share of the input budget",
+    "Chunk scoring function (retrieval similarity, reranker score)",
+    "Summarise-or-drop policy for old turns"
+   ],
+   "edgeCases": [
+    "Token counts must come from the model's own tokenizer; counting words or characters undercounts",
+    "Greedy by density can be suboptimal for whole chunks, so compare against exact search on small cases",
+    "Stopping at the first chunk that does not fit leaves budget unused; keep scanning smaller ones",
+    "Dropping turns can remove the question a later turn refers to, so summarise or keep the pairs together"
+   ],
+   "related": [
+    "context-window-limits",
+    "rag-dense-retrieval",
+    "kv-cache"
    ],
    "diagram": []
   },
@@ -2831,6 +3159,169 @@
    ]
   },
   {
+   "slug": "document-chunking",
+   "title": "Document Chunking Strategies",
+   "platform": "LLM",
+   "url": "https://docs.langchain.com/oss/python/integrations/splitters/recursive_text_splitter",
+   "difficulty": "Medium",
+   "topics": [
+    "Retrieval-Augmented Generation",
+    "Chunking",
+    "Text Splitting"
+   ],
+   "patterns": [
+    "Text evaluation and retrieval"
+   ],
+   "summary": "Cut documents into retrievable pieces: fixed windows with overlap (stride $\\mathrm{size} - \\mathrm{overlap}$), or recursive splitting that tries paragraph, line, sentence and word boundaries in turn until every piece fits the size limit.",
+   "bruteForce": "Short documents that already fit one chunk, or structured data such as tables and code, where the natural unit (a row, a function) should be the chunk instead of a character count.",
+   "intuition": "A chunk is the unit that gets embedded, retrieved and pasted into the prompt, so its size sets a trade-off. Small chunks match a query precisely but lose the context around the fact; large chunks keep the meaning but blur many topics into one vector and waste prompt space. A fact of length $L$ is guaranteed to sit whole inside some chunk only if $\\mathrm{overlap} \\geq L - 1$, which is why overlap exists. Cutting at natural boundaries (paragraphs before sentences before words) keeps each piece readable and self-contained. Flow: document → split at boundaries → overlapping chunks → embeddings.",
+   "whyItWorks": "Fixed windows advance by $\\mathrm{size} - \\mathrm{overlap}$, so the chunk count is a simple ceiling and every item is covered. Because consecutive windows share exactly the overlap, dropping the repeated prefix of each later chunk rebuilds the input. The recursive splitter tries the coarsest separator first and only falls back to a finer one for pieces that are still too long, so it cuts at the most meaningful boundary that satisfies the limit.",
+   "approach": [
+    "Pick the stride as size minus overlap — each window starts one stride after the last",
+    "Slice tokens[i : i + size] for each start i below n − overlap — the final window then reaches the end",
+    "Pack whole sentences greedily up to the limit — keeps chunks readable instead of cutting mid-sentence",
+    "For text, split on the coarsest separator first — paragraphs are the most meaningful boundary",
+    "Recurse on any piece still too long with the next finer separator — falls back to lines, sentences, words, then characters",
+    "Merge small neighbouring pieces back up to the limit — avoids a flood of tiny chunks"
+   ],
+   "time": "O(n) for one pass over the text; the recursion revisits each oversized piece at most once per separator level",
+   "space": "O(n + overlap · chunks) because overlapping chunks store boundary items twice",
+   "solution": "import math\n\ndef fixed_chunks(tokens, size, overlap):\n    step = size - overlap\n    stop = max(len(tokens) - overlap, 1)\n    return [tokens[i:i + size] for i in range(0, stop, step)]\n\ndef chunk_count(n, size, overlap):\n    if n <= size:\n        return 1 if n else 0\n    return math.ceil((n - overlap) / (size - overlap))\n\nSEPS = (\"\\n\\n\", \"\\n\", \". \", \" \")\n\ndef recursive_split(text, max_len, separators=SEPS):\n    if len(text) <= max_len:\n        return [text]\n    if not separators:\n        return [text[i:i + max_len]\n                for i in range(0, len(text), max_len)]\n    sep, rest = separators[0], separators[1:]\n    parts = text.split(sep)\n    parts = [p + sep for p in parts[:-1]] + [parts[-1]]\n    out, cur = [], \"\"\n    for p in parts:\n        if len(p) > max_len:\n            if cur:\n                out.append(cur)\n                cur = \"\"\n            out.extend(recursive_split(p, max_len, rest))\n        elif len(cur) + len(p) <= max_len:\n            cur += p\n        else:\n            out.append(cur)\n            cur = p\n    if cur:\n        out.append(cur)\n    return out",
+   "keyLines": [
+    4,
+    11,
+    22
+   ],
+   "dryRun": [
+    "$\\mathrm{chunks} = \\lceil \\frac{n - \\mathrm{overlap}}{\\mathrm{size} - \\mathrm{overlap}} \\rceil$",
+    "Start of chunk $j$ = $j \\cdot (\\mathrm{size} - \\mathrm{overlap})$",
+    "Blow-up $\\approx \\frac{\\mathrm{size}}{\\mathrm{size} - \\mathrm{overlap}}$",
+    "Fact of length $L$ whole if $\\mathrm{overlap} \\geq L - 1$",
+    "$P(\\mathrm{cut}) = \\frac{L - 1}{\\mathrm{size}}$ with no overlap"
+   ],
+   "description": "Preparing any corpus for embedding and retrieval, where documents are longer than the embedding model's input or than the useful retrieval unit. Use recursive splitting for prose and fixed windows when the text has no structure.",
+   "examples": [
+    {
+     "input": "How do chunk size and retrieval quality relate?",
+     "output": "Small chunks give precise matches but lack context, and large chunks keep context but dilute the embedding and use more prompt tokens. The best size is found by measuring retrieval recall on a labelled set.",
+     "explanation": ""
+    },
+    {
+     "input": "Why use overlap, and what does it cost?",
+     "output": "A fact that straddles a boundary would be cut in two; overlap at least as long as the fact guarantees one chunk holds it whole. The cost is a larger index and duplicate-looking results.",
+     "explanation": ""
+    },
+    {
+     "input": "How many chunks does a document of n items produce?",
+     "output": "With window size s and overlap o the stride is $s - o$, so the count is $\\lceil (n - o)/(s - o) \\rceil$ for $n > s$, and one chunk otherwise.",
+     "explanation": ""
+    },
+    {
+     "input": "What does recursive splitting add over fixed windows?",
+     "output": "It prefers natural boundaries such as paragraphs and sentences and only cuts finer when a piece is too long, so chunks are more coherent.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Chunk size (tokens or characters)",
+    "Overlap, often 10 to 20 percent of the size",
+    "Separator hierarchy for recursive splitting",
+    "Unit of length (characters versus model tokens)"
+   ],
+   "edgeCases": [
+    "Measuring size in characters while the embedding model limit is in tokens; chunks can silently be truncated",
+    "Overlap multiplies index size by about $\\frac{\\mathrm{size}}{\\mathrm{size}-\\mathrm{overlap}}$ and returns near-duplicate hits",
+    "Splitting on a separator that is absent (a long line with no spaces) falls back to hard character cuts",
+    "Splitting tables, code or lists by length destroys their structure; chunk them by their own units"
+   ],
+   "related": [
+    "rag-dense-retrieval",
+    "retrieval-metrics-recall-at-k",
+    "context-engineering"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "document-loading-extraction",
+   "title": "Document Loading and Text Extraction",
+   "platform": "LLM",
+   "url": "https://docs.python.org/3/library/unicodedata.html",
+   "difficulty": "Easy",
+   "topics": [
+    "Retrieval-Augmented Generation",
+    "Text Cleaning",
+    "Metadata"
+   ],
+   "patterns": [],
+   "summary": "Turn raw documents into clean text plus metadata before chunking and embedding: strip HTML boilerplate, normalise Unicode and whitespace, drop header and footer lines that repeat across pages, and tag every chunk with its source and page.",
+   "bruteForce": "Do not rely on these rules for PDFs, scans and tables. Layout-aware parsers or OCR are needed there, and extraction errors in those formats are the main source of failures in retrieval pipelines.",
+   "intuition": "An embedding model sees only the text it is given, so navigation menus, scripts, page footers and broken hyphenation become part of the chunk vectors and pull unrelated chunks together. Boilerplate repeats on most pages while real content does not, so a line seen on a large fraction of pages is almost certainly not content. Cleaning is cheap next to bad retrieval, and metadata attached now is what later makes citations and filters possible. Flow: raw file → parse → clean text → chunks with metadata → embeddings.",
+   "whyItWorks": "Compatibility normalisation (NFKC) maps look-alike characters such as ligatures and full-width letters to one canonical form, so the same word always gets the same tokens. Counting each distinct line once per page and thresholding the fraction of pages separates repeated furniture from unique text without any layout model. Metadata carried on each chunk survives retrieval, so the answer can point back to the exact source.",
+   "approach": [
+    "Parse the HTML and skip script, style and navigation subtrees — they carry no content",
+    "Keep block boundaries as blank lines — headings and paragraphs stay separable for chunking",
+    "Apply NFKC and rejoin words split by line-end hyphens — one canonical spelling per word",
+    "Collapse runs of spaces and blank lines — removes layout noise",
+    "Count each distinct line once per page and drop lines on at least min_frac of pages — removes repeated headers and footers",
+    "Attach source, page and section to every chunk — enables citations and metadata filters"
+   ],
+   "time": "O(total characters) for parsing and cleaning; the repeated-line pass is one hash-table count over all lines",
+   "space": "O(distinct lines) for the repeat counter plus the cleaned text",
+   "solution": "import re, unicodedata\nfrom html.parser import HTMLParser\n\nSKIP = {\"script\", \"style\", \"title\", \"nav\", \"header\", \"footer\",\n        \"aside\"}\nBLOCK = {\"p\", \"div\", \"li\", \"br\", \"tr\", \"h1\", \"h2\", \"h3\", \"h4\"}\n\nclass _Text(HTMLParser):\n    def __init__(self):\n        super().__init__()\n        self.out, self.skip = [], 0\n    def handle_starttag(self, tag, attrs):\n        if tag in SKIP:\n            self.skip += 1\n        elif tag in BLOCK:\n            self.out.append(\"\\n\\n\")\n    def handle_endtag(self, tag):\n        if tag in SKIP:\n            self.skip = max(0, self.skip - 1)\n        elif tag in BLOCK:\n            self.out.append(\"\\n\\n\")\n    def handle_data(self, data):\n        if not self.skip:\n            self.out.append(data)\n\ndef normalise_text(s):\n    s = unicodedata.normalize(\"NFKC\", s)\n    s = re.sub(r\"(\\w)-\\n(\\w)\", r\"\\1\\2\", s)\n    s = re.sub(r\"[ \\t]+\", \" \", s)\n    s = \"\\n\".join(line.strip() for line in s.split(\"\\n\"))\n    return re.sub(r\"\\n{3,}\", \"\\n\\n\", s).strip()\n\ndef html_to_text(html):\n    p = _Text()\n    p.feed(html)\n    return normalise_text(\"\".join(p.out))\n\ndef drop_repeated_lines(pages, min_frac=0.6):\n    def key(line):\n        return re.sub(r\"\\d+\", \"#\", line.strip())\n    seen = {}\n    for pg in pages:\n        for k in {key(l) for l in pg.split(\"\\n\") if l.strip()}:\n            seen[k] = seen.get(k, 0) + 1\n    keep = lambda l: not l.strip() or (\n        seen[key(l)] / len(pages) < min_frac)\n    return [\"\\n\".join(l for l in pg.split(\"\\n\") if keep(l))\n            for pg in pages]\n\ndef attach_metadata(chunks, source, page, section=None):\n    return [{\"text\": c, \"source\": source, \"page\": page,\n             \"section\": section, \"chunk\": i}\n            for i, c in enumerate(chunks)]",
+   "keyLines": [
+    27,
+    44,
+    51
+   ],
+   "dryRun": [
+    "NFKC: compatibility decomposition, then composition",
+    "$\\mathrm{pc}(\\ell)$ = number of pages containing line $\\ell$",
+    "Drop line $\\ell$ if $\\frac{\\mathrm{pc}(\\ell)}{\\mathrm{pages}} \\geq \\mathrm{min\\_frac}$",
+    "Threshold in pages $= \\lceil \\mathrm{min\\_frac} \\cdot \\mathrm{pages} \\rceil$"
+   ],
+   "description": "Any ingestion pipeline for web pages, reports or exports, as the first stage before chunking, where text quality directly limits retrieval quality.",
+   "examples": [
+    {
+     "input": "Why clean text before embedding?",
+     "output": "Boilerplate and broken text add shared noise to chunk vectors, which makes unrelated chunks look similar and lowers retrieval precision. Clean input also gives stable tokenisation.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you detect repeated headers and footers without layout analysis?",
+     "output": "Count how many pages each distinct line appears on and drop lines whose page fraction passes a threshold, masking digits so page numbers still match.",
+     "explanation": ""
+    },
+    {
+     "input": "Why attach metadata to every chunk?",
+     "output": "After chunking, a chunk no longer knows where it came from. Source, page and section let the system cite answers and filter retrieval by document, date or access level.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the hardest part of document loading in practice?",
+     "output": "Non-HTML formats. PDFs, scans and tables lose reading order and structure on extraction, so they need layout-aware parsers or OCR and careful checking.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "min_frac, the page fraction above which a line counts as boilerplate",
+    "Set of tags to skip and tags that mark block boundaries",
+    "Unicode normalisation form (NFKC versus NFC)",
+    "Metadata fields to keep (source, page, section, date)"
+   ],
+   "edgeCases": [
+    "Digits are masked when counting so that Page 1, Page 2 match, which also merges unique lines that differ only by a number",
+    "A low min_frac on a short document deletes real content; a short repeated line is only boilerplate if it appears on most pages",
+    "NFKC changes meaning for some text, for example it turns superscript digits into ordinary ones, so keep the raw text if exact quotes matter",
+    "PDFs, scanned pages and tables need dedicated parsers or OCR; these rules do not fix reading order or merged columns"
+   ],
+   "related": [
+    "document-chunking",
+    "rag-dense-retrieval",
+    "bpe-tokenization"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "dpo-loss",
    "title": "Direct Preference Optimisation Loss",
    "platform": "NLP",
@@ -3452,6 +3943,256 @@
    "diagram": []
   },
   {
+   "slug": "few-shot-prompting",
+   "title": "Few-Shot Prompting and Example Selection",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2005.14165",
+   "difficulty": "Easy",
+   "topics": [
+    "LLM",
+    "Prompting",
+    "In-Context Learning"
+   ],
+   "patterns": [],
+   "summary": "Put $k$ worked input-output examples in the prompt before the real query so the model infers the task from context, with no weight updates; choose the examples by embedding similarity to the query.",
+   "bruteForce": "When examples would not fit in the context window, when the task is well served by an instruction alone, or when thousands of labelled cases justify fine-tuning a smaller, cheaper model.",
+   "intuition": "A language model continues text, so a prompt that already contains several solved instances makes \"the next instance, solved\" the most likely continuation. The examples specify format, label set and style better than an instruction can, and examples that resemble the query show the model a nearby solved case instead of a random one. Flow: query → embed → top-$k$ similar examples → prompt → completion.",
+   "whyItWorks": "Pretraining on text full of repeated patterns teaches a large model to continue a pattern it sees, so the examples act as a task specification read at inference time. Retrieval by cosine similarity chooses demonstrations whose inputs are close to the query, so the needed input-output mapping is shown locally. Why in-context learning works internally is still an open research question.",
+   "approach": [
+    "Write a short instruction — states the task once in plain words",
+    "Embed the query and all candidate examples — puts them in one vector space",
+    "Rank candidates by cosine similarity and keep the top $k$ — nearby solved cases are the most informative",
+    "Break ties by index and put the closest example last — the output is deterministic and the most relevant case sits next to the query",
+    "Check label balance of the chosen set — a skewed set biases the model towards the majority label",
+    "Render $k$ example blocks and end with the query and an empty label — the model completes exactly the missing part"
+   ],
+   "time": "O(N·d) to score $N$ candidates, plus sorting; the prompt costs $O(L^2)$ attention for length $L$",
+   "space": "O(N·d) for the example embeddings, and the $k$ examples add to the context length",
+   "solution": "import numpy as np\nfrom collections import Counter\n\ndef build_prompt(instruction, examples, query):\n    blocks = [f\"Input: {x}\\nLabel: {y}\" for x, y in examples]\n    tail = f\"Input: {query}\\nLabel:\"\n    return \"\\n\\n\".join([instruction.strip()] + blocks + [tail])\n\ndef select_examples(q, E, k):\n    qn = q / np.linalg.norm(q)\n    En = E / np.linalg.norm(E, axis=1, keepdims=True)\n    s = En @ qn\n    idx = np.lexsort((np.arange(len(s)), -s))\n    return idx[:k]\n\ndef label_balance(labels):\n    c = Counter(labels)\n    return dict(c), max(c.values()) / len(labels)",
+   "keyLines": [
+    12,
+    13
+   ],
+   "dryRun": [
+    "Cosine: $\\frac{q \\cdot e_i}{\\|q\\|\\,\\|e_i\\|}$",
+    "Pick $S$ = top-$k$ of $\\cos(q, e_i)$",
+    "Length: $L = L_{instr} + \\sum_{S}(L_x + L_y) + L_q$",
+    "Limit: $L \\leq$ context length",
+    "Balance: $p_c = \\frac{n_c}{k}$, imbalance $= \\max_c p_c$"
+   ],
+   "description": "A new task with a handful of labelled cases and no budget for fine-tuning, when output format matters, or when a large labelled pool exists and similar cases can be retrieved per query.",
+   "examples": [
+    {
+     "input": "How is few-shot prompting different from fine-tuning?",
+     "output": "It changes only the input, not the weights, so it is instant and reversible, but the examples use context on every call and the gain is bounded by what fits.",
+     "explanation": ""
+    },
+    {
+     "input": "Why select examples by similarity instead of at random?",
+     "output": "Examples close to the query show the model a nearby solved case, which usually helps more than random ones, though it can overfit to surface similarity.",
+     "explanation": ""
+    },
+    {
+     "input": "Does the order of the examples matter?",
+     "output": "Yes. Models are often sensitive to order, with recent examples weighing more, so teams fix an order such as most similar last and test it.",
+     "explanation": ""
+    },
+    {
+     "input": "What goes wrong with an unbalanced example set?",
+     "output": "The model leans towards the majority label, so a set that is mostly one class inflates that prediction.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of examples $k$ (limited by the context window)",
+    "Selection rule: random, cosine top-$k$, or diverse (such as MMR)",
+    "Example order, for instance most similar last",
+    "Prompt template and separators between blocks"
+   ],
+   "edgeCases": [
+    "Choosing examples that all share one label biases the model towards that label",
+    "Retrieving near-duplicates of the query can leak the answer in evaluation, so exclude the query itself from the pool",
+    "A format that differs between examples and the query confuses the completion; use one template for all blocks"
+   ],
+   "related": [
+    "cosine-similarity-embeddings",
+    "rag-dense-retrieval",
+    "context-window-limits"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "finetune-dataset-prep",
+   "title": "Fine-Tuning Data Prep with MinHash Dedup and Group Splits",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2107.06499",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Fine-Tuning",
+    "Data Cleaning",
+    "Deduplication"
+   ],
+   "patterns": [
+    "Validation hygiene"
+   ],
+   "summary": "Clean fine-tuning data by removing exact duplicates through a normalised hash, near duplicates through MinHash signatures, splitting train and validation by group, and flagging eval text that overlaps the training set by n-grams.",
+   "bruteForce": "Tiny hand-curated sets where every example is deliberate, or tasks where repeated phrasing is the signal itself, such as templated classification. Aggressive thresholds can delete legitimate variants.",
+   "intuition": "Duplicates make validation scores optimistic and bias what the model memorises. Exact hashing misses lightly edited copies, and comparing every pair of documents is quadratic. MinHash fixes both: apply a random hash to every shingle and keep the minimum, and two sets agree on that minimum with probability equal to their Jaccard similarity, so a short signature estimates similarity. Random row splits still leak, since near copies from one source land on both sides, so split by group. Flow: texts → normalise → shingles → signatures → groups → split.",
+   "whyItWorks": "For a random hash function over the union of two sets, the element with the smallest hash lies in the intersection with probability $J(A,B)$, so the two minima are equal with exactly that probability. Averaging $k$ independent hash functions gives an unbiased estimate with standard deviation $\\sqrt{J(1-J)/k}$. Splitting by group keeps correlated items on one side, so validation measures generalisation.",
+   "approach": [
+    "Normalise text (lowercase, collapse punctuation and spaces) and hash it — identical items collapse to one key",
+    "Turn each text into a set of word shingles — similarity becomes set overlap",
+    "Hash every shingle with $k$ random hash functions and keep each minimum — the signature has $k$ numbers",
+    "Estimate Jaccard as the fraction of signature positions that match — an unbiased estimate with error about $1/\\sqrt{k}$",
+    "Drop or cluster pairs above a similarity threshold — removes near duplicates",
+    "Split train and validation by group id such as source or conversation — near-identical items never straddle the split",
+    "Compare eval n-grams with training n-grams and drop or flag overlap — decontaminates the benchmark"
+   ],
+   "time": "O(N·s·k) to sign N documents of s shingles with $k$ hashes; near-duplicate search needs bucketing to avoid $O(N^2)$ pair checks",
+   "space": "O(N·k) for signatures plus the n-gram set of the training text",
+   "solution": "import hashlib, re\nfrom collections import Counter\nimport numpy as np\n\nP = 2**31 - 1\n\ndef normalise(text):\n    return re.sub(r\"\\W+\", \" \", text.lower()).strip()\n\ndef dedup_key(text):\n    return hashlib.md5(normalise(text).encode()).hexdigest()\n\ndef shingle_set(text, k=3):\n    w = normalise(text).split()\n    n = max(1, len(w) - k + 1)\n    return {\" \".join(w[i:i + k]) for i in range(n)}\n\ndef minhash_signature(shingles, num_perm=128, seed=0):\n    rng = np.random.default_rng(seed)\n    a = rng.integers(1, P, num_perm)\n    b = rng.integers(0, P, num_perm)\n    h = lambda s: int(hashlib.md5(s.encode()).hexdigest()[:8], 16) % P\n    x = np.array([h(s) for s in shingles], dtype=np.int64)\n    return ((a[:, None] * x + b[:, None]) % P).min(axis=1)\n\ndef estimate_jaccard(sig_a, sig_b):\n    return float((sig_a == sig_b).mean())\n\ndef group_split(items, group_key, val_fraction=0.2, seed=0):\n    size = Counter(group_key(x) for x in items)\n    groups = sorted(size)\n    np.random.default_rng(seed).shuffle(groups)\n    val_g, n = set(), 0\n    for g in groups:\n        if n >= val_fraction * len(items):\n            break\n        val_g.add(g)\n        n += size[g]\n    val = [x for x in items if group_key(x) in val_g]\n    train = [x for x in items if group_key(x) not in val_g]\n    return train, val\n\ndef ngram_overlap(train, eval_texts, n=8):\n    def grams(t):\n        w = normalise(t).split()\n        return {tuple(w[i:i + n]) for i in range(len(w) - n + 1)}\n    seen = set().union(*(grams(t) for t in train))\n    out = []\n    for t in eval_texts:\n        g = grams(t)\n        out.append(len(g & seen) / len(g) if g else 0.0)\n    return out",
+   "keyLines": [
+    24,
+    27,
+    32
+   ],
+   "dryRun": [
+    "Jaccard: $J(A,B) = \\frac{|A \\cap B|}{|A \\cup B|}$",
+    "Match prob: $P[\\min h(A) = \\min h(B)] = J(A,B)$",
+    "Estimate: $\\hat{J} = \\frac{1}{k}\\sum_{i} [s^A_i = s^B_i]$",
+    "Spread: $\\sqrt{\\frac{J(1-J)}{k}}$",
+    "Hash: $h_i(x) = (a_i x + b_i)\\ \\mathrm{mod}\\ p$",
+    "Overlap: $\\frac{|G_{eval} \\cap G_{train}|}{|G_{eval}|}$"
+   ],
+   "description": "Any instruction or domain fine-tuning corpus scraped or merged from several sources, before training and before trusting a validation score or a benchmark number.",
+   "examples": [
+    {
+     "input": "Why does a MinHash match estimate Jaccard similarity?",
+     "output": "Under a random hash the smallest element of the union is equally likely to be any union member, and the two sets share the minimum exactly when it lies in the intersection, which has probability $J(A,B)$.",
+     "explanation": ""
+    },
+    {
+     "input": "Why split by group rather than at random?",
+     "output": "Items from one source or conversation are near duplicates of each other, so a random split puts copies on both sides and the validation loss measures memorisation.",
+     "explanation": ""
+    },
+    {
+     "input": "How many hash functions are needed?",
+     "output": "The error shrinks as $1/\\sqrt{k}$, so $k = 128$ gives a standard deviation of at most about $0.044$, which is enough for coarse thresholds.",
+     "explanation": ""
+    },
+    {
+     "input": "Why remove eval overlap from training data?",
+     "output": "If eval text appears in training, the benchmark score reflects memorisation. N-gram overlap detects verbatim copies, though not paraphrases.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of hash functions $k$ (signature length)",
+    "Shingle size and unit (words or characters)",
+    "Similarity threshold for dropping near duplicates",
+    "N-gram length for decontamination and validation fraction"
+   ],
+   "edgeCases": [
+    "Python's built-in hash for strings changes between runs; use a stable hash for signatures",
+    "Group labels must follow the leak path: split by source or conversation, not by row, or copies still straddle the split",
+    "A very short n-gram length flags common phrases as contamination, a very long one misses lightly edited copies",
+    "Normalising too aggressively merges items that differ in numbers or code and are genuinely distinct"
+   ],
+   "related": [
+    "data-leakage",
+    "cross-validation",
+    "transfer-learning-fine-tuning"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "finetune-evaluation",
+   "title": "Evaluating a Fine-Tune - Win Rate and Sign Test",
+   "platform": "LLM",
+   "url": "https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.binomtest.html",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Evaluation",
+    "Fine-Tuning",
+    "Hypothesis Testing"
+   ],
+   "patterns": [],
+   "summary": "Decide whether a fine-tune beat its baseline: compare held-out loss, count pairwise wins with ties handled explicitly, test the wins and losses with an exact sign test, size the eval, and report forgetting.",
+   "bruteForce": "Tasks with a deterministic metric and many examples, where a paired bootstrap on the score is simpler. A sign test also ignores the size of each win, so it is conservative when margins vary.",
+   "intuition": "A better loss number does not mean better answers, and a win rate of 55% on 40 prompts is mostly noise. Each prompt gives a paired verdict (win, loss or tie), and under \"no difference\" the non-tied pairs are fair coin flips, so the exact binomial answers how surprising the count is. Ties carry no direction, so report how you treated them. Flow: held-out loss → paired win/loss/tie → sign test → size → forgetting check.",
+   "whyItWorks": "If the two models are equally good, each non-tied comparison is a win with probability $\\frac{1}{2}$, so the number of wins among $n$ non-tied pairs is $\\mathrm{Binomial}(n, \\frac{1}{2})$ and the sign test p-value is an exact tail probability with no distributional assumption. The sample-size rule comes from requiring a normal-approximation interval of half-width $m$ around $p$.",
+   "approach": [
+    "Compare held-out loss or perplexity before and after — a cheap first signal, not a verdict",
+    "Judge each prompt as win, loss or tie against the baseline — paired data removes prompt difficulty",
+    "Compute win rate with ties counted half, and also the rate excluding ties — report both and say which",
+    "Run an exact sign test on wins and losses only — ties carry no direction",
+    "Add a confidence interval to the win rate — the point estimate alone hides the noise",
+    "Size the eval with $n \\approx z^2 p(1-p)/m^2$ — decide the margin before collecting data",
+    "Measure a general benchmark before and after and report the change separately — fine-tuning can cause forgetting"
+   ],
+   "time": "O(n) to tally, O(n) for the exact sign test over $n$ non-tied pairs",
+   "space": "O(n) outcomes, O(1) summary statistics",
+   "solution": "import math\nimport numpy as np\n\ndef win_rate(outcomes):\n    # outcomes: +1 win, 0 tie, -1 loss (fine-tune vs baseline)\n    o = np.asarray(outcomes)\n    w, l = int((o > 0).sum()), int((o < 0).sum())\n    t = len(o) - w - l\n    half = (w + 0.5 * t) / len(o)\n    excl = w / (w + l) if w + l else float(\"nan\")\n    return {\"wins\": w, \"losses\": l, \"ties\": t,\n            \"rate_ties_half\": half, \"rate_excl_ties\": excl}\n\ndef sign_test_p(wins, losses):\n    n = wins + losses\n    if n == 0:\n        return 1.0\n    k = min(wins, losses)\n    tail = sum(math.comb(n, i) for i in range(k + 1))\n    return min(1.0, 2 * tail / 2 ** n)\n\ndef wilson_ci(k, n, z=1.96):\n    p = k / n\n    c = (p + z * z / (2 * n)) / (1 + z * z / n)\n    h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))\n    return c - h / (1 + z * z / n), c + h / (1 + z * z / n)\n\ndef required_n(p, margin, z=1.96):\n    return math.ceil(z * z * p * (1 - p) / margin ** 2)\n\ndef forgetting_delta(before, after):\n    return after - before   # negative = capability lost",
+   "keyLines": [
+    19,
+    20,
+    29
+   ],
+   "dryRun": [
+    "Win rate $= (\\mathrm{wins} + \\frac{1}{2}\\,\\mathrm{ties}) / n$",
+    "Under $H_0$: wins $\\sim \\mathrm{Binomial}(n_e, \\frac{1}{2})$",
+    "where $n_e = \\mathrm{wins} + \\mathrm{losses}$",
+    "Two-sided: $p = \\min(1,\\; 2\\,\\Pr[X \\leq \\min(w, l)])$",
+    "Wilson centre: $\\frac{\\hat{p} + z^2/2n}{1 + z^2/n}$",
+    "Sample size: $n \\approx \\frac{z^2\\,p(1-p)}{m^2}$",
+    "Forgetting: $\\Delta = M_{after} - M_{before}$"
+   ],
+   "description": "Comparing a fine-tuned model with its base or a previous version on open-ended prompts judged pairwise, by humans or by an LLM judge.",
+   "examples": [
+    {
+     "input": "How should ties be handled in a win rate?",
+     "output": "Either count a tie as half a win, or drop ties and report how many there were. Whichever you pick, state it, because the two give different rates when ties are common.",
+     "explanation": ""
+    },
+    {
+     "input": "Why a sign test instead of a t-test here?",
+     "output": "The data are paired win, loss or tie verdicts, not numeric scores. Among non-tied pairs the null is a fair coin, so the exact binomial applies with no distributional assumption.",
+     "explanation": ""
+    },
+    {
+     "input": "How many prompts do I need to detect a small improvement?",
+     "output": "Use $n \\approx z^2 p(1-p)/m^2$. For $p = 0.5$ and a margin of 0.05 at 95% confidence this is about 385 pairs, and halving the margin quadruples it.",
+     "explanation": ""
+    },
+    {
+     "input": "What is a forgetting check?",
+     "output": "Evaluate a general-capability benchmark before and after fine-tuning and report the change separately, since a gain on the target task can hide a loss elsewhere.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Significance level or confidence level ($z$)",
+    "Tie policy: half credit or excluded",
+    "Target margin $m$ for sample sizing",
+    "Which general benchmark to track for forgetting"
+   ],
+   "edgeCases": [
+    "Counting ties as losses, or silently dropping them, shifts the win rate; always report the tie count",
+    "Running many comparisons and reporting the best one inflates false positives; correct for multiple tests",
+    "A judge that prefers longer or first-listed answers biases wins; randomise order and check length",
+    "A significant win rate on a narrow prompt set says nothing about prompts outside it, or about forgetting"
+   ],
+   "related": [
+    "prompt-optimization",
+    "transfer-learning-fine-tuning",
+    "perplexity"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "focal-loss",
    "title": "Focal Loss",
    "platform": "Deep Learning",
@@ -4009,6 +4750,90 @@
     "mlp-forward-pass",
     "activation-functions",
     "self-attention"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "gpt-decoder-only",
+   "title": "GPT Decoder-Only Language Model (Full Forward Pass)",
+   "platform": "LLM",
+   "url": "https://huggingface.co/docs/transformers/model_doc/gpt2",
+   "difficulty": "Hard",
+   "topics": [
+    "LLM",
+    "Transformers",
+    "GPT",
+    "Weight Tying"
+   ],
+   "patterns": [
+    "Attention and sequences"
+   ],
+   "summary": "The whole GPT model: token plus position embeddings, $N$ pre-norm causal blocks, a final LayerNorm, and a vocabulary projection that reuses the embedding matrix, giving next-token logits at every position.",
+   "bruteForce": "Tasks that need bidirectional encoding of a fixed input, such as classification or span filling, where an encoder fits better, or sequence-to-sequence tasks where an encoder-decoder is a natural fit.",
+   "intuition": "Where the block card shows one layer, this is the full model. Token ids become vectors, a learned position vector is added so the model knows order, and $N$ identical causal blocks refine a residual stream. A final LayerNorm and the transposed embedding matrix turn each position back into scores over the vocabulary. Training scores every position's next token in one pass; generation feeds the sampled token back in. GPT is decoder-only: no encoder and no cross-attention, unlike BERT (encoder-only, bidirectional) or T5 (encoder-decoder). Flow: token ids → embeddings + positions → N blocks → final norm → logits.",
+   "whyItWorks": "The causal mask makes row $t$ of the logits depend only on tokens up to $t$, so one pass gives $T$ valid training predictions and the same network decodes token by token. Tying the output matrix to $E$ means the embedding and the scoring of each token share one vector, which saves $V \\cdot d$ parameters and ties input and output meaning.",
+   "approach": [
+    "Look up token embeddings $E[\\text{id}]$ and add learned position rows $P[t]$ — the stream starts as $(T, d)$",
+    "Run $N$ pre-norm blocks, each adding causal attention and a GELU MLP to the stream — the residual path stays identity",
+    "Apply a final LayerNorm — pre-norm stacks leave the stream unnormalised",
+    "Multiply by $E^{\\top}$ (weight tying) — logits $(T, V)$ with no extra output matrix",
+    "Train with cross-entropy of row $t$ against token $t+1$; generate by sampling the last row and appending — same weights, two uses"
+   ],
+   "time": "O(N·(T²·d + T·d²) + T·d·V) per forward pass",
+   "space": "O(h·T²) scores per block plus O(T·d) stream and O(T·V) logits",
+   "solution": "import numpy as np\n\ndef ln(x, g, b, eps=1e-5):\n    m = x.mean(-1, keepdims=True)\n    v = x.var(-1, keepdims=True)\n    return g * (x - m) / np.sqrt(v + eps) + b\n\ndef gelu(t):\n    c = np.sqrt(2 / np.pi)\n    return 0.5 * t * (1 + np.tanh(c * (t + 0.044715 * t**3)))\n\ndef attn(x, B, h):\n    T, d = x.shape\n    q, k, v = np.split(x @ B[\"Wqkv\"] + B[\"bqkv\"], 3, -1)\n    q, k, v = (m.reshape(T, h, d // h).transpose(1, 0, 2)\n               for m in (q, k, v))\n    s = q @ k.transpose(0, 2, 1) / np.sqrt(d // h)\n    s = np.where(np.triu(np.ones((T, T), bool), 1), -np.inf, s)\n    e = np.exp(s - s.max(-1, keepdims=True))\n    a = (e / e.sum(-1, keepdims=True)) @ v\n    return a.transpose(1, 0, 2).reshape(T, d) @ B[\"Wo\"] + B[\"bo\"]\n\ndef block(x, B, h):\n    x = x + attn(ln(x, B[\"g1\"], B[\"b1\"]), B, h)\n    y = gelu(ln(x, B[\"g2\"], B[\"b2\"]) @ B[\"W1\"] + B[\"c1\"])\n    return x + y @ B[\"W2\"] + B[\"c2\"]\n\ndef gpt_forward(token_ids, params, heads=2):\n    T = len(token_ids)\n    x = params[\"wte\"][token_ids] + params[\"wpe\"][:T]\n    for B in params[\"blocks\"]:\n        x = block(x, B, heads)\n    x = ln(x, params[\"gf\"], params[\"bf\"])\n    return x @ params[\"wte\"].T",
+   "keyLines": [
+    30,
+    33,
+    34
+   ],
+   "dryRun": [
+    "Embed: $h^0 = E[\\mathrm{ids}] + P_{0:T}$",
+    "Blocks: $h^{l} = h^{l-1} + \\mathrm{Attn}(\\mathrm{LN}(h^{l-1}))$, then FFN",
+    "Final norm: $z = \\mathrm{LN}_f(h^N)$",
+    "Tied: $\\mathrm{logits} = z\\,E^{\\top}$, shape $(T, V)$",
+    "Next token: $p(x_{t+1} \\mid x_{\\leq t}) = \\mathrm{softmax}(\\mathrm{logits}_t)$",
+    "Loss: $-\\frac{1}{T}\\sum_t \\log p(x_{t+1} \\mid x_{\\leq t})$"
+   ],
+   "description": "Understanding or implementing any GPT-style language model, and for explaining how training (parallel next-token loss) and inference (autoregressive decoding) share one network.",
+   "examples": [
+    {
+     "input": "What makes GPT decoder-only, and how does it differ from BERT and T5?",
+     "output": "GPT is a single stack with causal self-attention and no encoder or cross-attention. BERT is encoder-only with bidirectional attention, and T5 pairs an encoder with a decoder that cross-attends to it.",
+     "explanation": ""
+    },
+    {
+     "input": "What is weight tying and why use it?",
+     "output": "The output projection reuses the token embedding matrix, so logits are $z E^{\\top}$. It saves $V d$ parameters and often helps small models.",
+     "explanation": ""
+    },
+    {
+     "input": "How is the same model trained and then used for generation?",
+     "output": "Training applies a causal mask and next-token cross-entropy at all positions in parallel. Generation runs the same forward pass, samples from the last row and appends it, usually with a KV cache.",
+     "explanation": ""
+    },
+    {
+     "input": "Why a final LayerNorm before the logits?",
+     "output": "With pre-norm the residual stream is never normalised inside the stack, so one last LayerNorm gives the output projection a stable scale.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Vocabulary size $V$ and context length $T_{\\max}$ (size of the position table)",
+    "Width $d$, heads $h$ and layers $N$",
+    "MLP hidden size, typically $4d$",
+    "Whether the output matrix is tied to the embedding"
+   ],
+   "edgeCases": [
+    "Using $E$ instead of $E^{\\top}$ for the output, or transposing GPT-2 Conv1D weights that are already stored as (in, out)",
+    "Feeding more tokens than the position table holds; learned absolute positions cannot extrapolate",
+    "Forgetting the final LayerNorm, which changes every logit",
+    "Mixing up shifts: row $t$ predicts token $t+1$, so targets are the inputs shifted left by one"
+   ],
+   "related": [
+    "decoder-only-block",
+    "bert-masked-lm",
+    "next-token-prediction-loss"
    ],
    "diagram": []
   },
@@ -4654,6 +5479,88 @@
    "diagram": []
   },
   {
+   "slug": "hybrid-search-rrf",
+   "title": "Hybrid Search (BM25 + Dense, Reciprocal Rank Fusion)",
+   "platform": "LLM",
+   "url": "https://www.elastic.co/docs/reference/elasticsearch/rest-apis/reciprocal-rank-fusion",
+   "difficulty": "Medium",
+   "topics": [
+    "Hybrid Retrieval",
+    "BM25",
+    "Rank Fusion"
+   ],
+   "patterns": [
+    "Text evaluation and retrieval"
+   ],
+   "summary": "Run a lexical retriever (BM25) and a dense vector retriever side by side, then merge their ranked lists with Reciprocal Rank Fusion, which uses only ranks so the incompatible score scales never need to be calibrated.",
+   "bruteForce": "When one retriever clearly dominates on your data, since fusion adds latency and a second index. Also when you have labelled data to train a learned ranker, which can use the actual scores.",
+   "intuition": "Lexical and dense search fail in opposite ways: BM25 nails exact terms, names and IDs but misses paraphrases, while embeddings catch meaning but blur rare tokens. A BM25 score and a cosine similarity live on unrelated scales, so adding them needs fragile tuning. Ranks are comparable across any scorer, and giving each list a vote of $\\frac{1}{k + \\mathrm{rank}}$ rewards documents that both systems like while the constant $k$ stops one list's top spot from dominating. Flow: query → BM25 list + dense list → rank votes → fused top-k.",
+   "whyItWorks": "BM25 weights each query term by how rare it is (IDF) and saturates the gain from repeated occurrences while normalising for document length. RRF then depends only on positions in each list, so any monotonic rescaling of either scorer leaves the fused ranking unchanged. A document ranked high in both lists collects two large votes and beats documents that only one retriever favours.",
+   "approach": [
+    "Tokenise the query and score every document with BM25 — the lexical ranking",
+    "Score the same documents with a dense retriever — the semantic ranking (given here as a ranked list)",
+    "Convert each list to ranks starting at 1 — drops score scale entirely",
+    "Give each document $\\frac{1}{k + \\mathrm{rank}}$ from every list that contains it — a vote that decays with rank",
+    "Sum the votes and sort, breaking ties by document id — a deterministic fused list"
+   ],
+   "time": "O(|q|·N·L) for naive BM25 over N documents of length L (an inverted index avoids scanning); O(total list length) to fuse",
+   "space": "O(N) scores plus the ranked lists",
+   "solution": "import numpy as np\n\ndef bm25_scores(query_terms, docs, k1=1.5, b=0.75):\n    N = len(docs)\n    avgdl = sum(len(d) for d in docs) / N\n    scores = np.zeros(N)\n    for t in set(query_terms):\n        n = sum(t in d for d in docs)\n        idf = np.log(1 + (N - n + 0.5) / (n + 0.5))\n        for i, d in enumerate(docs):\n            f = d.count(t)\n            norm = f + k1 * (1 - b + b * len(d) / avgdl)\n            scores[i] += idf * f * (k1 + 1) / norm\n    return scores\n\ndef rrf(rank_lists, k=60):\n    fused = {}\n    for ranking in rank_lists:\n        for r, doc in enumerate(ranking, start=1):\n            fused[doc] = fused.get(doc, 0.0) + 1.0 / (k + r)\n    return sorted(fused.items(), key=lambda p: (-p[1], p[0]))",
+   "keyLines": [
+    9,
+    13,
+    20
+   ],
+   "dryRun": [
+    "$\\mathrm{IDF}(t) = \\ln\\left(1 + \\frac{N - n + 0.5}{n + 0.5}\\right)$",
+    "$\\mathrm{BM25}(D) = \\sum_{t} \\mathrm{IDF}(t) \\cdot \\frac{f(k_1+1)}{f + k_1(1 - b + b|D|/\\mathrm{avgdl})}$",
+    "Here $f$ = count of $t$ in $D$, $N$ docs, $n$ with $t$",
+    "Over lists: $\\mathrm{RRF}(d) = \\sum \\frac{1}{k + \\mathrm{rank}(d)}$, $k \\approx 60$",
+    "Monotone score maps keep ranks, so RRF is unchanged"
+   ],
+   "description": "Retrieval for RAG and search where queries mix exact keywords or identifiers with natural-language intent, and where you cannot calibrate scores across retrievers.",
+   "examples": [
+    {
+     "input": "Why use rank fusion instead of adding the scores?",
+     "output": "BM25 scores are unbounded and corpus dependent while cosine similarity is in a fixed range. RRF uses only ranks, so no normalisation or weight tuning is needed and monotonic score changes cannot alter the result.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the constant $k$ in RRF do?",
+     "output": "It flattens the vote curve. A small $k$ makes the top ranks dominate, while a large $k$ makes lower ranks count more. About 60 is a common default.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does BM25 saturate term frequency?",
+     "output": "The factor $\\frac{f(k_1+1)}{f+k_1(\\ldots)}$ approaches $k_1+1$ as $f$ grows, so the tenth occurrence of a word adds far less than the first, unlike raw TF-IDF.",
+     "explanation": ""
+    },
+    {
+     "input": "When does hybrid retrieval beat dense-only?",
+     "output": "When queries contain rare terms, names, codes or exact phrases that embeddings blur. The lexical list restores exact matches and fusion keeps the semantic ones.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "$k_1$, term-frequency saturation, typically 1.2 to 2",
+    "$b$, length normalisation from 0 to 1, typically 0.75",
+    "RRF constant $k$, about 60",
+    "Depth of each list fed into fusion"
+   ],
+   "edgeCases": [
+    "RRF discards score margins, so a dominant lexical match and a barely better one count the same; keep lists long enough that good documents appear in both",
+    "Tokenisation and casing must match between the index and the query, otherwise BM25 silently scores zero",
+    "This BM25 scans every document; real engines use an inverted index and precomputed statistics",
+    "Ties in the fused score need a stable rule, here the document id, or results vary between runs"
+   ],
+   "related": [
+    "rag-dense-retrieval",
+    "tf-idf",
+    "retrieval-metrics-recall-at-k"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "hyperparameter-search",
    "title": "Grid vs Random Hyperparameter Search",
    "platform": "MLOps",
@@ -4727,6 +5634,172 @@
     "cross-validation",
     "bias-variance-tradeoff",
     "data-leakage"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "instruction-tuning-chat-templates",
+   "title": "Building Instruction-Tuning Examples and Data Mixtures",
+   "platform": "LLM",
+   "url": "https://huggingface.co/docs/trl/sft_trainer",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Fine-Tuning",
+    "Chat Templates",
+    "Data"
+   ],
+   "patterns": [
+    "Transfer and adaptation"
+   ],
+   "summary": "Render each (instruction, input, output) record or multi-turn chat into training text with a fixed template, append EOS after every assistant turn, label only assistant spans, and blend datasets with sampling weights $p_i \\propto n_i^{\\alpha}$.",
+   "bruteForce": "Continued pretraining on raw text, which needs no template or role mask. Do not re-template data for a model that ships its own template unless you are deliberately changing the format.",
+   "intuition": "Inference-time templating only has to start a reply; training-time templating also has to teach the reply to end. If EOS is missing from the labels the model never learns to stop, and if user text is in the labels it learns to write user turns. Mixing is a weighting problem: sampling in proportion to size lets one huge set drown the rest, while a power $\\alpha < 1$ flattens the distribution so small sets are seen more often per example. Flow: record → template → text + EOS → role mask → sampled mixture.",
+   "whyItWorks": "A model only learns what appears as a labelled target. EOS inside the label set gives the stop decision a gradient, while role masking keeps the loss on text the model must generate at inference. Temperature-style weights $p_i \\propto n_i^{\\alpha}$ trade coverage of small sets against repeating them too often, with $\\alpha = 1$ recovering plain concatenation of all data.",
+   "approach": [
+    "Normalise records to messages: instruction and input become one user turn, output the assistant turn — one code path for all formats",
+    "Render each turn with the model's template — training text must match inference text",
+    "Append EOS right after each assistant turn — teaches the model when to stop",
+    "Tag every token with its role and mask to assistant and EOS tokens — the loss rewards only the reply",
+    "Compute weights $p_i = n_i^{\\alpha} / \\sum_j n_j^{\\alpha}$ — $\\alpha$ interpolates between uniform and proportional",
+    "Draw each training example from a dataset chosen with probability $p_i$ — controls how often small sets appear"
+   ],
+   "time": "O(total characters) to render; O(K) for K mixture weights",
+   "space": "O(total characters) for the rendered text and one role tag per token",
+   "solution": "import numpy as np\n\nTEMPLATE = {\"turn\": \"<|{role}|>\\n{content}\\n\", \"eos\": \"</s>\"}\n\ndef to_text(record, template=TEMPLATE):\n    if \"messages\" not in record:\n        user = record[\"instruction\"]\n        if record.get(\"input\"):\n            user += \"\\n\" + record[\"input\"]\n        record = {\"messages\": [\n            {\"role\": \"user\", \"content\": user},\n            {\"role\": \"assistant\", \"content\": record[\"output\"]}]}\n    out = \"\"\n    for m in record[\"messages\"]:\n        out += template[\"turn\"].format(**m)\n        if m[\"role\"] == \"assistant\":\n            out += template[\"eos\"]\n    return out\n\ndef assistant_label_mask(token_roles):\n    on = {\"assistant\", \"eos\"}\n    return [int(r in on) for r in token_roles]\n\ndef mixture_weights(sizes, alpha):\n    w = np.asarray(sizes, dtype=float) ** alpha\n    return w / w.sum()",
+   "keyLines": [
+    17,
+    22,
+    25
+   ],
+   "dryRun": [
+    "Text: $x = [r(m_1);\\ldots;r(m_n)]$, EOS after assistant",
+    "Mask: $a_t = 1$ on assistant and EOS tokens",
+    "Loss: $-\\frac{\\sum_t a_t \\log p(x_t \\mid x_{<t})}{\\sum_t a_t}$",
+    "Weights: $p_i = \\frac{n_i^{\\alpha}}{\\sum_j n_j^{\\alpha}}$",
+    "$\\alpha = 1$: $p_i \\propto n_i$;  $\\alpha = 0$: $p_i = \\frac{1}{K}$",
+    "Expected draws from set $i$: $N p_i$"
+   ],
+   "description": "Preparing any instruction or chat fine-tuning set: converting instruction-style records and chat logs to one format, making sure responses terminate, and blending several sources of very different sizes.",
+   "examples": [
+    {
+     "input": "Why append EOS during training?",
+     "output": "Generation stops when the model emits EOS. If the label sequence never contains it, the model has no gradient to learn that a reply ends, and it rambles or invents the next user turn.",
+     "explanation": ""
+    },
+    {
+     "input": "How is this different from the inference-time chat template?",
+     "output": "Inference adds an assistant header and lets the model write. Training renders the full conversation including the answer and EOS, and also needs a label mask.",
+     "explanation": ""
+    },
+    {
+     "input": "What does $\\alpha$ do in the mixture weights?",
+     "output": "It sets $p_i \\propto n_i^{\\alpha}$: $\\alpha = 1$ samples in proportion to size, $\\alpha = 0$ samples every dataset equally, and values between up-sample small sets.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the risk of strong up-sampling of a small dataset?",
+     "output": "It is repeated many times, so the model can memorise it and overfit while larger sets are seen less.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Template and special tokens (must match the model)",
+    "Mixture exponent $\\alpha$ in $[0, 1]$",
+    "Train on assistant turns only, or on the last turn only",
+    "Maximum sequence length and truncation policy"
+   ],
+   "edgeCases": [
+    "Tokenising the rendered text adds BOS or EOS twice if the tokenizer also adds them automatically",
+    "Content that contains template markers can forge a turn boundary; escape or strip them",
+    "Masking by token id instead of position removes the real EOS when pad and EOS share an id",
+    "Weights computed from raw record counts ignore very different average lengths; token counts may be fairer"
+   ],
+   "related": [
+    "role-system-prompts",
+    "next-token-prediction-loss",
+    "sft-loss-masking"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "int8-quantization",
+   "title": "Int8 Post-Training Quantization",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2208.07339",
+   "difficulty": "Medium",
+   "topics": [
+    "Quantization",
+    "Inference",
+    "Efficiency"
+   ],
+   "patterns": [],
+   "summary": "Store weights and activations as 8-bit integers plus a float scale, multiply in integers with 32-bit accumulation, then rescale the result.",
+   "bruteForce": "Models with strong activation outliers when only a single per-tensor scale is available, or when you need training in low precision, which needs different techniques than post-training rounding.",
+   "intuition": "A float tensor only needs enough levels to land within rounding distance of its true values, and 255 evenly spaced levels between $-\\max|x|$ and $\\max|x|$ often suffice. The cost is that one scale serves a whole group of numbers, so a single outlier stretches the step size for everyone else; giving each output channel its own scale, or handling outliers separately, keeps the step small. Flow: float tensor → absmax scale → round to int8 → integer matmul → rescale.",
+   "whyItWorks": "Rounding to the nearest level gives an error of at most $s/2$ per element, which is small relative to the tensor when $s$ is small. Because $x \\approx s_x q_x$ and $w \\approx s_w q_w$, the product $xw \\approx s_x s_w\\, q_x q_w$, so the dot product runs in integers and one multiplication rescales it. Smaller groups give smaller maxima and so smaller steps. LLM.int8() observes that a few feature dimensions in large transformers carry outliers and keeps those in 16-bit while the rest runs in 8-bit; this card does not implement that.",
+   "approach": [
+    "Find $\\max|x|$ over the group (tensor or channel) — it sets the range",
+    "Set $s = \\max|x|/127$ — the largest value maps to 127",
+    "Round $q = \\mathrm{clip}(\\mathrm{round}(x/s), -127, 127)$ — every value lands on an integer level",
+    "Multiply int8 operands accumulating in int32 — products of 8-bit values overflow 8 bits",
+    "Rescale the int32 result by $s_x s_w$ — returns to the float scale of $XW^{\\top}$"
+   ],
+   "time": "O(n·d·m) integer multiply-adds, plus O(n·m) to rescale",
+   "space": "1 byte per value plus one float scale per group, versus 4 bytes in float32",
+   "solution": "import numpy as np\n\ndef quantize_sym(x, axis=None):\n    m = np.abs(x).max(axis=axis, keepdims=True)\n    s = np.where(m == 0, 1.0, m / 127)\n    q = np.clip(np.round(x / s), -127, 127)\n    return q.astype(np.int8), s\n\ndef dequantize(q, s):\n    return q.astype(np.float64) * s\n\ndef quantize_asym(x):\n    lo, hi = x.min(), x.max()\n    s = (hi - lo) / 255\n    z = -128 - int(round(lo / s))\n    q = np.clip(np.round(x / s) + z, -128, 127)\n    return q.astype(np.int8), s, z\n\ndef int8_matmul(xq, sx, wq, sw):\n    acc = xq.astype(np.int32) @ wq.astype(np.int32).T\n    return acc * (sx * sw.T)",
+   "keyLines": [
+    5,
+    6,
+    20
+   ],
+   "dryRun": [
+    "$s = \\max|x|/127,\\;\\; q = \\mathrm{clip}(\\mathrm{round}(x/s), -127, 127)$",
+    "$\\hat{x} = s\\,q,\\;\\; |x - \\hat{x}| \\leq s/2$ in range",
+    "$s = (x_{max} - x_{min})/255$, asymmetric",
+    "$z = -128 - \\mathrm{round}(x_{min}/s),\\;\\; \\hat{x} = s\\,(q - z)$",
+    "$Y \\approx (X_q W_q^{\\top})_{int32}\\; s_x\\, s_w^{\\top}$",
+    "Per channel: $s_j = \\max_i |W_{ji}|/127$"
+   ],
+   "description": "Reducing memory and bandwidth for inference of trained models, where weights are fixed and activations can be scaled on the fly. Per-channel weight scales are the usual default for linear layers.",
+   "examples": [
+    {
+     "input": "Why accumulate int8 products in int32?",
+     "output": "Each product of two 8-bit values needs up to 16 bits and a dot product sums many of them, so 8-bit accumulators would overflow. The int32 result is exact and is rescaled once at the end.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is per-channel weight quantisation better than per-tensor?",
+     "output": "Each channel's step is set by its own maximum, so channels with small ranges are not coarsened by one large channel. The error bound $s_j/2$ is tighter for them.",
+     "explanation": ""
+    },
+    {
+     "input": "What problem do outliers cause and how does LLM.int8() address it?",
+     "output": "One large value inflates $s$ and wastes most levels on rare magnitudes, so ordinary values round coarsely. LLM.int8() splits outlier feature dimensions into a 16-bit matmul and quantises the rest per vector.",
+     "explanation": ""
+    },
+    {
+     "input": "When would you use asymmetric quantisation?",
+     "output": "When values are skewed, such as post-ReLU activations, a zero point shifts the range so no levels are wasted on the empty negative side.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Granularity: per tensor, per channel or per group",
+    "Symmetric versus asymmetric (zero point)",
+    "Clipping range: absmax or a percentile",
+    "Which tensors to quantise (weights only or activations too)"
+   ],
+   "edgeCases": [
+    "A single outlier sets $s$ and degrades every other value in its group",
+    "Clipping to $[-127, 127]$ keeps the grid symmetric; using $-128$ breaks the exact symmetry of the scale",
+    "This code uses float64 for clarity; real kernels use float16 scales and fused integer ops",
+    "Activation scales must come from calibration or be computed per batch, which costs extra"
+   ],
+   "related": [
+    "feature-scaling",
+    "knowledge-distillation",
+    "parameter-count-flops"
    ],
    "diagram": []
   },
@@ -5652,6 +6725,84 @@
    "diagram": []
   },
   {
+   "slug": "llama-rmsnorm-gqa",
+   "title": "Llama Blocks - RMSNorm and Grouped-Query Attention",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2305.13245",
+   "difficulty": "Hard",
+   "topics": [
+    "LLM",
+    "Normalization",
+    "Attention",
+    "Inference"
+   ],
+   "patterns": [
+    "Normalisation",
+    "Attention and sequences"
+   ],
+   "summary": "RMSNorm rescales a vector by its root mean square with no mean subtraction and no bias. Grouped-query attention lets several query heads share one key/value head, shrinking the KV cache.",
+   "bruteForce": "Small models or short contexts where the KV cache is not the bottleneck, or when you need the quality of full multi-head attention and can afford its cache.",
+   "intuition": "LayerNorm does two jobs, centring and rescaling, and the rescaling is what stabilises training, so RMSNorm keeps only that and saves work. For attention, decoding is limited by reading the KV cache, and queries are cheap while keys and values are what get stored; so many query heads can share a few key/value heads at little quality cost. Multi-head is one extreme and multi-query the other. Flow: x → RMS scale → Q heads → shared KV heads → repeat → causal attention.",
+   "whyItWorks": "Attention cost in decoding is dominated by loading cached keys and values, which scale with the number of KV heads, not query heads. Sharing them across a group keeps distinct query heads (different attention patterns) while dividing the cache by $n_q / n_{kv}$. With $n_{kv} = n_q$ the layer is exactly multi-head attention and with $n_{kv} = 1$ it is multi-query attention.",
+   "approach": [
+    "RMSNorm: divide $x$ by $\\sqrt{\\mathrm{mean}(x^2) + \\epsilon}$ and multiply by gain $g$ — rescale only, no centring, no bias",
+    "Project to $n_q$ query heads but only $n_{kv}$ key and value heads — the cache stores $n_{kv}$ heads",
+    "Repeat each KV head $n_q / n_{kv}$ times along the head axis — every query head gets a matching K and V",
+    "Apply the causal mask, softmax and mix values per head — the same as multi-head attention after the repeat",
+    "Merge the heads — output shape is $(T, d)$ again"
+   ],
+   "time": "O(T²·d) for attention, the same as multi-head; norm is O(d) per token",
+   "space": "KV cache is $O(n_{kv} \\cdot T \\cdot d_h)$ per layer, $n_q / n_{kv}$ times smaller than multi-head",
+   "solution": "import numpy as np\n\ndef rms_norm(x, g, eps=1e-6):\n    ms = (x * x).mean(-1, keepdims=True)\n    return x / np.sqrt(ms + eps) * g\n\ndef gqa(x, Wq, Wk, Wv, n_q, n_kv):\n    T, d = x.shape\n    dh = d // n_q\n    q = (x @ Wq).reshape(T, n_q, dh).transpose(1, 0, 2)\n    k = (x @ Wk).reshape(T, n_kv, dh).transpose(1, 0, 2)\n    v = (x @ Wv).reshape(T, n_kv, dh).transpose(1, 0, 2)\n    r = n_q // n_kv\n    k, v = np.repeat(k, r, axis=0), np.repeat(v, r, axis=0)\n    s = q @ k.transpose(0, 2, 1) / np.sqrt(dh)\n    s = np.where(np.triu(np.ones((T, T), bool), 1), -np.inf, s)\n    e = np.exp(s - s.max(-1, keepdims=True))\n    a = (e / e.sum(-1, keepdims=True)) @ v\n    return a.transpose(1, 0, 2).reshape(T, n_q * dh)\n\ndef kv_bytes(T, n_kv, dh, layers=1, nbytes=2):\n    return 2 * layers * n_kv * T * dh * nbytes",
+   "keyLines": [
+    5,
+    14,
+    22
+   ],
+   "dryRun": [
+    "RMS: $\\sqrt{\\frac{1}{d}\\sum_i x_i^2 + \\epsilon}$",
+    "Norm: $\\frac{x}{\\mathrm{RMS}(x)} \\odot g$",
+    "Group size: $r = \\frac{n_q}{n_{kv}}$",
+    "Head: $\\mathrm{softmax}\\left(\\frac{Q_h K_g^{\\top}}{\\sqrt{d_h}} + M\\right)V_g$",
+    "KV bytes: $2 \\cdot L \\cdot n_{kv} \\cdot T \\cdot d_h \\cdot b$",
+    "Saving vs MHA: $\\frac{n_q}{n_{kv}}$"
+   ],
+   "description": "Decoder LLMs where serving memory and decode speed matter: a few KV heads cut the cache and its memory traffic, and RMSNorm replaces LayerNorm for a slightly cheaper, simpler normalisation.",
+   "examples": [
+    {
+     "input": "How does RMSNorm differ from LayerNorm?",
+     "output": "It skips the mean subtraction and the bias and only divides by the root mean square, so it is cheaper and in practice trains about as well.",
+     "explanation": ""
+    },
+    {
+     "input": "What are MHA, GQA and MQA in terms of KV heads?",
+     "output": "All have $n_q$ query heads. MHA has $n_{kv} = n_q$, MQA has $n_{kv} = 1$, and GQA uses a value in between, so the cache shrinks by $n_q / n_{kv}$.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does GQA help inference but not training FLOPs much?",
+     "output": "The saving is in cache size and memory bandwidth while decoding. The score and mixing matmuls still run for all query heads.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of query heads $n_q$ and KV heads $n_{kv}$ (with $n_{kv}$ dividing $n_q$)",
+    "Head dimension $d_h$",
+    "RMSNorm epsilon (a small constant such as $10^{-6}$)"
+   ],
+   "edgeCases": [
+    "Using $n_{kv}$ that does not divide $n_q$ leaves some query heads without a KV head",
+    "Repeating heads with tile instead of repeat-interleave pairs query heads with the wrong KV head",
+    "Adding a mean-subtraction or bias to RMSNorm turns it into LayerNorm and breaks weight compatibility"
+   ],
+   "related": [
+    "layer-normalization",
+    "multi-head-attention",
+    "kv-cache"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "local-outlier-factor",
    "title": "Local Outlier Factor",
    "platform": "Classical ML",
@@ -6283,6 +7434,86 @@
    "diagram": []
   },
   {
+   "slug": "metadata-filtering",
+   "title": "Metadata Filtering in Vector Search",
+   "platform": "LLM",
+   "url": "https://www.pinecone.io/learn/vector-search-filtering/",
+   "difficulty": "Medium",
+   "topics": [
+    "Retrieval-Augmented Generation",
+    "Vector Search",
+    "Access Control"
+   ],
+   "patterns": [],
+   "summary": "Restrict nearest-neighbour search to rows whose metadata matches a condition (date, tenant, source, access level), either before the search (pre-filter) or after it (post-filter with oversampling).",
+   "bruteForce": "Do not post-filter for access control, since a shortfall or a bug leaks or loses documents. Do not oversample blindly when the filter is correlated with the query, because the formula assumes survivors are spread evenly among the candidates.",
+   "intuition": "Pre-filtering searches only the allowed rows, so the answer is exact but the index cannot use its usual shortcuts. Post-filtering searches everything and then discards, which is fast but wasteful: if only a fraction $s$ of rows pass the filter, only about $s$ of the returned hits survive, so asking for $k$ results gives far fewer. The fix is to fetch about $k/s$ candidates first. Because oversampling is only probabilistic, a filter that enforces access control must be applied as a hard pre-filter, never as a best-effort clean-up. Flow: query + filter → candidate rows → top-k scores → allowed results.",
+   "whyItWorks": "A candidate list of $c$ items contains a hit that passes the filter with probability $s$, independently if the filter is unrelated to the query, so the number of survivors is Binomial$(c, s)$ with mean $cs$. Setting $c = k/s$ makes the mean equal to $k$, and a larger factor makes a shortfall unlikely. Pre-filtering restricts the candidate set itself, so it returns exactly the best $k$ allowed rows.",
+   "approach": [
+    "Build a boolean mask for the filter — one flag per stored vector",
+    "Pre-filter: score only masked rows and take the top k among them — exact, respects the filter by construction",
+    "Post-filter: score all rows and keep the top c = k · oversample — candidates before filtering",
+    "Drop candidates whose mask is false and return at most k — the filter applied after the search",
+    "Estimate the selectivity s and set the oversample from k / s — compensates for rows the filter removes",
+    "Use the pre-filter path for access control — a hard guarantee instead of a probability"
+   ],
+   "time": "pre-filter O(m·d) over the m matching rows by brute force; post-filter O(N·d) to score all rows plus a sort, or a fast ANN query for the candidates",
+   "space": "O(N) for the boolean mask beside the O(N·d) vectors",
+   "solution": "import math\nimport numpy as np\n\ndef prefilter_topk(q, X, mask, k):\n    idx = np.flatnonzero(mask)\n    scores = X[idx] @ q\n    order = np.argsort(-scores, kind=\"stable\")[:k]\n    return idx[order]\n\ndef postfilter_topk(q, X, mask, k, oversample=1):\n    c = min(k * oversample, len(X))\n    scores = X @ q\n    top = np.argsort(-scores, kind=\"stable\")[:c]\n    return top[mask[top]][:k]\n\ndef needed_candidates(k, s):\n    return math.ceil(k / s)",
+   "keyLines": [
+    5,
+    11,
+    14
+   ],
+   "dryRun": [
+    "Selectivity $s = \\frac{\\mathrm{rows\\ passing}}{N}$",
+    "Survivors $\\sim \\mathrm{Binomial}(c, s)$, mean $c \\cdot s$",
+    "Needed candidates $c = \\lceil k / s \\rceil$",
+    "$P(\\mathrm{fewer\\ than\\ }k) = \\sum_{j<k} \\binom{c}{j} s^{j} (1-s)^{c-j}$"
+   ],
+   "description": "Pre-filter whenever correctness or security matters (tenant, access level) or the filter is very selective. Post-filter with oversampling when the filter is loose and the index is much faster without it.",
+   "examples": [
+    {
+     "input": "What is the difference between pre-filtering and post-filtering?",
+     "output": "Pre-filtering restricts the candidate rows and then searches them, which is exact but may be slow. Post-filtering searches all rows and then drops hits that fail the filter, which is fast but can return fewer than k.",
+     "explanation": ""
+    },
+    {
+     "input": "How many candidates does post-filtering need to return k results?",
+     "output": "About $k/s$ for selectivity $s$, since only a fraction $s$ of candidates survive. A safety factor above 1 is needed because survivors are random.",
+     "explanation": ""
+    },
+    {
+     "input": "How should access control be enforced in retrieval?",
+     "output": "As a hard pre-filter on every query, using the user's permissions, so documents the user cannot see are never scored or returned.",
+     "explanation": ""
+    },
+    {
+     "input": "Why can filtered approximate search lose recall?",
+     "output": "A graph or cluster index is built over all vectors. A selective filter removes most nodes, so the remaining ones may not be reachable from the entry point and true neighbours are missed.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Candidate count c (or the oversample factor)",
+    "Estimated selectivity s of the filter",
+    "Pre-filter versus post-filter, chosen per query",
+    "Number of results k"
+   ],
+   "edgeCases": [
+    "With oversample $= 1$ and a selective filter, post-filtering can return zero results, not just a few fewer",
+    "Setting $c = k/s$ only gives $k$ survivors on average; about half of queries still fall short, so use a safety factor such as 2",
+    "Access control applied after the search is unsafe; enforce it as a pre-filter or inside the index",
+    "Filtering inside an approximate graph index can disconnect the graph and lower recall, so a very selective filter may need brute force over the subset"
+   ],
+   "related": [
+    "rag-dense-retrieval",
+    "cosine-similarity-embeddings",
+    "retrieval-metrics-recall-at-k"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "metropolis-hastings",
    "title": "Metropolis-Hastings Sampling",
    "platform": "Math",
@@ -6368,6 +7599,90 @@
    "diagram": []
   },
   {
+   "slug": "mixture-of-experts-routing",
+   "title": "Sparse Mixture-of-Experts Routing",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2101.03961",
+   "difficulty": "Hard",
+   "topics": [
+    "LLM",
+    "Mixture of Experts",
+    "Routing",
+    "Transformers"
+   ],
+   "patterns": [
+    "Network building blocks"
+   ],
+   "summary": "A router scores $E$ expert networks per token, keeps the top $k$, softmax-normalises their gates and sums the chosen experts' outputs, so parameters scale with $E$ while compute scales with $k$.",
+   "bruteForce": "Memory-bound or on-device deployment, where holding $E$ experts costs more than the saved compute, and small-batch serving where few tokens reach each expert and hardware sits idle.",
+   "intuition": "Capacity and per-token cost need not grow together. Store many feed-forward experts, but let each token wake up only the few the router likes: the model has the parameters of $E$ experts and the compute of about $k$. The catch is that a greedy router collapses onto a few favourites, so an auxiliary loss pushes the load flat. Flow: token → router scores → top-$k$ → softmax gates → weighted expert sum.",
+   "whyItWorks": "Different experts can specialise on different token types, so the model uses a large parameter pool while each token pays for only $k$ experts. Softmax over the kept logits makes the gates a convex combination, and with $k=E$ the layer reduces to a dense weighted sum. The balance loss $E\\sum_i f_i P_i$ is minimised, at the value $1$, when both $f$ and $P$ are uniform, and its gradient flows through the differentiable $P_i$.",
+   "approach": [
+    "Score the token with the router, $z = xW_r$ — one logit per expert",
+    "Keep the $k$ largest logits — only those experts will run",
+    "Softmax over just the kept logits — the gates sum to $1$ for the token",
+    "Run each chosen expert and sum $g_i\\,e_i(x)$ — the other $E-k$ experts cost nothing",
+    "Measure load: $f_i$ is the share of assignments to expert $i$, $P_i$ the mean router probability — add $\\alpha E\\sum_i f_i P_i$ to the loss"
+   ],
+   "time": "O(k·d·h) FFN compute per token (plus O(E·d) for the router), independent of E",
+   "space": "O(E·d·h) expert parameters, all of which must be held in memory",
+   "solution": "import numpy as np\n\ndef softmax(s):\n    e = np.exp(s - s.max(-1, keepdims=True))\n    return e / e.sum(-1, keepdims=True)\n\ndef top_k_gate(logits, k):\n    idx = np.argsort(-logits, axis=-1)[:, :k]\n    gates = softmax(np.take_along_axis(logits, idx, axis=-1))\n    return idx, gates\n\ndef expert(x, W1, W2):\n    return np.maximum(x @ W1, 0) @ W2\n\ndef moe_layer(x, Wr, experts, k):\n    idx, gates = top_k_gate(x @ Wr, k)\n    out = np.zeros_like(x)\n    for t in range(len(x)):\n        for j in range(k):\n            W1, W2 = experts[idx[t, j]]\n            out[t] += gates[t, j] * expert(x[t], W1, W2)\n    return out\n\ndef balance_loss(logits, k):\n    T, E = logits.shape\n    idx, _ = top_k_gate(logits, k)\n    f = np.bincount(idx.ravel(), minlength=E) / (T * k)\n    P = softmax(logits).mean(0)\n    return E * np.sum(f * P)",
+   "keyLines": [
+    9,
+    21,
+    29
+   ],
+   "dryRun": [
+    "Router logits: $z = x W_r$",
+    "Gates on kept set: $g_i = \\frac{e^{z_i}}{\\sum_{j \\in S} e^{z_j}}$",
+    "Output: $y = \\sum_{i \\in S} g_i\\, e_i(x)$",
+    "Load: $f_i = \\frac{n_i}{T k}$, $P_i = \\bar{p}_i$",
+    "Balance loss: $E \\sum_i f_i P_i \\geq 1$",
+    "Capacity: $c \\cdot \\frac{T k}{E}$ tokens per expert"
+   ],
+   "description": "Scaling model capacity under a fixed per-token compute budget, where memory for all experts is available and the batch is large enough to keep every expert busy.",
+   "examples": [
+    {
+     "input": "Why does a mixture-of-experts layer add parameters without adding much compute?",
+     "output": "Each token runs only $k$ of the $E$ experts, so FLOPs scale with $k$ while the parameter count scales with $E$.",
+     "explanation": ""
+    },
+    {
+     "input": "What is expert collapse and how is it prevented?",
+     "output": "The router sends most tokens to a few experts, which then train more and win more. An auxiliary loss $E\\sum_i f_i P_i$ penalises uneven load, and capacity limits cap each expert.",
+     "explanation": ""
+    },
+    {
+     "input": "What happens to tokens that exceed an expert's capacity?",
+     "output": "They are dropped from that expert and typically pass through the residual connection unchanged, so a too-small capacity factor hurts quality.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is the balance loss differentiable although $f_i$ is not?",
+     "output": "$f_i$ comes from a hard top-$k$ count and carries no gradient, but $P_i$ is the mean softmax probability, so gradients flow through $P_i$.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of experts $E$",
+    "Experts per token $k$",
+    "Capacity factor $c$ for each expert's token buffer",
+    "Balance-loss weight $\\alpha$"
+   ],
+   "edgeCases": [
+    "Too small a balance weight lets experts collapse; too large forces uniform routing that ignores token content",
+    "All $E$ experts must sit in memory even though only $k$ run, so serving cost is memory-bound",
+    "The Python loop here is for clarity; real layers group tokens by expert and run batched matrix products",
+    "Taking the softmax over all $E$ logits and then keeping $k$ gives gates that do not sum to $1$"
+   ],
+   "related": [
+    "feed-forward-gelu-swiglu",
+    "decoder-only-block",
+    "scaling-laws"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "mlp-forward-pass",
    "title": "MLP Forward Pass",
    "platform": "Deep Learning",
@@ -6445,6 +7760,88 @@
    "diagram": [
     "mlp-forward-pass"
    ]
+  },
+  {
+   "slug": "model-landscape",
+   "title": "Choosing Among LLM Families (Decision Rule)",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2303.18223",
+   "difficulty": "Easy",
+   "topics": [
+    "LLM",
+    "Model Selection",
+    "Cost",
+    "Deployment"
+   ],
+   "patterns": [],
+   "summary": "Pick a model by constraints, not by name: filter out candidates that break a must-have, rank the survivors by a weighted utility, and price the workload as cost per request.",
+   "bruteForce": "As a replacement for evaluating candidates on your own task data. The utility only orders profiles you filled in; it does not measure quality, which you must test.",
+   "intuition": "Model names and leaderboards go stale within months, but the trade-offs between hosted-large, open-medium, open-small, mixture and reasoning-tuned families stay put. Requirements such as privacy or on-device execution are not preferences you can trade away, so they are hard filters; only the soft goals (quality, cost, speed) enter a weighted score. This card teaches that method, with made-up profiles. Flow: requirements → hard filter → normalise scores → weighted utility → rank.",
+   "whyItWorks": "A hard filter encodes constraints that no amount of quality can offset, which a plain weighted sum would wrongly allow. Normalising against the best survivor makes scores comparable across units, and dividing by the weight total means $U$ and its ranking are unchanged if every weight is multiplied by the same positive constant.",
+   "approach": [
+    "Write requirements as must-haves (privacy, on-device, licence) and limits (context, memory) — these are pass or fail",
+    "Drop every candidate that fails any must-have — a failed constraint cannot be bought back with quality",
+    "Compute cost per request $= (n_{in} p_{in} + n_{out} p_{out}) / 10^6$ — turns price per million tokens into a workload cost",
+    "Normalise each soft criterion to $(0, 1]$ against the best survivor — puts quality, cost and speed on one scale",
+    "Rank by $U = \\sum_c w_c s_c / \\sum_c w_c$ — dividing by the weight total makes the weights relative, not absolute"
+   ],
+   "time": "O(n·m) for n candidates and m criteria",
+   "space": "O(n) for the filtered set and scores",
+   "solution": "def request_cost(n_in, n_out, p_in, p_out):\n    return (n_in * p_in + n_out * p_out) / 1e6\n\ndef feasible(req, c):\n    if any(c[k] != v for k, v in req[\"must\"].items()):\n        return False\n    return (c[\"context\"] >= req[\"min_context\"]\n            and c[\"memory_gb\"] <= req[\"max_memory_gb\"])\n\ndef rank(req, cands):\n    ok = {n: c for n, c in cands.items() if feasible(req, c)}\n    if not ok:\n        return []\n    n_in, n_out = req[\"tokens\"]\n    cost = {n: request_cost(n_in, n_out, c[\"p_in\"], c[\"p_out\"])\n            for n, c in ok.items()}\n    best_c = min(cost.values())\n    best_l = min(c[\"latency\"] for c in ok.values())\n    w = req[\"weights\"]\n    tot = sum(w.values())\n    u = {n: (w[\"quality\"] * c[\"quality\"]\n             + w[\"cost\"] * best_c / cost[n]\n             + w[\"speed\"] * best_l / c[\"latency\"]) / tot\n         for n, c in ok.items()}\n    return sorted(u.items(), key=lambda kv: -kv[1])\n\nCANDS = {\n    \"hosted-large\": dict(on_device=False, private=False,\n        context=200000, memory_gb=0, latency=2.0,\n        p_in=3.0, p_out=15.0, quality=0.95),\n    \"open-medium\": dict(on_device=False, private=True,\n        context=32000, memory_gb=80, latency=1.0,\n        p_in=0.5, p_out=1.5, quality=0.80),\n    \"open-small\": dict(on_device=True, private=True,\n        context=8000, memory_gb=6, latency=0.4,\n        p_in=0.1, p_out=0.2, quality=0.60),\n}",
+   "keyLines": [
+    2,
+    5,
+    21
+   ],
+   "dryRun": [
+    "Cost: $\\frac{n_{in}\\, p_{in} + n_{out}\\, p_{out}}{10^6}$",
+    "Feasible: all must-haves hold, ctx $\\geq$ need",
+    "Cost score: $s_{cost}(m) = \\frac{\\min_j c_j}{c_m}$",
+    "Speed score: $s_{speed}(m) = \\frac{\\min_j \\ell_j}{\\ell_m}$",
+    "Utility: $U(m) = \\frac{\\sum_c w_c\\, s_c(m)}{\\sum_c w_c}$",
+    "Scaling: $w_c \\rightarrow \\lambda w_c$ leaves $U$ unchanged"
+   ],
+   "description": "Choosing between model families for a product, or justifying a choice to a team, when requirements such as privacy, latency, budget and context length are known and written down.",
+   "examples": [
+    {
+     "input": "Why treat privacy or on-device execution as a filter instead of a weight?",
+     "output": "A model that violates it is unusable however good it scores. A weighted sum could let high quality compensate, which is wrong for a hard requirement.",
+     "explanation": ""
+    },
+    {
+     "input": "Why price input and output tokens separately?",
+     "output": "Providers usually charge different rates for each, and output tokens are typically more expensive, so cost depends on the prompt-to-completion ratio of your workload.",
+     "explanation": ""
+    },
+    {
+     "input": "Why not just rank models by a public leaderboard?",
+     "output": "Leaderboards go stale, may not match your task or data, and ignore cost, privacy and latency. Evaluate the shortlist on your own examples.",
+     "explanation": ""
+    },
+    {
+     "input": "When does a larger weight on quality change the winner?",
+     "output": "When the quality gap between candidates outweighs their cost and speed ratios, as the weight on quality grows the best model moves toward the highest-quality family.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Criterion weights $w_c$ (only their ratios matter)",
+    "Request mix: input and output tokens per request",
+    "Hard limits: context length, memory budget",
+    "Normalisation scheme (ratio to best, or min-max)"
+   ],
+   "edgeCases": [
+    "Model names, versions, prices and scores go stale quickly; use this as a method and refill the profiles from current data",
+    "The quality field in a profile is a placeholder; replace it with scores from your own evaluation set",
+    "Ratio-to-best normalisation depends on which candidates survive the filter, so adding a model can reorder the rest",
+    "Self-hosting cost is hardware and operations, not a clean price per million tokens; the profile values are an estimate"
+   ],
+   "related": [
+    "scaling-laws",
+    "context-window-limits",
+    "transfer-learning-fine-tuning"
+   ],
+   "diagram": []
   },
   {
    "slug": "momentum-sgd",
@@ -7468,6 +8865,233 @@
    "diagram": []
   },
   {
+   "slug": "prompt-injection-defense",
+   "title": "Prompt Injection Defence in Depth",
+   "platform": "LLM",
+   "url": "https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Security",
+    "Safety"
+   ],
+   "patterns": [],
+   "summary": "Untrusted text can carry instructions the model may follow. Defend with layers: delimit untrusted data, screen it, restrict tools, ask for confirmation on risky actions, and check outputs.",
+   "bruteForce": "Do not rely on these steps alone: delimiters and regex screening do not stop a determined attacker. They are cheap layers to combine with tool restrictions, not a replacement for them.",
+   "intuition": "A language model reads instructions and data as one stream of tokens, so nothing in the model itself marks a sentence in a web page as data rather than a command. Prompt wording can lower the risk but cannot enforce a boundary, so the strong controls live outside the model: what the tools are allowed to do and who confirms. Assume some injection succeeds and limit the damage. Flow: untrusted text → wrap → detect → gate tools → confirm → validate output.",
+   "whyItWorks": "A random nonce delimiter cannot be forged by text written before the nonce exists, and removing it from the data guarantees the wrapper has exactly one closing marker. The tool gate works because it is ordinary code that the model cannot talk its way past. If layer $i$ blocks an attack with probability $q_i$ and layers fail independently, the attack passes all of them with probability $\\prod_i (1 - q_i)$, so each added layer multiplies the risk down.",
+   "approach": [
+    "Wrap untrusted text in delimiters with a random nonce — the attacker cannot guess the closing marker",
+    "Strip the nonce and fake markers from the text — the data cannot close its own wrapper",
+    "Scan for known injection phrasing and log matches — a weak signal for review, not a boundary",
+    "Gate every tool call against an allow-list policy — least privilege limits what a hijacked model can do",
+    "Require human confirmation for dangerous actions and validate outputs — the last layers before real effects"
+   ],
+   "time": "O(L) for wrapping and regex screening of L characters; O(1) per gate check",
+   "space": "O(L) for the wrapped copy of the text",
+   "solution": "import re\nimport numpy as np\n\ndef wrap_untrusted(text, nonce):\n    while nonce in text:\n        text = text.replace(nonce, \"\")\n    text = re.sub(r\"</?\\s*DATA[-\\w]*\\s*>?\", \"\", text, flags=re.I)\n    return (f\"<DATA-{nonce}>\\n{text}\\n</DATA-{nonce}>\")\n\nPATTERNS = {\n    \"ignore_prior\": r\"(ignore|disregard)\\s+(all\\s+|any\\s+|the\\s+)?\"\n        r\"(previous|prior|above)\\s+(instructions?|prompts?)\",\n    \"reveal_prompt\": r\"(reveal|print|show)\\s+(your|the)\\s+\"\n                     r\"(system\\s+)?(prompt|instructions)\",\n    \"role_reset\": r\"\\byou\\s+are\\s+now\\b\",\n    \"fake_role\": r\"^\\s*(system|assistant)\\s*:\",\n}\n\ndef detect_injection(text):\n    return [name for name, pat in PATTERNS.items()\n            if re.search(pat, text, re.I | re.M)]\n\ndef allow(tool, action, policy):\n    if action not in policy[\"tools\"].get(tool, ()):\n        return \"deny\"\n    if (tool, action) in policy[\"confirm\"]:\n        return \"confirm\"\n    return \"allow\"\n\ndef pass_probability(blocks):\n    return float(np.prod(1 - np.asarray(blocks, float)))",
+   "keyLines": [
+    5,
+    24,
+    31
+   ],
+   "dryRun": [
+    "Pass all: $P = \\prod_{i}(1 - q_i)$",
+    "Blocked: $1 - \\prod_{i}(1 - q_i)$",
+    "Example: $q = 0.5$ twice gives $0.5 \\cdot 0.5 = 0.25$",
+    "Shared weakness: $P \\geq \\prod_{i}(1 - q_i)$"
+   ],
+   "description": "Any application that feeds web pages, emails, documents, tool results or user uploads into a model, especially when the model can call tools that read private data or change something.",
+   "examples": [
+    {
+     "input": "Why can't a system prompt alone prevent injection?",
+     "output": "The model processes instructions and data as one token stream, so a system prompt is only a strong hint. It is not an access control, and a crafted input can still override it.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the single most effective control?",
+     "output": "Least privilege on tools: if the model cannot send email or read secrets, a successful injection has little to abuse. Confirmation by a human for risky actions adds a hard stop.",
+     "explanation": ""
+    },
+    {
+     "input": "Why use a random nonce in the delimiter?",
+     "output": "A fixed delimiter can be copied into the untrusted text to close the data block early. A random one is unknown to the attacker, and any copy that appears is removed anyway.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Which tools and actions the policy allows",
+    "Which actions require human confirmation",
+    "Detector pattern list and how matches are used (log, block, or review)",
+    "Number and independence of defence layers"
+   ],
+   "edgeCases": [
+    "Regex detection is trivially bypassed by rephrasing, translation or encoding; treat a match as a signal, never as a guarantee",
+    "The product formula assumes independent layers; layers that share a weakness, such as the same model, block less than it predicts",
+    "Model output is untrusted too: rendering it as HTML or running it as a command reopens the hole",
+    "No prompt-only defence is complete, so design the system to stay safe when an injection succeeds"
+   ],
+   "related": [
+    "hallucination-detection",
+    "context-window-limits",
+    "temperature-sampling"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "prompt-optimization",
+   "title": "Systematic Prompt Optimisation",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2211.01910",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Prompting",
+    "Evaluation"
+   ],
+   "patterns": [],
+   "summary": "Improve a prompt by search instead of by feel: fix a metric and a dev set, propose candidate prompts, score each, keep the best, and report the uncertainty of every score.",
+   "bruteForce": "No reliable metric exists, or the dev set is tiny, where the search mostly fits noise. A one-off prompt used once is not worth a search.",
+   "intuition": "A prompt is a discrete parameter and the dev-set accuracy is a noisy objective, so tuning it is hyperparameter search. With $n$ examples a score has a standard error near $\\sqrt{p(1-p)/n}$, so a gain of two points on 100 examples is usually noise. Pair the candidates on the same examples, measure the gap with a bootstrap, and keep a final test set that the search never touched. Flow: metric → candidates → score on dev → keep best → confirm on test.",
+   "whyItWorks": "Scoring candidates on the same examples makes the comparison paired, which cancels example difficulty and shrinks the variance of the gap. The Wilson interval stays inside $[0, 1]$ and behaves well for small $n$ or extreme $p$, unlike the normal approximation. The hill climb only accepts strict improvements, so the dev score cannot fall.",
+   "approach": [
+    "Define the metric and split the data into dev and test — the test set is touched once, at the end",
+    "Score the start prompt on dev with $\\hat{p} = k/n$ — a baseline to beat",
+    "Apply each mutation to the current best prompt — candidates come from edits, not guesses",
+    "Keep a candidate only if its dev score is higher — greedy, so the history never decreases",
+    "Compare finalists with a paired bootstrap and Wilson intervals — shows whether the gap is real"
+   ],
+   "time": "O(m·n) model calls for m candidates on n dev examples; bootstrap adds O(B·n)",
+   "space": "O(n) per-example correctness vector for each candidate",
+   "solution": "import numpy as np\n\ndef wilson_interval(k, n, z=1.96):\n    p = k / n\n    d = 1 + z * z / n\n    c = (p + z * z / (2 * n)) / d\n    h = z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d\n    return c - h, c + h\n\ndef evaluate(prompt, dataset, model_fn):\n    return np.array([model_fn(prompt, x) == y\n                     for x, y in dataset], float)\n\ndef hill_climb(start, mutations, dataset, model_fn):\n    best = start\n    best_s = evaluate(best, dataset, model_fn).mean()\n    history = [best_s]\n    for mutate in mutations:\n        cand = mutate(best)\n        s = evaluate(cand, dataset, model_fn).mean()\n        if s > best_s:\n            best, best_s = cand, s\n        history.append(best_s)\n    return best, history\n\ndef paired_bootstrap_prob(a, b, n_boot=2000, seed=0):\n    rng = np.random.default_rng(seed)\n    n = len(a)\n    idx = rng.integers(0, n, size=(n_boot, n))\n    gap = (np.asarray(a) - np.asarray(b))[idx].mean(axis=1)\n    return (gap > 0).mean() + 0.5 * (gap == 0).mean()",
+   "keyLines": [
+    7,
+    21,
+    30
+   ],
+   "dryRun": [
+    "Score: $\\hat{p} = k/n$, $\\mathrm{SE} \\approx \\sqrt{\\hat{p}(1-\\hat{p})/n}$",
+    "Wilson centre: $\\frac{\\hat{p} + z^2/2n}{1 + z^2/n}$",
+    "Half-width: $\\frac{z\\sqrt{\\hat{p}(1-\\hat{p})/n + z^2/4n^2}}{1 + z^2/n}$",
+    "Paired gap: $\\bar{d} = \\frac{1}{n}\\sum_{i}(a_i - b_i)$",
+    "P(A beats B) = share of resamples, $\\bar{d} > 0$"
+   ],
+   "description": "A prompt is going into a product and you can write a metric and collect a few hundred labelled examples. Also for choosing between a handful of hand-written variants.",
+   "examples": [
+    {
+     "input": "Why report an interval and not just the accuracy?",
+     "output": "On a small dev set the standard error is several points, so two prompts that differ by one or two points are statistically indistinguishable.",
+     "explanation": ""
+    },
+    {
+     "input": "Why a paired bootstrap?",
+     "output": "Both prompts are scored on the same examples, so resampling examples and comparing the difference removes the shared example difficulty and gives a tighter estimate of the gap.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you avoid overfitting the dev set?",
+     "output": "Every comparison made against the dev set leaks a little of it into the prompt, so keep a separate test set, score only the final prompt on it, and limit the number of candidates tried.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Dev and test set sizes",
+    "Number of candidates and mutation operators",
+    "Confidence level $z$ (1.96 for 95 percent)",
+    "Bootstrap resamples $B$ and seed"
+   ],
+   "edgeCases": [
+    "Selecting the best of many candidates on the dev set inflates its score, so the winner's dev accuracy overstates its real accuracy",
+    "A model sampled at nonzero temperature makes scores noisy; fix the seed, or average several runs",
+    "Greedy hill-climbing stops at the first local optimum; it does not explore edits that only help in combination"
+   ],
+   "related": [
+    "hallucination-detection",
+    "temperature-sampling",
+    "hyperparameter-search"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "prompt-templates",
+   "title": "Prompt Templates and Safe Variable Filling",
+   "platform": "LLM",
+   "url": "https://developers.openai.com/api/docs/guides/prompt-engineering",
+   "difficulty": "Easy",
+   "topics": [
+    "LLM",
+    "Prompt Engineering",
+    "Prompt Injection"
+   ],
+   "patterns": [],
+   "summary": "A prompt template has named placeholders filled from variables, with strict checks for missing or extra values, delimiters around untrusted text, a token budget, and a version label.",
+   "bruteForce": "One-off exploratory prompts. Delimiters reduce but do not remove prompt injection, so they are not a substitute for permission checks on tools and outputs.",
+   "intuition": "A template separates fixed instructions from variable data, and that boundary is a security boundary. If user text is pasted in raw, it can contain placeholders, braces or a closing tag and rewrite the prompt. Filling in a single pass, wrapping untrusted values in delimiters, and removing the delimiter from the value keeps data as data. Flow: template → check variables → wrap untrusted → fill → fit budget.",
+   "whyItWorks": "A single left-to-right substitution pass never re-reads inserted text, so a value like \"{secret}\" stays literal and cannot pull in another variable. Removing the delimiter from the value until none remains guarantees the block ends only where the template ends it. Whitespace tokens are only an approximation, so real systems count with the model's own tokenizer.",
+   "approach": [
+    "Parse $\\{name\\}$ placeholders and treat doubled braces as literals — the template declares exactly what it needs",
+    "Raise on missing or extra variables — a typo fails loudly instead of leaking a raw placeholder",
+    "Fill in one regex pass over the template — braces inside values are never re-expanded",
+    "Wrap untrusted values in delimiters and strip the delimiter from the value — user text cannot close the block",
+    "Truncate the long variable to the token budget left after the fixed text — the prompt always fits"
+   ],
+   "time": "O(L) per render for template plus values of total length L",
+   "space": "O(L) for the rendered prompt",
+   "solution": "import re\n\nPAT = re.compile(r\"\\{\\{|\\}\\}|\\{(\\w+)\\}\")\nOPEN, CLOSE = \"<data>\", \"</data>\"\n\ndef fields(t):\n    return sorted({m.group(1) for m in PAT.finditer(t)\n                   if m.group(1)})\n\ndef render(t, **v):\n    need = set(fields(t))\n    if need - v.keys():\n        raise KeyError(f\"missing: {sorted(need - v.keys())}\")\n    if v.keys() - need:\n        raise KeyError(f\"extra: {sorted(v.keys() - need)}\")\n    return PAT.sub(\n        lambda m: str(v[m.group(1)]) if m.group(1)\n        else m.group(0)[0], t)\n\ndef wrap(value):\n    s = str(value)\n    while OPEN in s or CLOSE in s:\n        s = s.replace(OPEN, \"\").replace(CLOSE, \"\")\n    return OPEN + s + CLOSE\n\ndef safe_render(t, untrusted=(), **v):\n    v = {k: wrap(x) if k in untrusted else x\n         for k, x in v.items()}\n    return render(t, **v)\n\ndef count(s):\n    return len(s.split())\n\ndef render_budget(t, var, limit, **v):\n    room = limit - count(render(t, **{**v, var: \"\"}))\n    if room < 0:\n        raise ValueError(\"fixed text exceeds the budget\")\n    words = str(v[var]).split()[:room]\n    return render(t, **{**v, var: \" \".join(words)})\n\nTEMPLATES = {(\"qa\", 1): \"Answer: {q}\", (\"qa\", 2): \"Q: {q}\\nA:\"}\n\ndef get(name, version=None):\n    v = version or max(k[1] for k in TEMPLATES if k[0] == name)\n    return TEMPLATES[(name, v)], v",
+   "keyLines": [
+    16,
+    22,
+    38
+   ],
+   "dryRun": [
+    "Prompt: $\\mathrm{fixed} + \\sum_i \\mathrm{value}_i$",
+    "Budget: $n_{fixed} + n_{var} \\leq L$",
+    "Room: $r = L - n_{fixed}$",
+    "Kept: $\\min(n_{var},\\, \\max(r, 0))$"
+   ],
+   "description": "Any application that builds prompts from variables: chat apps, RAG prompts with retrieved passages, extraction jobs, evaluation harnesses where the same instructions run over many inputs.",
+   "examples": [
+    {
+     "input": "How can a user value break a naive template?",
+     "output": "If values are substituted repeatedly or the delimiter is not stripped, user text can add placeholders or close the data block and inject its own instructions.",
+     "explanation": ""
+    },
+    {
+     "input": "Why raise on extra variables as well as missing ones?",
+     "output": "An extra variable usually means a renamed or misspelled placeholder, so the intended data silently never reaches the prompt.",
+     "explanation": ""
+    },
+    {
+     "input": "Why version templates?",
+     "output": "Prompt wording changes model behaviour, so pinning a version lets you reproduce results, compare changes and roll back.",
+     "explanation": ""
+    },
+    {
+     "input": "Do delimiters stop prompt injection?",
+     "output": "No. They help the model see where data starts and ends, but the model can still follow instructions inside the data, so other defences are needed.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Delimiter strings (tags that cannot occur in normal data)",
+    "Token limit $L$ and which variable absorbs truncation",
+    "Strict or lenient handling of missing and extra variables",
+    "Template version pinned per deployment"
+   ],
+   "edgeCases": [
+    "Using str.format on user-controlled templates lets values reach attributes; use a fixed regex filler",
+    "Stripping the delimiter once can leave a rebuilt delimiter such as </da</data>ta>; strip until stable",
+    "Whitespace tokens undercount for real tokenizers, so leave a safety margin below the true context limit",
+    "Truncating the middle or end of a variable may drop the part that matters; choose what to cut deliberately"
+   ],
+   "related": [
+    "context-window-limits",
+    "autoregressive-decoding",
+    "structured-outputs-json-schema"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "q-learning",
    "title": "Tabular Q-Learning",
    "platform": "RL",
@@ -7541,6 +9165,172 @@
    "related": [
     "gradient-descent",
     "bayes-theorem"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "qlora-nf4-quantization",
+   "title": "QLoRA and 4-bit NormalFloat (NF4)",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2305.14314",
+   "difficulty": "Hard",
+   "topics": [
+    "Quantization",
+    "Fine-tuning",
+    "Parameter-Efficient Learning"
+   ],
+   "patterns": [
+    "Transfer and adaptation"
+   ],
+   "summary": "Store a frozen base model in 4 bits using 16 levels placed at normal quantiles, quantised in blocks, and train only 16-bit LoRA adapters on top.",
+   "bruteForce": "Weights that are far from normal, very small models where memory is not the constraint, or deployments needing the fastest possible matmul, since 4-bit weights must be dequantised before use.",
+   "intuition": "Trained weights are roughly bell shaped, so evenly spaced 4-bit levels waste codes in the sparse tails while crowding too few near zero. Placing the 16 levels at quantiles of $\\mathcal{N}(0,1)$ gives each level about equal probability mass, and splitting the weights into small blocks with their own scale keeps the normal assumption true locally and contains outliers to one block. Flow: weights → scale per block → round to levels → dequantise.",
+   "whyItWorks": "If weights follow $\\mathcal{N}(0,\\sigma^2)$, then after dividing by the block maximum they sit in $[-1,1]$ with a roughly normal shape. Levels at equal-probability quantiles make the expected rounding error small for that shape. Including $0$ exactly matters because padding and many weights are exactly zero. Blocking limits each scale to 64 weights, so the scale overhead of $32/64 = 0.5$ bits per weight is cut by quantising the scales to 8 bits (double quantisation). Gradients flow through the dequantised weights to the 16-bit LoRA adapters while the 4-bit base is never updated.",
+   "approach": [
+    "Build 16 levels from normal quantiles, normalised to $[-1,1]$ with $0$ included — a level for exact zeros and both extremes",
+    "Split weights into blocks of 64 — one outlier then only affects its own block",
+    "Scale each block by its $\\max|w|$ — maps the block into $[-1,1]$ where the levels live",
+    "Store the index of the nearest level plus the block scale — 4 bits per weight",
+    "Dequantise by level times scale in the forward pass — the base stays frozen while 16-bit LoRA adapters train"
+   ],
+   "time": "O(n·16) to quantise n weights by nearest-level search, O(n) to dequantise",
+   "space": "About 0.5 byte per parameter plus 0.127 bits per parameter for double-quantised scales",
+   "solution": "import numpy as np\nfrom scipy.stats import norm\n\ndef make_nf4_levels(offset=0.9677083):\n    pos = norm.ppf(np.linspace(offset, 0.5, 9)[:-1])\n    neg = -norm.ppf(np.linspace(offset, 0.5, 8)[:-1])\n    lv = np.sort(np.concatenate([pos, [0.0], neg]))\n    return lv / np.abs(lv).max()\n\ndef quantize_blockwise(w, block=64, levels=None):\n    lv = make_nf4_levels() if levels is None else levels\n    b = w.reshape(-1, block)\n    s = np.abs(b).max(axis=1, keepdims=True)\n    s = np.where(s == 0, 1.0, s)\n    idx = np.abs(b[..., None] / s[..., None] - lv).argmin(-1)\n    return idx.astype(np.uint8), s\n\ndef dequantize(idx, s, levels=None):\n    lv = make_nf4_levels() if levels is None else levels\n    return (lv[idx] * s).ravel()\n\ndef bytes_per_param(block=64, double_quant=True):\n    if double_quant:\n        scale_bits = 8 / block + 32 / (block * 256)\n    else:\n        scale_bits = 32 / block\n    return (4 + scale_bits) / 8",
+   "keyLines": [
+    5,
+    13,
+    15
+   ],
+   "dryRun": [
+    "levels $=$ quantiles of $\\mathcal{N}(0,1)$, divided by max",
+    "$\\hat{w} = s_b\\, L[\\arg\\min_k |w/s_b - L_k|],\\;\\; s_b = \\max|w_{block}|$",
+    "Bits per param $= 4 + 32/B$, fp32 scale",
+    "Double quant: $4 + 8/B + 32/(256B)$",
+    "Bytes per param $=$ bits$/8 \\approx 0.5$"
+   ],
+   "description": "Fine-tuning a large model on a GPU too small to hold it in 16 bits: the frozen base sits in 4 bits and only small adapters and their optimiser state use higher precision.",
+   "examples": [
+    {
+     "input": "Why 4-bit NormalFloat instead of uniform 4-bit integers?",
+     "output": "Weights are close to normal, so quantile-spaced levels give each code about equal probability and lower average error than evenly spaced levels, which waste codes in the tails.",
+     "explanation": ""
+    },
+    {
+     "input": "Why must zero be an exact level?",
+     "output": "Zeros and near-zero weights are common, and representing them exactly avoids adding noise. The construction uses 8 positive, 7 negative levels and an explicit zero for this reason.",
+     "explanation": ""
+    },
+    {
+     "input": "What does double quantisation save?",
+     "output": "The per-block scales cost $32/64 = 0.5$ bits per parameter in fp32. Quantising the scales to 8 bits shrinks that to about $0.127$ bits per parameter.",
+     "explanation": ""
+    },
+    {
+     "input": "What is trained in QLoRA?",
+     "output": "Only the 16-bit LoRA adapters. The 4-bit base is frozen, dequantised on the fly for forward and backward passes, and gradients reach the adapters through it.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Block size $B$ (64 in the paper)",
+    "Whether to use double quantisation",
+    "LoRA rank and scaling $\\alpha$ for the adapters",
+    "Compute dtype used after dequantisation (bfloat16, float16)"
+   ],
+   "edgeCases": [
+    "The exact level values come from the paper's specific construction (the asymmetric split and the offset); this card reproduces that construction, so treat small differences from a library's table as construction details, not bugs",
+    "Smaller blocks cut error but raise scale overhead; $B = 64$ is a trade-off",
+    "This code stores indices as uint8 for clarity; real storage packs two 4-bit codes per byte",
+    "Dequantisation happens on every forward pass, so 4-bit saves memory, not necessarily time"
+   ],
+   "related": [
+    "lora-low-rank-adaptation",
+    "int8-quantization",
+    "transfer-learning-fine-tuning"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "query-transformation-hyde",
+   "title": "Query Transformation and HyDE",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2212.10496",
+   "difficulty": "Medium",
+   "topics": [
+    "HyDE",
+    "Query Expansion",
+    "Reciprocal Rank Fusion",
+    "Retrieval"
+   ],
+   "patterns": [
+    "Text evaluation and retrieval"
+   ],
+   "summary": "Fix the mismatch between a short question and answer-like documents before searching: embed a hypothetical answer (HyDE), search with several paraphrases and fuse the ranks, or rewrite the query using the chat history.",
+   "bruteForce": "Latency- or cost-sensitive paths, queries that are exact identifiers or keywords, and topics the generator knows nothing about, where its hypothetical text can point the wrong way.",
+   "intuition": "A question and its answer rarely look alike, and an embedding of a short question can land far from the passage that answers it. HyDE has the language model write a plausible answer first and embeds that instead: it is document-shaped, so it lands in the right neighbourhood even if its facts are wrong, because only the neighbourhood is used and the results are real documents. Multi-query search hedges by asking several ways and fusing the rankings. Flow: question → hypothetical answer → embedding → nearest real documents.",
+   "whyItWorks": "The encoder compresses text into a vector that keeps topic and style but discards much exact detail, so an invented answer on the right topic is close to real answers on that topic. The score used here for fusion, $\\sum_{r} \\frac{1}{k+\\mathrm{rank}_r(d)}$, rewards documents ranked high by any list and still favours those found by several, with $k$ damping the lead of a single top rank.",
+   "approach": [
+    "Pick the transformation — rewrite from chat history, paraphrase several ways, or generate a hypothetical answer",
+    "For HyDE, have the generator write a document-like answer to the query — it looks like what we want to find",
+    "Embed that text with the same encoder as the corpus — query and corpus must share a space",
+    "Search the corpus vectors with it and take the top k — real documents, not the generated text",
+    "For multi-query, retrieve a ranked list per paraphrase — each wording finds different documents",
+    "Fuse the lists with reciprocal rank fusion — ranks are comparable across lists, raw scores are not"
+   ],
+   "time": "HyDE adds one LLM generation plus one embedding per query; multi-query costs one search per paraphrase",
+   "space": "O(N·d) for the corpus vectors; fusion keeps only a score per seen document",
+   "solution": "import numpy as np, zlib\n\ndef embed(text, dim=256, seed=0):\n    v = np.zeros(dim)\n    for w in text.lower().split():\n        h = zlib.crc32(f\"{seed}:{w}\".encode())\n        v[h % dim] += 1 if (h >> 16) & 1 else -1\n    n = np.linalg.norm(v)\n    return v / n if n else v\n\ndef top_k(v, corpus_vecs, k):\n    order = np.argsort(-(corpus_vecs @ v), kind=\"stable\")\n    return [int(i) for i in order[:k]]\n\ndef hyde_retrieve(query, corpus_vecs, generator, k):\n    return top_k(embed(generator(query)), corpus_vecs, k)\n\ndef rrf(rankings, rrf_k=60):\n    s = {}\n    for r in rankings:\n        for pos, d in enumerate(r, start=1):\n            s[d] = s.get(d, 0.0) + 1.0 / (rrf_k + pos)\n    return sorted(s.items(), key=lambda t: -t[1])\n\ndef multi_query_retrieve(queries, corpus_vecs, k, rrf_k=60):\n    lists = [top_k(embed(q), corpus_vecs, k) for q in queries]\n    return rrf(lists, rrf_k)[:k]",
+   "keyLines": [
+    16,
+    22,
+    26
+   ],
+   "dryRun": [
+    "HyDE: $\\hat{d} = \\mathrm{LLM}(q)$, $v = \\frac{e(\\hat{d})}{\\|e(\\hat{d})\\|}$",
+    "Retrieve top-$k$ of $\\cos(v, e(d_i))$ over the corpus",
+    "Multi-query: rankings $R_1,\\ldots,R_m$",
+    "$\\mathrm{RRF}(d) = \\sum_{j} \\frac{1}{k + \\mathrm{rank}_j(d)}$, rank starts at 1",
+    "Typical $k = 60$; a document missing from $R_j$ adds 0"
+   ],
+   "description": "Zero-shot retrieval over a new domain with no relevance labels, short or vague user questions, and chat settings where the latest message depends on earlier turns.",
+   "examples": [
+    {
+     "input": "Why embed a fake answer instead of the question?",
+     "output": "Documents look like answers, not questions. The hypothetical text is document-shaped, so its embedding falls near real relevant documents even when its facts are wrong.",
+     "explanation": ""
+    },
+    {
+     "input": "Why use ranks instead of scores when fusing multi-query results?",
+     "output": "Scores from different queries are not on a common scale. Ranks are, and reciprocal rank fusion needs no tuning beyond the constant $k$.",
+     "explanation": ""
+    },
+    {
+     "input": "What does query rewriting from chat history fix?",
+     "output": "A follow-up such as 'how much does it cost?' has no standalone meaning. Rewriting resolves pronouns and context into a self-contained query before retrieval.",
+     "explanation": ""
+    },
+    {
+     "input": "When does HyDE hurt?",
+     "output": "When the generator is wrong about the topic, the hypothetical text points to the wrong neighbourhood. It also adds latency and cost.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of paraphrases or hypothetical documents",
+    "Generator prompt and sampling temperature",
+    "RRF constant $k$ (60 is common)",
+    "Number of results k per list"
+   ],
+   "edgeCases": [
+    "A hallucinated hypothetical document can pull retrieval to the wrong place, so check it against the original query or fuse it with plain query results",
+    "HyDE adds an LLM call of latency and cost before every search",
+    "The generator here is a stub; a real one makes results vary run to run unless temperature is zero",
+    "Rewriting from chat history must keep the user's intent; an over-eager rewrite can drop a constraint"
+   ],
+   "related": [
+    "rag-dense-retrieval",
+    "cosine-similarity-embeddings",
+    "hallucination-detection"
    ],
    "diagram": []
   },
@@ -7619,6 +9409,89 @@
     "cosine-similarity-embeddings",
     "knn",
     "retrieval-metrics-recall-at-k"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "rag-evaluation-faithfulness",
+   "title": "RAG Evaluation - Retrieval, Faithfulness, Relevance",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2309.15217",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "RAG",
+    "Evaluation",
+    "Faithfulness"
+   ],
+   "patterns": [
+    "Text evaluation and retrieval"
+   ],
+   "summary": "Score a retrieval-augmented system in parts: did retrieval rank the relevant chunks high and cover the needed facts, is the answer supported by the retrieved text, and does it address the question.",
+   "bruteForce": "As a measure of factual truth: faithfulness only checks agreement with the retrieved text. Without relevance labels or reference facts the retrieval metrics cannot be computed.",
+   "intuition": "A single end-to-end score cannot tell a retrieval failure from a generation failure. Splitting the pipeline localises the fault: poor context precision or recall means fix the retriever, while good context but unsupported claims means fix the generator. Faithfulness asks only whether the answer follows from the context, not whether the context is true. Flow: query → retrieve → score contexts → split answer into claims → check support.",
+   "whyItWorks": "Context precision is average precision: the mean of precision at each relevant rank, divided by the number of relevant items, so it rewards placing relevant chunks first and penalises missing ones. Recall and faithfulness are simple proportions over facts and claims, so each metric isolates one stage and is easy to interpret and track.",
+   "approach": [
+    "Label each ranked context as relevant or not — precision needs the ranking, not just the set",
+    "Context precision is average precision over the ranking — relevant chunks ranked early score higher",
+    "Context recall is the share of needed facts found in the retrieved text — missing facts cap the answer",
+    "Split the answer into atomic claims — support is judged per claim, not per answer",
+    "Faithfulness is the fraction of claims supported by the context — a support function stands in for an entailment judge",
+    "Answer relevance checks the answer addresses the question — a faithful answer can still be off topic"
+   ],
+   "time": "O(k) for ranking metrics over $k$ contexts; judging claims costs one judge call per claim",
+   "space": "O(k + c) for $k$ contexts and $c$ claims",
+   "solution": "import re\nimport numpy as np\n\ndef context_precision(ranked_relevance):\n    rel = np.asarray(ranked_relevance, float)\n    if rel.sum() == 0:\n        return 0.0\n    prec_at_k = np.cumsum(rel) / np.arange(1, len(rel) + 1)\n    return float((prec_at_k * rel).sum() / rel.sum())\n\ndef toks(s):\n    return set(re.findall(r\"[a-z0-9]+\", s.lower()))\n\ndef context_recall(needed_facts, retrieved_text):\n    text = retrieved_text.lower()\n    hit = [f.lower() in text for f in needed_facts]\n    return sum(hit) / len(hit)\n\ndef overlap_support(claim, context, thr=0.8):\n    c = toks(claim)\n    return bool(c) and len(c & toks(context)) / len(c) >= thr\n\ndef faithfulness(claims, context, support_fn=overlap_support):\n    ok = [support_fn(c, context) for c in claims]\n    return sum(ok) / len(ok)\n\ndef answer_relevance(question, answer):\n    stop = {\"the\", \"a\", \"of\", \"is\", \"what\", \"in\", \"to\", \"and\"}\n    q = toks(question) - stop\n    return len(q & toks(answer)) / len(q)\n\ndef rag_report(ranked_rel, facts, ctx, claims, q, ans):\n    return {\"context_precision\": context_precision(ranked_rel),\n            \"context_recall\": context_recall(facts, ctx),\n            \"faithfulness\": faithfulness(claims, ctx),\n            \"answer_relevance\": answer_relevance(q, ans)}",
+   "keyLines": [
+    8,
+    9,
+    21
+   ],
+   "dryRun": [
+    "$P@k = \\frac{1}{k}\\sum_{i \\leq k} \\mathrm{rel}_i$",
+    "Precision: $\\frac{\\sum_k P@k \\cdot \\mathrm{rel}_k}{\\sum_k \\mathrm{rel}_k}$",
+    "Recall: $\\frac{\\mathrm{facts\\ found}}{\\mathrm{facts\\ needed}}$",
+    "Faithfulness: $\\frac{\\mathrm{supported\\ claims}}{\\mathrm{all\\ claims}}$",
+    "Support: $\\frac{|c \\cap C|}{|c|} \\geq \\theta$"
+   ],
+   "description": "Diagnosing a RAG pipeline, comparing retrievers or chunking choices, and regression-testing a pipeline when prompts or indexes change.",
+   "examples": [
+    {
+     "input": "How do you tell a retrieval failure from a generation failure?",
+     "output": "Look at the parts separately. Low context recall or precision points at the retriever. Good context with unsupported claims points at the generator.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is context precision computed like average precision?",
+     "output": "Order matters, since models attend more to early chunks and context is limited. Average precision rewards ranking relevant chunks first, and dividing by the number of relevant items makes a missed relevant chunk cost score.",
+     "explanation": ""
+    },
+    {
+     "input": "Does high faithfulness mean the answer is correct?",
+     "output": "No. It only means the claims follow from the retrieved text. If the context is wrong or incomplete, a faithful answer can still be wrong.",
+     "explanation": ""
+    },
+    {
+     "input": "How reliable are LLM judges for claim support?",
+     "output": "They are useful but imperfect, with their own biases and errors, so validate them against a human-labelled sample and track agreement.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Support threshold $\\theta$ for the overlap check, or the judge prompt",
+    "Claim splitting method (granularity of atomic claims)",
+    "Number of retrieved contexts $k$"
+   ],
+   "edgeCases": [
+    "Token overlap is a crude proxy: it passes paraphrased contradictions that share words and fails correct paraphrases that do not",
+    "An LLM or NLI judge for support has its own errors and biases; treat its scores as estimates and spot-check them against humans",
+    "Retrieval labels depend on the annotator, so precision and recall are only as good as those labels",
+    "Faithfulness ignores truth of the context and whether the answer leaves out needed facts"
+   ],
+   "related": [
+    "retrieval-metrics-recall-at-k",
+    "rag-dense-retrieval",
+    "hallucination-detection"
    ],
    "diagram": []
   },
@@ -7852,6 +9725,91 @@
     "softmax-cross-entropy",
     "q-learning",
     "gradient-descent"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "reranking-mmr",
+   "title": "Reranking and MMR Diversity",
+   "platform": "LLM",
+   "url": "https://www.sbert.net/examples/applications/retrieve_rerank/README.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Reranking",
+    "Cross-Encoder",
+    "Maximal Marginal Relevance",
+    "Retrieval"
+   ],
+   "patterns": [
+    "Text evaluation and retrieval"
+   ],
+   "summary": "Retrieve many candidates with a fast first stage, reorder the best few with a slower, more accurate reranker, and pick results with Maximal Marginal Relevance so they are relevant and not redundant.",
+   "bruteForce": "When latency is tight and the first stage is already precise, when the candidate list is tiny, or when the task wants every near-duplicate, for example exhaustive legal or audit retrieval.",
+   "intuition": "A bi-encoder embeds the query and each document separately, so one vector search scans millions of items cheaply, but the query and document never see each other. A cross-encoder reads them together and judges far better, yet is too slow to run on the whole corpus. So use the cheap model for recall over about 100 candidates and the costly one for precision over the top few. MMR adds a second fix: the top-k by similarity are often near-duplicates, so each new pick is penalised for resembling what is already chosen. Flow: query → 100 candidates → cross-encoder rerank → MMR → top few.",
+   "whyItWorks": "Joint encoding lets every query word interact with every document word, which a single dot product between two independent vectors cannot express, and running it on only $N \\ll |D|$ candidates keeps the cost bounded. MMR is greedy: the score $\\lambda\\,\\mathrm{sim}(d,q)$ rewards relevance while $(1-\\lambda)\\max_{s \\in S}\\mathrm{sim}(d,s)$ charges for overlap with the closest already selected item, so $\\lambda=1$ is plain top-$k$ and smaller $\\lambda$ trades relevance for coverage.",
+   "approach": [
+    "Retrieve N candidates with the fast bi-encoder index — cheap and high recall",
+    "Score each (query, candidate) pair with the cross-encoder — reads both together, so it is more accurate",
+    "Sort by that score and keep top_n — the expensive model only saw N pairs",
+    "Run MMR over the kept vectors, starting from the most relevant — the first pick has no redundancy penalty",
+    "At each step pick the item with the best relevance minus redundancy — avoids near-duplicates",
+    "Measure mean pairwise similarity of the result — lower means more diverse"
+   ],
+   "time": "O(k·n·d) for MMR over n candidates; the reranker costs one model forward pass per candidate",
+   "space": "O(n·d) for candidate vectors",
+   "solution": "import numpy as np\n\ndef mmr(q, D, k, lam):\n    rel = D @ q\n    sel, rest = [], list(range(len(D)))\n    while rest and len(sel) < k:\n        def score(i):\n            red = max((D[i] @ D[j] for j in sel), default=0.0)\n            return lam * rel[i] - (1 - lam) * red\n        best = max(rest, key=score)\n        sel.append(best)\n        rest.remove(best)\n    return sel\n\ndef rerank(candidates, score_fn, top_n):\n    ranked = sorted(candidates, key=score_fn, reverse=True)\n    return ranked[:top_n]\n\ndef diversity(D, idx):\n    S = D[idx] @ D[idx].T\n    n = len(idx)\n    return (S.sum() - n) / (n * (n - 1))",
+   "keyLines": [
+    8,
+    9,
+    10
+   ],
+   "dryRun": [
+    "MMR: next $= \\arg\\max_{d \\notin S}$",
+    "$\\lambda\\,\\mathrm{sim}(d,q) - (1-\\lambda)\\max_{s \\in S}\\mathrm{sim}(d,s)$",
+    "$\\lambda=1$ gives plain top-$k$; $\\lambda=0$ pure diversity",
+    "Unit vectors: $\\mathrm{sim}(a,b) = a \\cdot b$",
+    "Diversity: $\\frac{2}{n(n-1)}\\sum_{i<j}\\mathrm{sim}(s_i,s_j)$",
+    "Rerank: sort by $f(q,d)$, keep the top $n$"
+   ],
+   "description": "RAG and search where the first stage has good recall but noisy order, and where the prompt budget is small enough that duplicated passages waste it.",
+   "examples": [
+    {
+     "input": "Why not use a cross-encoder for the whole corpus?",
+     "output": "It must run a forward pass per query-document pair, so cost scales with corpus size and nothing can be precomputed. A bi-encoder precomputes document vectors, so search is a fast nearest-neighbour lookup.",
+     "explanation": ""
+    },
+    {
+     "input": "What does $\\lambda$ control in MMR?",
+     "output": "$\\lambda=1$ ignores redundancy and returns plain top-$k$ by similarity to the query, while $\\lambda=0$ ignores the query and keeps picking the item least similar to those chosen.",
+     "explanation": ""
+    },
+    {
+     "input": "Where does the first MMR pick come from?",
+     "output": "The redundancy term is empty for an empty selected set, so the first pick is the most relevant document whenever $\\lambda>0$.",
+     "explanation": ""
+    },
+    {
+     "input": "How would you measure whether reranking helped?",
+     "output": "Compare ranking metrics such as recall@k or MRR on labelled queries with and without the reranker, and check the added latency.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of first-stage candidates N",
+    "Number kept after reranking, top_n",
+    "Trade-off $\\lambda$ in MMR (about 0.5 to 0.7 is common)",
+    "Choice of reranker model and its max input length"
+   ],
+   "edgeCases": [
+    "MMR scores here use vector similarity; mixing a cross-encoder score with a cosine in the same formula puts them on different scales",
+    "If the first stage misses the right document, no reranker can recover it; check first-stage recall",
+    "Reranker latency grows linearly with candidates; cap N and batch the pairs",
+    "Lowering $\\lambda$ too far drops relevant items just to be different"
+   ],
+   "related": [
+    "rag-dense-retrieval",
+    "cosine-similarity-embeddings",
+    "retrieval-metrics-recall-at-k"
    ],
    "diagram": []
   },
@@ -8250,6 +10208,92 @@
    "diagram": []
   },
   {
+   "slug": "rlhf-kl-penalty",
+   "title": "RLHF Objective and the KL Penalty",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/1909.08593",
+   "difficulty": "Hard",
+   "topics": [
+    "LLM",
+    "RLHF",
+    "KL Divergence",
+    "Alignment"
+   ],
+   "patterns": [
+    "Preference alignment and policy gradients"
+   ],
+   "summary": "RLHF maximises the reward-model score while a KL penalty keeps the policy $\\pi$ close to the reference (SFT) policy $\\pi_{ref}$; per token, the penalty becomes a small negative reward on every step.",
+   "bruteForce": "Preference methods that fold the reference into the loss, such as DPO, need no separate penalty term. With a verifiable reward and no reward hacking risk the penalty may be set very small.",
+   "intuition": "A reward model is only trusted near the data it was trained on, so an optimiser that follows it freely finds gibberish that scores high. The KL term prices every step away from the reference: drift is allowed only when the reward gain pays for it, and $\\beta$ sets the exchange rate. Because sequences are sampled from $\\pi$, the KL is estimated from samples, and the estimator choice matters for noise. Flow: sample → compare to reference → penalise drift → add score → update.",
+   "whyItWorks": "The objective $\\mathbb{E}[r] - \\beta\\,\\mathrm{KL}(\\pi\\|\\pi_{ref})$ is maximised by a policy proportional to $\\pi_{ref}\\,e^{r/\\beta}$, the reference reweighted by exponentiated reward. KL over a sequence is the expected sum of per-token log-ratios, so charging each token its log-ratio gives the same total. $k_3$ adds the control variate $(q/p - 1)$, which has mean zero under $p$, so it stays unbiased but is always non-negative and has lower variance.",
+   "approach": [
+    "Sample a response from $\\pi$ and record $\\log\\pi$ at each token — the samples define the expectation",
+    "Record $\\log\\pi_{ref}$ for the same tokens — the reference is frozen",
+    "Give every token reward $-\\beta(\\log\\pi - \\log\\pi_{ref})$ — a per-token drift penalty",
+    "Add the reward-model score at the final token only — a sequence-level score on top",
+    "Hand these rewards to the policy-gradient step — the penalty is part of the reward, not the loss",
+    "To monitor KL use $k_3$ — unbiased and lower variance than $k_1$"
+   ],
+   "time": "O(T) per sampled sequence of $T$ tokens once log-probabilities are known",
+   "space": "O(T) per sequence, plus a frozen copy of the reference model",
+   "solution": "import numpy as np\n\ndef exact_kl(p, q):\n    p, q = np.asarray(p), np.asarray(q)\n    return float(np.sum(p * np.log(p / q)))\n\ndef kl_estimators(logp, logq):\n    # samples x ~ p; ratio r = q/p\n    lr = np.asarray(logq) - np.asarray(logp)\n    k1 = -lr\n    k2 = 0.5 * lr ** 2\n    k3 = (np.exp(lr) - 1) - lr\n    return k1, k2, k3\n\ndef shaped_rewards(logp, logp_ref, final_reward, beta):\n    r = -beta * (np.asarray(logp) - np.asarray(logp_ref))\n    r = r.astype(float)\n    r[-1] += final_reward\n    return r",
+   "keyLines": [
+    10,
+    12,
+    18
+   ],
+   "dryRun": [
+    "$J(\\pi) = \\mathbb{E}[r(x,y)] - \\beta\\,\\mathrm{KL}(\\pi \\| \\pi_{ref})$",
+    "KL: $\\sum_{x} p(x)\\,\\log\\frac{p(x)}{q(x)}$",
+    "Optimum: $\\pi^{*} \\propto \\pi_{ref}\\,\\exp(r/\\beta)$",
+    "Per token: $r_t = -\\beta(\\log\\pi - \\log\\pi_{ref})$",
+    "Last token adds $r_{RM}(x,y)$ to $r_T$",
+    "$k_1 = \\log\\frac{p}{q}$ and $k_2 = \\frac{1}{2}(\\log\\frac{p}{q})^2$",
+    "$k_3 = (\\frac{q}{p} - 1) - \\log\\frac{q}{p}$",
+    "Unbiased: $\\mathbb{E}_p[k_1] = \\mathbb{E}_p[k_3] = \\mathrm{KL}(p \\| q)$"
+   ],
+   "description": "Any RL-style fine-tuning against a learned reward (PPO-style RLHF), and as a monitor of how far a tuned policy has moved from its start.",
+   "examples": [
+    {
+     "input": "Why is a KL penalty needed in RLHF?",
+     "output": "The reward model is a proxy that is only reliable near the data it was trained on. Without the penalty the policy exploits its errors and drifts to degenerate text that scores high.",
+     "explanation": ""
+    },
+    {
+     "input": "How does the sequence-level KL become per-token rewards?",
+     "output": "The sequence log-ratio is the sum of per-token log-ratios, so charging $-\\beta$ times each token's log-ratio sums to $-\\beta$ times the sequence log-ratio, and the reward-model score is added at the last token.",
+     "explanation": ""
+    },
+    {
+     "input": "Why prefer $k_3$ over $k_1$ for estimating KL?",
+     "output": "Both are unbiased under samples from $p$, but $k_1$ can be negative per sample and is noisy, while $k_3$ is always non-negative and has lower variance.",
+     "explanation": ""
+    },
+    {
+     "input": "What does $\\beta$ control?",
+     "output": "The trade-off between reward and staying near the reference. Large $\\beta$ keeps the policy close and the gain small; small $\\beta$ lets it drift and risks reward hacking.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "KL coefficient $\\beta$, fixed or adapted toward a target KL",
+    "Choice of estimator ($k_1$, $k_2$ or $k_3$) for logging or for a loss term",
+    "Whether the penalty is a reward term or a separate loss term"
+   ],
+   "edgeCases": [
+    "Samples must come from $\\pi$ (the first argument); sampling from $\\pi_{ref}$ flips the direction and biases the estimate",
+    "$k_1$ per sample can be negative, so a negative running KL is noise, not a bug in the model",
+    "Using the policy's log-probabilities under a different temperature or mask than at sampling time corrupts the ratio",
+    "A reference that is not frozen turns the anchor into a moving target"
+   ],
+   "related": [
+    "reward-model-bradley-terry",
+    "ppo-clipped-objective",
+    "dpo-loss"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "rmsprop-adagrad",
    "title": "Adagrad and RMSProp",
    "platform": "Deep Learning",
@@ -8478,6 +10522,86 @@
    "related": [
     "precision-recall-f1",
     "logistic-regression"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "role-system-prompts",
+   "title": "Roles, System Prompts and Chat Templates",
+   "platform": "LLM",
+   "url": "https://huggingface.co/docs/transformers/chat_templating",
+   "difficulty": "Easy",
+   "topics": [
+    "LLM",
+    "Prompting",
+    "Chat Templates"
+   ],
+   "patterns": [],
+   "summary": "A chat is a list of role-tagged messages (system, user, assistant, tool); a chat template flattens it into the one token string the model actually reads, ending with a marker that starts the reply.",
+   "bruteForce": "As the only defence against prompt injection or data leaks. Secrets and permissions belong in application code, because a user or a retrieved document can talk the model out of a system rule.",
+   "intuition": "The model never sees a structured conversation, only a single sequence of tokens in which role markers are ordinary text. The system message is simply the first block of that sequence, trained to be followed, so it sets standing behaviour but is not enforced by anything outside the model. Treat it as strong advice, never as a security boundary. Flow: messages → validate → template → one string → tokens → reply.",
+   "whyItWorks": "Chat models are fine-tuned on text rendered by one specific template, so reproducing that template exactly puts the input in the distribution the model learned to follow. Role markers let the model weight a system message above later user text, but this is learned behaviour, not enforcement, and the generation prompt makes the next tokens an assistant reply instead of a continuation of the user turn.",
+   "approach": [
+    "Check roles: one leading system message, then alternating user and assistant — malformed chats give out-of-distribution input",
+    "Render each message as role marker, content and end marker — matches the format the model was tuned on",
+    "Append the assistant marker as the generation prompt — tells the model the next tokens are its reply",
+    "Trim old turns when over the token budget but never the system message — standing rules must survive",
+    "Keep the most recent turns that fit and start on a user turn — the latest context matters most"
+   ],
+   "time": "O(total characters) to render, validate or trim; the model then pays $O(L^2)$ attention over the rendered length $L$",
+   "space": "O(total characters) for the rendered string",
+   "solution": "import re\n\nEND = \"<|end|>\\n\"\n\ndef render_chat(messages, gen_prompt=True):\n    s = \"\".join(f\"<|{m['role']}|>\\n{m['content']}\\n{END}\"\n                for m in messages)\n    return s + (\"<|assistant|>\\n\" if gen_prompt else \"\")\n\ndef validate_messages(msgs):\n    if not msgs or msgs[0][\"role\"] != \"system\":\n        raise ValueError(\"first message must be system\")\n    nxt = {\"system\": {\"user\"}, \"user\": {\"assistant\"},\n           \"assistant\": {\"user\", \"tool\"},\n           \"tool\": {\"tool\", \"assistant\"}}\n    for a, b in zip(msgs, msgs[1:]):\n        if b[\"role\"] not in nxt[a[\"role\"]]:\n            raise ValueError(f\"{a['role']} -> {b['role']}\")\n\ndef trim_messages(msgs, budget, count):\n    cost = lambda m: count(render_chat([m], False))\n    left = budget - cost(msgs[0])\n    if left < 0:\n        raise ValueError(\"system message exceeds budget\")\n    keep = []\n    for m in reversed(msgs[1:]):\n        if cost(m) > left:\n            break\n        keep.append(m)\n        left -= cost(m)\n    keep.reverse()\n    while keep and keep[0][\"role\"] != \"user\":\n        keep.pop(0)\n    return [msgs[0]] + keep\n\ndef parse_chat(text):\n    pat = r\"<\\|(\\w+)\\|>\\n(.*?)\\n<\\|end\\|>\\n\"\n    return [{\"role\": r, \"content\": c}\n            for r, c in re.findall(pat, text, re.S)]",
+   "keyLines": [
+    6,
+    18,
+    28
+   ],
+   "dryRun": [
+    "Input: $\\mathrm{template}(m_1,\\ldots,m_n)$ + marker",
+    "Budget: $T = \\sum_i \\mathrm{tokens}(m_i)$",
+    "Need $T \\leq$ context length",
+    "Trim: keep $m_0$, newest turns while $T \\leq B$",
+    "Reply: $\\prod_t P(y_t \\mid \\mathrm{chat}, y_{<t})$"
+   ],
+   "description": "Any chat or agent application: set persistent behaviour and format rules in the system message, pass tool results back with the tool role, and render with the template the model was trained on.",
+   "examples": [
+    {
+     "input": "Why must you use the model's own chat template?",
+     "output": "The model was fine-tuned on one exact format of control tokens, and a different format gives out-of-distribution input and usually worse behaviour.",
+     "explanation": ""
+    },
+    {
+     "input": "Is a system prompt a security boundary?",
+     "output": "No. It is text the model is trained to follow, so a crafted user message or retrieved document can override it. Enforce permissions outside the model.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the generation prompt do?",
+     "output": "It adds the assistant start marker at the end, so the model writes a reply instead of continuing the user message.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you trim a long conversation safely?",
+     "output": "Always keep the system message, drop the oldest turns first, and keep what remains well formed, starting on a user turn.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Template and special tokens (fixed by the model)",
+    "Token budget $B$ for the whole rendered chat",
+    "Reserve of tokens for the reply",
+    "Trimming policy: drop oldest turns or summarise them"
+   ],
+   "edgeCases": [
+    "User text containing role markers such as the system tag can forge a role unless markers are escaped or stripped",
+    "Tokenizing a rendered string with extra special tokens can duplicate BOS or EOS; let the template add them",
+    "Counting tokens of content only, not of markers, undercounts the budget",
+    "Dropping the system message to save tokens silently removes the rules and persona"
+   ],
+   "related": [
+    "context-window-limits",
+    "autoregressive-decoding",
+    "hallucination-detection"
    ],
    "diagram": []
   },
@@ -8878,6 +11002,89 @@
    "diagram": []
   },
   {
+   "slug": "sft-loss-masking",
+   "title": "SFT Loss Masking, Normalisation and Packing",
+   "platform": "LLM",
+   "url": "https://huggingface.co/docs/trl/sft_trainer",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Fine-Tuning",
+    "Loss Functions"
+   ],
+   "patterns": [
+    "Transfer and adaptation"
+   ],
+   "summary": "Supervised fine-tuning scores only the response tokens: prompt and padding labels are set to $-100$, labels are shifted by one, and the loss is normalised either per token or per sequence. Packed rows need a block-diagonal causal mask so examples cannot attend to each other.",
+   "bruteForce": "Continued pretraining on raw text, where every token is a target. Masking the prompt can also hurt when the data is tiny and the prompt itself is a style you want the model to absorb.",
+   "intuition": "The prompt is given, not predicted, so training on it wastes gradient and teaches the model to write user messages. Masking is therefore a choice of what the loss rewards. The normaliser is a second choice in disguise: dividing by all response tokens in the batch gives every token equal weight, so long answers dominate; averaging per-sequence means gives every answer equal weight, so each token of a short answer counts more. Packing saves padding but only stays correct if the attention mask also stops at example borders. Flow: prompt + answer → labels with -100 → shift → masked loss.",
+   "whyItWorks": "The conditional likelihood $p(y \\mid x)$ of the response given the prompt factorises as $\\prod_t p(y_t \\mid x, y_{<t})$, so scoring only response positions maximises exactly that, while the prompt still conditions every prediction through attention. A causal block mask makes each packed example see only its own tokens, so the packed row gives the same logits as separate rows, up to position handling.",
+   "approach": [
+    "Concatenate prompt and response ids — the model reads one sequence",
+    "Copy the ids to labels and set prompt and padding positions to $-100$ — only the response is scored",
+    "Shift by one: logits at $t$ are scored against label $t+1$ — each position predicts the next token",
+    "Sum the negative log-probability over unmasked tokens — masked positions add nothing",
+    "Divide by the batch token count, or average per-sequence means — chooses how long and short answers are weighted",
+    "When packing, build a mask that is causal and block-diagonal — no attention leaks across examples"
+   ],
+   "time": "O(B·T·V) for the log-softmax; the packed mask is O(T²) per row",
+   "space": "O(B·T·V) for the logits; the mask is O(T²) booleans per packed row",
+   "solution": "import numpy as np\n\ndef build_labels(prompt_ids, response_ids, pad_to):\n    ids = list(prompt_ids) + list(response_ids)\n    lab = [-100] * len(prompt_ids) + list(response_ids)\n    pad = pad_to - len(ids)\n    return ids + [0] * pad, lab + [-100] * pad\n\ndef sft_loss(logits, labels, mode=\"token\"):\n    z = logits[:, :-1]\n    tgt = labels[:, 1:]\n    z = z - z.max(-1, keepdims=True)\n    logp = z - np.log(np.exp(z).sum(-1, keepdims=True))\n    keep = tgt != -100\n    idx = np.where(keep, tgt, 0)[..., None]\n    nll = -np.take_along_axis(logp, idx, -1)[..., 0] * keep\n    if mode == \"token\":\n        return nll.sum() / keep.sum()\n    n = keep.sum(1)\n    ok = n > 0\n    return (nll.sum(1)[ok] / n[ok]).mean()\n\ndef packed_block_mask(lengths):\n    seg = np.repeat(np.arange(len(lengths)), lengths)\n    same = seg[:, None] == seg[None, :]\n    causal = np.tril(np.ones(same.shape, dtype=bool))\n    return same & causal",
+   "keyLines": [
+    5,
+    11,
+    21
+   ],
+   "dryRun": [
+    "Token mean: $L_{tok} = -\\frac{\\sum_i m_i \\log p_i}{\\sum_i m_i}$",
+    "Sequence mean: $L_{seq} = \\frac{1}{B}\\sum_{b} \\ell_b$",
+    "Token weight: $\\frac{1}{N}$ vs $\\frac{1}{B\\, n_b}$",
+    "Target: $y_t = x_{t+1}$ if response, else $-100$",
+    "Mask: $M_{ij} = 1$ if $s_i = s_j$ and $j \\leq i$"
+   ],
+   "description": "Instruction and chat fine-tuning, where the prompt is fixed context and only the answer should be learned. Use token mean when every response token should count equally, and sequence mean when each example should count equally regardless of length. Pack short examples to remove padding waste.",
+   "examples": [
+    {
+     "input": "Why set prompt labels to -100 instead of deleting them?",
+     "output": "The prompt tokens must stay in the input so attention can read them, but they should not contribute to the loss. The ignore index removes them from the sum and the divisor only.",
+     "explanation": ""
+    },
+    {
+     "input": "Token mean or sequence mean?",
+     "output": "Token mean weights each response token equally, so long answers dominate the gradient. Sequence mean weights each answer equally, so tokens of short answers count more. Equal lengths make them identical.",
+     "explanation": ""
+    },
+    {
+     "input": "What goes wrong when packing without a block mask?",
+     "output": "Tokens attend to earlier unrelated examples, so the model learns from context that never exists at inference, and the loss is no longer the per-example loss.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does gradient accumulation interact with the normaliser?",
+     "output": "Averaging micro-batch means gives each micro-batch equal weight even when token counts differ. Divide by the total unmasked tokens across all accumulation steps to match one large batch.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Reduction: token mean or sequence mean",
+    "Packed row length and packing strategy",
+    "Ignore index (commonly $-100$)",
+    "Whether to also train on the prompt (usually off)"
+   ],
+   "edgeCases": [
+    "Forgetting that the first response label sits at position $t+1$, so the shift must happen before masking is read",
+    "A batch whose responses are all masked divides by zero in token mode; guard the count",
+    "Pad id and EOS id are often the same; masking by token id would also remove the real EOS, so mask by position",
+    "Cross-example attention in packed rows silently leaks context while the loss still looks normal"
+   ],
+   "related": [
+    "next-token-prediction-loss",
+    "transfer-learning-fine-tuning",
+    "lora-low-rank-adaptation"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "silhouette-clustering-metrics",
    "title": "Silhouette, ARI and NMI",
    "platform": "Classical ML",
@@ -8954,6 +11161,82 @@
     "k-means",
     "dbscan",
     "entropy-kl-divergence"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "sliding-window-attention",
+   "title": "Sliding-Window (Local) Attention",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2310.06825",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Attention",
+    "Long Context",
+    "Inference"
+   ],
+   "patterns": [
+    "Attention and sequences"
+   ],
+   "summary": "Each token attends only to itself and the previous $W - 1$ tokens through a causal band mask, so cost grows as $T \\cdot W$ instead of $T^2$, and the KV cache can be a rolling buffer of size $W$.",
+   "bruteForce": "Tasks that need exact retrieval of any earlier token in a single layer, such as copying a fact from far back; a window can lose it unless depth carries it forward.",
+   "intuition": "Most useful context is nearby, so a token does not need to look at the whole prefix in every layer. Information still travels far, because layer $l$ reads outputs that already mixed the previous $W - 1$ positions of layer $l-1$; stacking $L$ layers gives a receptive field of about $L \\cdot W$ tokens. The cache only ever needs the last $W$ keys and values, so memory is constant in length. Flow: tokens → band mask → local attention → stack layers → far reach.",
+   "whyItWorks": "Restricting each row of the score matrix to $W$ entries removes the quadratic term. Composing $L$ local layers still links positions up to $L(W-1)$ apart, because each layer reaches $W-1$ tokens back and the reach adds up. The rolling buffer works since keys older than $W$ steps are masked out and never read again.",
+   "approach": [
+    "Build the band mask: allow $j \\leq i$ and $j > i - W$ — causal and at most $W$ tokens back",
+    "Score $QK^{\\top}$ and set masked entries to $-\\infty$ — outside the window gets zero weight",
+    "Softmax over the window and mix values — each row mixes at most $W$ values",
+    "Stack layers — each layer extends how far information can travel",
+    "At decode time write the new key and value to slot $\\mathrm{pos} \\mathrm{mod} W$ — the buffer overwrites the oldest entry"
+   ],
+   "time": "O(T·W·d) with a banded kernel, versus O(T²·d) for full attention",
+   "space": "O(W·d) KV cache per layer, constant in sequence length",
+   "solution": "import numpy as np\n\ndef band_mask(T, W):\n    i = np.arange(T)[:, None]\n    j = np.arange(T)[None, :]\n    return (j <= i) & (j > i - W)\n\ndef window_attn(q, k, v, W):\n    T = len(q)\n    s = q @ k.T / np.sqrt(q.shape[1])\n    s = np.where(band_mask(T, W), s, -np.inf)\n    e = np.exp(s - s.max(-1, keepdims=True))\n    return (e / e.sum(-1, keepdims=True)) @ v\n\ndef ring_update(K, V, k, v, pos):\n    K[pos % len(K)], V[pos % len(V)] = k, v",
+   "keyLines": [
+    6,
+    11,
+    16
+   ],
+   "dryRun": [
+    "Mask: $M_{ij} = 0$ if $i - W < j \\leq i$ else $-\\infty$",
+    "Out: $\\mathrm{softmax}\\left(\\frac{Q_i K^{\\top}}{\\sqrt{d}} + M_i\\right)V$",
+    "Cost: $T \\cdot W$ entries vs $\\frac{T^2}{2}$",
+    "Reach after $L$ layers: $L\\,(W - 1)$",
+    "Ring slot: $\\mathrm{pos} \\mathrm{mod} W$"
+   ],
+   "description": "Long sequences where nearby context dominates and a fixed-size cache is needed, such as long-document generation on limited memory.",
+   "examples": [
+    {
+     "input": "How can a window of $W$ see more than $W$ tokens?",
+     "output": "Each layer's output already summarises the previous $W - 1$ positions, so after $L$ layers information has travelled about $L(W-1)$ tokens.",
+     "explanation": ""
+    },
+    {
+     "input": "How does the rolling-buffer cache work?",
+     "output": "The key and value for position $p$ go to slot $p \\mathrm{mod} W$, overwriting the entry from $W$ steps earlier, so the cache holds exactly the last $W$ tokens.",
+     "explanation": ""
+    },
+    {
+     "input": "Does a dense mask make attention cheaper?",
+     "output": "No. A masked dense matrix still costs $T^2$. The saving needs a banded or blocked kernel that skips masked entries.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Window size $W$",
+    "Number of layers $L$ (sets the receptive field with $W$)",
+    "Optional global or sink tokens that every position can see"
+   ],
+   "edgeCases": [
+    "Computing the full score matrix and then masking gives the right output but not the speed-up",
+    "Off-by-one in the band: a window of $W$ includes the current token, so it reaches $W-1$ tokens back",
+    "With a ring buffer, the slots are no longer in time order; positional encoding must use true positions"
+   ],
+   "related": [
+    "causal-masking",
+    "kv-cache",
+    "self-attention"
    ],
    "diagram": []
   },
@@ -9110,6 +11393,86 @@
     "cross-validation",
     "class-imbalance",
     "data-leakage"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "structured-outputs-json-schema",
+   "title": "Structured Outputs with JSON Schema",
+   "platform": "LLM",
+   "url": "https://json-schema.org/understanding-json-schema/reference/type",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Structured Output",
+    "Validation",
+    "Decoding"
+   ],
+   "patterns": [],
+   "summary": "Ask the model for JSON in a fixed schema, extract it from the reply, validate it, and retry with the errors fed back; constrained decoding makes the output valid by construction instead.",
+   "bruteForce": "Free-form prose where no downstream parser exists. Constrained decoding is unavailable on hosted models that expose no logits, and a schema valid in shape can still hold wrong values.",
+   "intuition": "A program downstream cannot parse \"Sure, here you go!\". Prompting only makes valid JSON likely, so you wrap it in a check: extract, validate, and on failure retry with the error message. Constrained decoding goes further and removes the failure mode: at each step it zeroes the probability of tokens the grammar forbids, so every sampled sequence is valid and no retry is needed. Flow: prompt → reply → extract JSON → validate → retry or accept.",
+   "whyItWorks": "If one attempt is valid with probability $p$ and attempts are independent, the number of tries is geometric with mean $1/p$ and $P(\\text{at least one valid in } n) = 1 - (1-p)^n$, which approaches 1 quickly. Masking sets forbidden logits to $-\\infty$, so their softmax weight is exactly 0 and the rest renormalise; any sampled sequence stays inside the grammar.",
+   "approach": [
+    "Put the schema and an instruction to reply with JSON only in the prompt — raises the chance of valid output",
+    "Extract the first balanced $\\{\\dots\\}$ from the reply, ignoring fences and prose — models wrap JSON in chatter",
+    "Validate the parsed object against the JSON Schema — types, required keys and enums are checked, not trusted",
+    "On failure append the validator errors to the prompt and retry up to $n$ times — the model can repair a specific error",
+    "Optionally mask logits of grammar-forbidden tokens before softmax — valid by construction, no retries"
+   ],
+   "time": "O(L) to extract and validate a reply of length L; the retry loop costs up to $n$ generations",
+   "space": "O(L) for the reply plus O(V) for one step's mask over vocabulary size V",
+   "solution": "import json\nimport numpy as np\nfrom jsonschema import Draft202012Validator\n\ndef extract_json(text):\n    start = text.find(\"{\")\n    while start != -1:\n        depth, in_str, esc = 0, False, False\n        for i in range(start, len(text)):\n            c = text[i]\n            if in_str:\n                if esc:\n                    esc = False\n                elif c == \"\\\\\":\n                    esc = True\n                elif c == '\"':\n                    in_str = False\n            elif c == '\"':\n                in_str = True\n            elif c == \"{\":\n                depth += 1\n            elif c == \"}\":\n                depth -= 1\n                if depth == 0:\n                    try:\n                        return json.loads(text[start:i + 1])\n                    except ValueError:\n                        break\n        start = text.find(\"{\", start + 1)\n    return None\n\ndef validate(obj, schema):\n    v = Draft202012Validator(schema)\n    return sorted(e.message for e in v.iter_errors(obj))\n\ndef retry(generate, prompt, schema, max_tries=3):\n    p = prompt\n    for attempt in range(max_tries):\n        obj = extract_json(generate(p, attempt))\n        errs = ([\"no JSON object found\"] if obj is None\n                else validate(obj, schema))\n        if not errs:\n            return obj, attempt + 1\n        p = (prompt + \"\\nInvalid reply: \" + \"; \".join(errs)\n             + \"\\nReturn only the fixed JSON.\")\n    return None, max_tries\n\ndef masked_softmax(logits, allowed):\n    z = np.where(allowed, logits, -np.inf)\n    e = np.exp(z - z.max())\n    return e / e.sum()\n\nVOCAB = [\"{\", '\"a\"', \":\", \"1\", \"2\", \"}\", \"hi\"]\nALLOWED = [[0], [1], [2], [3, 4], [5]]  # tokens legal per state\n\ndef constrained_decode(logits_per_step):\n    out = []\n    for state, logits in enumerate(logits_per_step):\n        ok = np.zeros(len(VOCAB), bool)\n        ok[ALLOWED[state]] = True\n        p = masked_softmax(logits, ok)\n        out.append(VOCAB[int(p.argmax())])\n    return \"\".join(out)",
+   "keyLines": [
+    21,
+    34,
+    49
+   ],
+   "dryRun": [
+    "Expected tries: $E[N] = \\frac{1}{p}$",
+    "At least one valid: $1 - (1-p)^n$",
+    "Tries for target $q$: $n \\geq \\frac{\\log(1-q)}{\\log(1-p)}$",
+    "Masked: $p_i = \\frac{\\exp(z_i)}{\\sum_{j \\in A}\\exp(z_j)}$, $i \\in A$"
+   ],
+   "description": "Any pipeline where code consumes model output: tool calls, data extraction, classification labels, form filling. Validation plus retry works with any model; constrained decoding when you control the sampler and need a hard guarantee.",
+   "examples": [
+    {
+     "input": "Why is validating the output not enough on its own?",
+     "output": "Each retry costs a full generation and independence is optimistic, so with a low $p$ you pay roughly $1/p$ calls and still have no guarantee.",
+     "explanation": ""
+    },
+    {
+     "input": "How does constrained decoding guarantee valid JSON?",
+     "output": "A grammar or state machine tracks which tokens may come next; logits of all other tokens are set to $-\\infty$ before softmax, so they can never be sampled.",
+     "explanation": ""
+    },
+    {
+     "input": "Does a schema-valid reply mean a correct reply?",
+     "output": "No. The schema checks shape, types and enums, not truth; the model can still fill valid fields with wrong values.",
+     "explanation": ""
+    },
+    {
+     "input": "Why feed the validation errors back on retry?",
+     "output": "The specific message, such as a missing key, lets the model fix that error instead of resampling blindly, which raises the success probability on later attempts.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Maximum number of retries $n$ (bounds cost and latency)",
+    "Sampling temperature (lower raises $p$ for strict formats)",
+    "Schema strictness: required keys, enums, additional properties",
+    "Whether to use constrained decoding or validate-and-retry"
+   ],
+   "edgeCases": [
+    "Taking the first brace to the last brace breaks when prose contains braces; track depth and string state",
+    "Retrying at the same temperature with the same prompt repeats the same mistake; add the error text",
+    "Masking tokens can force a valid but wrong answer when the model wanted a forbidden token; the content may degrade",
+    "Treating $1-(1-p)^n$ as exact: failures are often correlated across attempts, so real success is lower"
+   ],
+   "related": [
+    "temperature-sampling",
+    "autoregressive-decoding",
+    "top-k-top-p-sampling"
    ],
    "diagram": []
   },
@@ -9273,6 +11636,82 @@
     "logistic-regression",
     "gradient-descent",
     "softmax-cross-entropy"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "t5-span-corruption",
+   "title": "T5 Span Corruption Pretraining Objective",
+   "platform": "NLP",
+   "url": "https://arxiv.org/abs/1910.10683",
+   "difficulty": "Medium",
+   "topics": [
+    "Pretraining",
+    "Encoder-Decoder",
+    "Language Modeling"
+   ],
+   "patterns": [
+    "Text processing"
+   ],
+   "summary": "Replace random spans of the input with numbered sentinel tokens and train an encoder-decoder to output the dropped spans, each preceded by its sentinel, followed by an end-of-sequence token.",
+   "bruteForce": "Decoder-only language models, which use the plain next-token loss, or encoder-only models where per-token masked prediction in place is enough and no generation is needed.",
+   "intuition": "BERT predicts masked tokens independently in place, and GPT predicts the next token left to right. Span corruption turns denoising into a text-to-text task: the encoder reads the corrupted text once and the decoder writes out only what is missing. The target is short (about the corrupted fraction of the input), so pretraining is cheap, and the decoder must model whole spans jointly, not token by token. Flow: text → drop spans → sentinels → encoder → decoder writes spans.",
+   "whyItWorks": "The sentinel marks each gap, so the corrupted input plus the target carries exactly the information of the original text, and reconstruction is a lossless inverse. Predicting a whole span from its two sides forces the model to use context on both sides, while the target stays much shorter than the input.",
+   "approach": [
+    "Choose non-overlapping spans $(s_i, n_i)$ — each one is dropped as a block",
+    "Replace span $i$ in the input with sentinel $i$ — the encoder sees where text is missing",
+    "Build the target as sentinel $i$ then the dropped tokens, for every span — sentinels keep the spans ordered",
+    "Append an end-of-sequence token to the target — the decoder learns when to stop",
+    "Train with cross-entropy on the target only — the input is never a prediction target"
+   ],
+   "time": "O(n) to build one corrupted example; the loss covers only the short target",
+   "space": "O(n) for the input and target token lists",
+   "solution": "def corrupt_spans(tokens, spans):\n    inp, tgt, pos = [], [], 0\n    for i, (s, n) in enumerate(spans):\n        sent = f\"<extra_id_{i}>\"\n        inp += tokens[pos:s] + [sent]\n        tgt += [sent] + tokens[s:s + n]\n        pos = s + n\n    inp += tokens[pos:]\n    return inp, tgt + [\"</s>\"]\n\ndef reconstruct(inp, tgt):\n    spans, cur = {}, None\n    for t in tgt[:-1]:\n        if t.startswith(\"<extra_id_\"):\n            cur = t\n            spans[cur] = []\n        else:\n            spans[cur].append(t)\n    out = []\n    for t in inp:\n        out += spans.get(t, [t])\n    return out",
+   "keyLines": [
+    5,
+    6,
+    21
+   ],
+   "dryRun": [
+    "Input length: $n - m + k$",
+    "Target length: $m + k + 1$",
+    "Spans: $k \\approx \\frac{r\\,n}{\\bar{\\ell}}$",
+    "T5: $L = -\\sum_j \\log p(y_j \\mid x, y_{<j})$",
+    "BERT: $L = -\\sum_{i \\in \\mathrm{masked}} \\log p(x_i \\mid \\tilde{x})$",
+    "GPT: $L = -\\sum_t \\log p(x_t \\mid x_{<t})$"
+   ],
+   "description": "Pretraining a text-to-text encoder-decoder, or any model that should learn to fill in missing spans, where the output is far shorter than the input.",
+   "examples": [
+    {
+     "input": "How does span corruption differ from BERT masking?",
+     "output": "BERT replaces tokens in place and predicts each masked token independently from the encoder output. Span corruption drops whole spans, collapses each to one sentinel, and a decoder generates the spans autoregressively.",
+     "explanation": ""
+    },
+    {
+     "input": "Why are the sentinels numbered?",
+     "output": "The number lets the decoder tie each output span to its gap in the input and keeps the spans in order, so the original text can be rebuilt exactly.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is the target shorter than the input?",
+     "output": "Only the dropped tokens are emitted, plus one sentinel per span and an end token, so the target length is $m + k + 1$ for $m$ dropped tokens in $k$ spans.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Corruption rate $r$, the fraction of tokens dropped",
+    "Mean span length $\\bar{\\ell}$ (longer spans mean fewer sentinels)",
+    "Number of available sentinel tokens in the vocabulary"
+   ],
+   "edgeCases": [
+    "Overlapping or unsorted spans break the sentinel order and the inverse; sort and merge spans first",
+    "Computing the loss on the corrupted input as well as the target wastes capacity on copying",
+    "A real tokenizer uses reserved sentinel ids; a literal text token that looks like a sentinel would be ambiguous"
+   ],
+   "related": [
+    "bert-masked-lm",
+    "cross-attention-encoder-decoder",
+    "causal-masking"
    ],
    "diagram": []
   },
@@ -10671,6 +13110,201 @@
      "slug": "contextual-embeddings",
      "section": "8. Tokenisation and embeddings",
      "order": 33
+    },
+    {
+     "slug": "bert-masked-lm",
+     "section": "9. Models and architectures",
+     "order": 34
+    },
+    {
+     "slug": "gpt-decoder-only",
+     "section": "9. Models and architectures",
+     "order": 35
+    },
+    {
+     "slug": "t5-span-corruption",
+     "section": "9. Models and architectures",
+     "order": 36
+    },
+    {
+     "slug": "llama-rmsnorm-gqa",
+     "section": "9. Models and architectures",
+     "order": 37
+    },
+    {
+     "slug": "rotary-position-embedding",
+     "section": "9. Models and architectures",
+     "order": 38
+    },
+    {
+     "slug": "sliding-window-attention",
+     "section": "9. Models and architectures",
+     "order": 39
+    },
+    {
+     "slug": "mixture-of-experts-routing",
+     "section": "9. Models and architectures",
+     "order": 40
+    },
+    {
+     "slug": "model-landscape",
+     "section": "9. Models and architectures",
+     "order": 41
+    },
+    {
+     "slug": "few-shot-prompting",
+     "section": "10. Prompt engineering",
+     "order": 42
+    },
+    {
+     "slug": "chain-of-thought-self-consistency",
+     "section": "10. Prompt engineering",
+     "order": 43
+    },
+    {
+     "slug": "role-system-prompts",
+     "section": "10. Prompt engineering",
+     "order": 44
+    },
+    {
+     "slug": "context-engineering",
+     "section": "10. Prompt engineering",
+     "order": 45
+    },
+    {
+     "slug": "structured-outputs-json-schema",
+     "section": "10. Prompt engineering",
+     "order": 46
+    },
+    {
+     "slug": "prompt-templates",
+     "section": "10. Prompt engineering",
+     "order": 47
+    },
+    {
+     "slug": "prompt-optimization",
+     "section": "10. Prompt engineering",
+     "order": 48
+    },
+    {
+     "slug": "prompt-injection-defense",
+     "section": "10. Prompt engineering",
+     "order": 49
+    },
+    {
+     "slug": "transfer-learning-fine-tuning",
+     "section": "12. Fine-tuning and adaptation",
+     "order": 50
+    },
+    {
+     "slug": "sft-loss-masking",
+     "section": "12. Fine-tuning and adaptation",
+     "order": 51
+    },
+    {
+     "slug": "instruction-tuning-chat-templates",
+     "section": "12. Fine-tuning and adaptation",
+     "order": 52
+    },
+    {
+     "slug": "finetune-dataset-prep",
+     "section": "12. Fine-tuning and adaptation",
+     "order": 53
+    },
+    {
+     "slug": "lora-low-rank-adaptation",
+     "section": "12. Fine-tuning and adaptation",
+     "order": 54
+    },
+    {
+     "slug": "qlora-nf4-quantization",
+     "section": "12. Fine-tuning and adaptation",
+     "order": 55
+    },
+    {
+     "slug": "adapter-layers",
+     "section": "12. Fine-tuning and adaptation",
+     "order": 56
+    },
+    {
+     "slug": "int8-quantization",
+     "section": "12. Fine-tuning and adaptation",
+     "order": 57
+    },
+    {
+     "slug": "knowledge-distillation",
+     "section": "12. Fine-tuning and adaptation",
+     "order": 58
+    },
+    {
+     "slug": "reward-model-bradley-terry",
+     "section": "12. Fine-tuning and adaptation",
+     "order": 59
+    },
+    {
+     "slug": "rlhf-kl-penalty",
+     "section": "12. Fine-tuning and adaptation",
+     "order": 60
+    },
+    {
+     "slug": "dpo-loss",
+     "section": "12. Fine-tuning and adaptation",
+     "order": 61
+    },
+    {
+     "slug": "finetune-evaluation",
+     "section": "12. Fine-tuning and adaptation",
+     "order": 62
+    },
+    {
+     "slug": "rag-dense-retrieval",
+     "section": "13. Retrieval-augmented generation",
+     "order": 63
+    },
+    {
+     "slug": "document-loading-extraction",
+     "section": "13. Retrieval-augmented generation",
+     "order": 64
+    },
+    {
+     "slug": "document-chunking",
+     "section": "13. Retrieval-augmented generation",
+     "order": 65
+    },
+    {
+     "slug": "ann-vector-index",
+     "section": "13. Retrieval-augmented generation",
+     "order": 66
+    },
+    {
+     "slug": "metadata-filtering",
+     "section": "13. Retrieval-augmented generation",
+     "order": 67
+    },
+    {
+     "slug": "hybrid-search-rrf",
+     "section": "13. Retrieval-augmented generation",
+     "order": 68
+    },
+    {
+     "slug": "reranking-mmr",
+     "section": "13. Retrieval-augmented generation",
+     "order": 69
+    },
+    {
+     "slug": "query-transformation-hyde",
+     "section": "13. Retrieval-augmented generation",
+     "order": 70
+    },
+    {
+     "slug": "retrieval-metrics-recall-at-k",
+     "section": "13. Retrieval-augmented generation",
+     "order": 71
+    },
+    {
+     "slug": "rag-evaluation-faithfulness",
+     "section": "13. Retrieval-augmented generation",
+     "order": 72
     }
    ]
   },
@@ -11336,7 +13970,8 @@
     "hyperparameter-search",
     "concept-drift",
     "ab-test-significance",
-    "stratified-split"
+    "stratified-split",
+    "finetune-dataset-prep"
    ],
    "aliases": [
     "Validation hygiene"
@@ -11361,7 +13996,8 @@
    "problems": [
     "batch-normalization",
     "layer-normalization",
-    "feature-scaling"
+    "feature-scaling",
+    "llama-rmsnorm-gqa"
    ],
    "aliases": [
     "Normalisation"
@@ -11400,7 +14036,10 @@
     "bidirectional-rnn",
     "decoder-only-block",
     "contextual-embeddings",
-    "autoregressive-decoding"
+    "autoregressive-decoding",
+    "gpt-decoder-only",
+    "llama-rmsnorm-gqa",
+    "sliding-window-attention"
    ],
    "aliases": [
     "Attention and sequences"
@@ -11483,7 +14122,8 @@
     "activation-functions",
     "mlp-forward-pass",
     "residual-connections",
-    "feed-forward-gelu-swiglu"
+    "feed-forward-gelu-swiglu",
+    "mixture-of-experts-routing"
    ],
    "aliases": [
     "Network building blocks"
@@ -11551,7 +14191,8 @@
     "glove-embeddings",
     "wordpiece",
     "sentencepiece-unigram",
-    "contextual-embeddings"
+    "contextual-embeddings",
+    "t5-span-corruption"
    ],
    "aliases": [
     "Text processing"
@@ -11629,7 +14270,11 @@
    "problems": [
     "transfer-learning-fine-tuning",
     "lora-low-rank-adaptation",
-    "knowledge-distillation"
+    "knowledge-distillation",
+    "adapter-layers",
+    "qlora-nf4-quantization",
+    "sft-loss-masking",
+    "instruction-tuning-chat-templates"
    ],
    "aliases": [
     "Transfer and adaptation"
@@ -11704,7 +14349,8 @@
     "dpo-loss",
     "reward-model-bradley-terry",
     "ppo-clipped-objective",
-    "gae-advantage"
+    "gae-advantage",
+    "rlhf-kl-penalty"
    ],
    "aliases": [
     "Preference alignment and policy gradients"
@@ -11731,7 +14377,13 @@
     "rouge-score",
     "retrieval-metrics-recall-at-k",
     "rag-dense-retrieval",
-    "hallucination-detection"
+    "hallucination-detection",
+    "rag-evaluation-faithfulness",
+    "hybrid-search-rrf",
+    "reranking-mmr",
+    "query-transformation-hyde",
+    "document-chunking",
+    "ann-vector-index"
    ],
    "aliases": [
     "Text evaluation and retrieval"

@@ -1,0 +1,130 @@
+slug: document-loading-extraction
+title: Document Loading and Text Extraction
+url: https://docs.python.org/3/library/unicodedata.html
+difficulty: Easy
+area: LLM
+topics: [Retrieval-Augmented Generation, Text Cleaning, Metadata]
+summary: |
+  Turn raw documents into clean text plus metadata before chunking and
+  embedding: strip HTML boilerplate, normalise Unicode and whitespace,
+  drop header and footer lines that repeat across pages, and tag every
+  chunk with its source and page.
+intuition: |
+  An embedding model sees only the text it is given, so navigation
+  menus, scripts, page footers and broken hyphenation become part of the
+  chunk vectors and pull unrelated chunks together. Boilerplate repeats
+  on most pages while real content does not, so a line seen on a large
+  fraction of pages is almost certainly not content. Cleaning is cheap
+  next to bad retrieval, and metadata attached now is what later makes
+  citations and filters possible.
+  Flow: raw file → parse → clean text → chunks with metadata → embeddings.
+why_it_works: |
+  Compatibility normalisation (NFKC) maps look-alike characters such as
+  ligatures and full-width letters to one canonical form, so the same
+  word always gets the same tokens. Counting each distinct line once per
+  page and thresholding the fraction of pages separates repeated
+  furniture from unique text without any layout model. Metadata carried
+  on each chunk survives retrieval, so the answer can point back to the
+  exact source.
+when_to_use: |
+  Any ingestion pipeline for web pages, reports or exports, as the first
+  stage before chunking, where text quality directly limits retrieval
+  quality.
+when_not_to_use: |
+  Do not rely on these rules for PDFs, scans and tables. Layout-aware
+  parsers or OCR are needed there, and extraction errors in those
+  formats are the main source of failures in retrieval pipelines.
+math:
+  - "NFKC: compatibility decomposition, then canonical composition"
+  - "page_count(line) = number of pages containing the line"
+  - "drop a line if page_count / pages ≥ min_frac"
+  - "threshold in pages = ⌈min_frac · pages⌉"
+approach:
+  - "Parse the HTML and skip script, style and navigation subtrees — they carry no content"
+  - "Keep block boundaries as blank lines — headings and paragraphs stay separable for chunking"
+  - "Apply NFKC and rejoin words split by line-end hyphens — one canonical spelling per word"
+  - "Collapse runs of spaces and blank lines — removes layout noise"
+  - "Count each distinct line once per page and drop lines on at least min_frac of pages — removes repeated headers and footers"
+  - "Attach source, page and section to every chunk — enables citations and metadata filters"
+code: |
+  import re, unicodedata
+  from html.parser import HTMLParser
+
+  SKIP = {"script", "style", "title", "nav", "header", "footer",
+          "aside"}
+  BLOCK = {"p", "div", "li", "br", "tr", "h1", "h2", "h3", "h4"}
+
+  class _Text(HTMLParser):
+      def __init__(self):
+          super().__init__()
+          self.out, self.skip = [], 0
+      def handle_starttag(self, tag, attrs):
+          if tag in SKIP:
+              self.skip += 1
+          elif tag in BLOCK:
+              self.out.append("\n\n")
+      def handle_endtag(self, tag):
+          if tag in SKIP:
+              self.skip = max(0, self.skip - 1)
+          elif tag in BLOCK:
+              self.out.append("\n\n")
+      def handle_data(self, data):
+          if not self.skip:
+              self.out.append(data)
+
+  def normalise_text(s):
+      s = unicodedata.normalize("NFKC", s)
+      s = re.sub(r"(\w)-\n(\w)", r"\1\2", s)
+      s = re.sub(r"[ \t]+", " ", s)
+      s = "\n".join(line.strip() for line in s.split("\n"))
+      return re.sub(r"\n{3,}", "\n\n", s).strip()
+
+  def html_to_text(html):
+      p = _Text()
+      p.feed(html)
+      return normalise_text("".join(p.out))
+
+  def drop_repeated_lines(pages, min_frac=0.6):
+      def key(line):
+          return re.sub(r"\d+", "#", line.strip())
+      seen = {}
+      for pg in pages:
+          for k in {key(l) for l in pg.split("\n") if l.strip()}:
+              seen[k] = seen.get(k, 0) + 1
+      keep = lambda l: not l.strip() or (
+          seen[key(l)] / len(pages) < min_frac)
+      return ["\n".join(l for l in pg.split("\n") if keep(l))
+              for pg in pages]
+
+  def attach_metadata(chunks, source, page, section=None):
+      return [{"text": c, "source": source, "page": page,
+               "section": section, "chunk": i}
+              for i, c in enumerate(chunks)]
+key_lines: [27, 44, 51]
+time: "O(total characters) for parsing and cleaning; the repeated-line pass is one hash-table count over all lines"
+space: "O(distinct lines) for the repeat counter plus the cleaned text"
+hyperparameters:
+  - "min_frac, the page fraction above which a line counts as boilerplate"
+  - "Set of tags to skip and tags that mark block boundaries"
+  - "Unicode normalisation form (NFKC versus NFC)"
+  - "Metadata fields to keep (source, page, section, date)"
+pitfalls:
+  - "Digits are masked when counting so that Page 1, Page 2 match, which also merges unique lines that differ only by a number"
+  - "A low min_frac on a short document deletes real content; a short repeated line is only boilerplate if it appears on most pages"
+  - "NFKC changes meaning for some text, for example it turns superscript digits into ordinary ones, so keep the raw text if exact quotes matter"
+  - "PDFs, scanned pages and tables need dedicated parsers or OCR; these rules do not fix reading order or merged columns"
+interview_qa:
+  - q: "Why clean text before embedding?"
+    a: "Boilerplate and broken text add shared noise to chunk vectors, which makes unrelated chunks look similar and lowers retrieval precision. Clean input also gives stable tokenisation."
+  - q: "How do you detect repeated headers and footers without layout analysis?"
+    a: "Count how many pages each distinct line appears on and drop lines whose page fraction passes a threshold, masking digits so page numbers still match."
+  - q: "Why attach metadata to every chunk?"
+    a: "After chunking, a chunk no longer knows where it came from. Source, page and section let the system cite answers and filter retrieval by document, date or access level."
+  - q: "What is the hardest part of document loading in practice?"
+    a: "Non-HTML formats. PDFs, scans and tables lose reading order and structure on extraction, so they need layout-aware parsers or OCR and careful checking."
+related: [document-chunking, rag-dense-retrieval, bpe-tokenization]
+math_tex:
+- 'NFKC: compatibility decomposition, then composition'
+- '$\mathrm{pc}(\ell)$ = number of pages containing line $\ell$'
+- 'Drop line $\ell$ if $\frac{\mathrm{pc}(\ell)}{\mathrm{pages}} \geq \mathrm{min\_frac}$'
+- 'Threshold in pages $= \lceil \mathrm{min\_frac} \cdot \mathrm{pages} \rceil$'

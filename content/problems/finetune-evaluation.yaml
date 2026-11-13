@@ -1,0 +1,111 @@
+slug: finetune-evaluation
+title: Evaluating a Fine-Tune - Win Rate and Sign Test
+url: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.binomtest.html
+difficulty: Medium
+area: LLM
+topics: [LLM, Evaluation, Fine-Tuning, Hypothesis Testing]
+summary: |
+  Decide whether a fine-tune beat its baseline: compare held-out loss,
+  count pairwise wins with ties handled explicitly, test the wins and
+  losses with an exact sign test, size the eval, and report forgetting.
+intuition: |
+  A better loss number does not mean better answers, and a win rate of
+  55% on 40 prompts is mostly noise. Each prompt gives a paired verdict
+  (win, loss or tie), and under "no difference" the non-tied pairs are
+  fair coin flips, so the exact binomial answers how surprising the
+  count is. Ties carry no direction, so report how you treated them.
+  Flow: held-out loss → paired win/loss/tie → sign test → size → forgetting check.
+approach:
+  - "Compare held-out loss or perplexity before and after — a cheap first signal, not a verdict"
+  - "Judge each prompt as win, loss or tie against the baseline — paired data removes prompt difficulty"
+  - "Compute win rate with ties counted half, and also the rate excluding ties — report both and say which"
+  - "Run an exact sign test on wins and losses only — ties carry no direction"
+  - "Add a confidence interval to the win rate — the point estimate alone hides the noise"
+  - "Size the eval with $n \\approx z^2 p(1-p)/m^2$ — decide the margin before collecting data"
+  - "Measure a general benchmark before and after and report the change separately — fine-tuning can cause forgetting"
+code: |
+  import math
+  import numpy as np
+
+  def win_rate(outcomes):
+      # outcomes: +1 win, 0 tie, -1 loss (fine-tune vs baseline)
+      o = np.asarray(outcomes)
+      w, l = int((o > 0).sum()), int((o < 0).sum())
+      t = len(o) - w - l
+      half = (w + 0.5 * t) / len(o)
+      excl = w / (w + l) if w + l else float("nan")
+      return {"wins": w, "losses": l, "ties": t,
+              "rate_ties_half": half, "rate_excl_ties": excl}
+
+  def sign_test_p(wins, losses):
+      n = wins + losses
+      if n == 0:
+          return 1.0
+      k = min(wins, losses)
+      tail = sum(math.comb(n, i) for i in range(k + 1))
+      return min(1.0, 2 * tail / 2 ** n)
+
+  def wilson_ci(k, n, z=1.96):
+      p = k / n
+      c = (p + z * z / (2 * n)) / (1 + z * z / n)
+      h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
+      return c - h / (1 + z * z / n), c + h / (1 + z * z / n)
+
+  def required_n(p, margin, z=1.96):
+      return math.ceil(z * z * p * (1 - p) / margin ** 2)
+
+  def forgetting_delta(before, after):
+      return after - before   # negative = capability lost
+key_lines: [19, 20, 29]
+time: "O(n) to tally, O(n) for the exact sign test over $n$ non-tied pairs"
+space: "O(n) outcomes, O(1) summary statistics"
+when_to_use: |
+  Comparing a fine-tuned model with its base or a previous version on
+  open-ended prompts judged pairwise, by humans or by an LLM judge.
+when_not_to_use: |
+  Tasks with a deterministic metric and many examples, where a paired
+  bootstrap on the score is simpler. A sign test also ignores the size
+  of each win, so it is conservative when margins vary.
+why_it_works: |
+  If the two models are equally good, each non-tied comparison is a win
+  with probability $\frac{1}{2}$, so the number of wins among $n$
+  non-tied pairs is $\mathrm{Binomial}(n, \frac{1}{2})$ and the sign
+  test p-value is an exact tail probability with no distributional
+  assumption. The sample-size rule comes from requiring a normal-
+  approximation interval of half-width $m$ around $p$.
+math:
+  - "win rate = (wins + ½ · ties) / n"
+  - "Under H₀: wins ~ Binomial(n_eff, ½),  n_eff = wins + losses"
+  - "p = min(1, 2 · Σ_{i≤min(w,l)} C(n_eff, i) / 2^n_eff)"
+  - "n_eff = wins + losses"
+  - "Wilson: (p̂ + z²/2n ± z√(p̂(1−p̂)/n + z²/4n²)) / (1 + z²/n)"
+  - "n ≈ z² · p(1 − p) / m²"
+  - "Forgetting Δ = metric_after − metric_before"
+interview_qa:
+  - q: "How should ties be handled in a win rate?"
+    a: "Either count a tie as half a win, or drop ties and report how many there were. Whichever you pick, state it, because the two give different rates when ties are common."
+  - q: "Why a sign test instead of a t-test here?"
+    a: "The data are paired win, loss or tie verdicts, not numeric scores. Among non-tied pairs the null is a fair coin, so the exact binomial applies with no distributional assumption."
+  - q: "How many prompts do I need to detect a small improvement?"
+    a: "Use $n \\approx z^2 p(1-p)/m^2$. For $p = 0.5$ and a margin of 0.05 at 95% confidence this is about 385 pairs, and halving the margin quadruples it."
+  - q: "What is a forgetting check?"
+    a: "Evaluate a general-capability benchmark before and after fine-tuning and report the change separately, since a gain on the target task can hide a loss elsewhere."
+hyperparameters:
+  - "Significance level or confidence level ($z$)"
+  - "Tie policy: half credit or excluded"
+  - "Target margin $m$ for sample sizing"
+  - "Which general benchmark to track for forgetting"
+pitfalls:
+  - "Counting ties as losses, or silently dropping them, shifts the win rate; always report the tie count"
+  - "Running many comparisons and reporting the best one inflates false positives; correct for multiple tests"
+  - "A judge that prefers longer or first-listed answers biases wins; randomise order and check length"
+  - "A significant win rate on a narrow prompt set says nothing about prompts outside it, or about forgetting"
+related: [prompt-optimization, transfer-learning-fine-tuning, perplexity]
+math_tex:
+- 'Win rate $= (\mathrm{wins} + \frac{1}{2}\,\mathrm{ties}) / n$'
+- 'Under $H_0$: wins $\sim \mathrm{Binomial}(n_e, \frac{1}{2})$'
+- 'where $n_e = \mathrm{wins} + \mathrm{losses}$'
+- 'Two-sided: $p = \min(1,\; 2\,\Pr[X \leq \min(w, l)])$'
+- 'Wilson centre: $\frac{\hat{p} + z^2/2n}{1 + z^2/n}$'
+- 'Sample size: $n \approx \frac{z^2\,p(1-p)}{m^2}$'
+- 'Forgetting: $\Delta = M_{after} - M_{before}$'

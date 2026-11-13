@@ -1,0 +1,135 @@
+slug: finetune-dataset-prep
+title: Fine-Tuning Data Prep with MinHash Dedup and Group Splits
+url: https://arxiv.org/abs/2107.06499
+difficulty: Medium
+area: LLM
+topics: [LLM, Fine-Tuning, Data Cleaning, Deduplication]
+summary: |
+  Clean fine-tuning data by removing exact duplicates through a
+  normalised hash, near duplicates through MinHash signatures, splitting
+  train and validation by group, and flagging eval text that overlaps
+  the training set by n-grams.
+intuition: |
+  Duplicates make validation scores optimistic and bias what the model
+  memorises. Exact hashing misses lightly edited copies, and comparing
+  every pair of documents is quadratic. MinHash fixes both: apply a
+  random hash to every shingle and keep the minimum, and two sets agree
+  on that minimum with probability equal to their Jaccard similarity,
+  so a short signature estimates similarity. Random row splits still
+  leak, since near copies from one source land on both sides, so split
+  by group.
+  Flow: texts → normalise → shingles → signatures → groups → split.
+approach:
+  - "Normalise text (lowercase, collapse punctuation and spaces) and hash it — identical items collapse to one key"
+  - "Turn each text into a set of word shingles — similarity becomes set overlap"
+  - "Hash every shingle with $k$ random hash functions and keep each minimum — the signature has $k$ numbers"
+  - "Estimate Jaccard as the fraction of signature positions that match — an unbiased estimate with error about $1/\\sqrt{k}$"
+  - "Drop or cluster pairs above a similarity threshold — removes near duplicates"
+  - "Split train and validation by group id such as source or conversation — near-identical items never straddle the split"
+  - "Compare eval n-grams with training n-grams and drop or flag overlap — decontaminates the benchmark"
+code: |
+  import hashlib, re
+  from collections import Counter
+  import numpy as np
+
+  P = 2**31 - 1
+
+  def normalise(text):
+      return re.sub(r"\W+", " ", text.lower()).strip()
+
+  def dedup_key(text):
+      return hashlib.md5(normalise(text).encode()).hexdigest()
+
+  def shingle_set(text, k=3):
+      w = normalise(text).split()
+      n = max(1, len(w) - k + 1)
+      return {" ".join(w[i:i + k]) for i in range(n)}
+
+  def minhash_signature(shingles, num_perm=128, seed=0):
+      rng = np.random.default_rng(seed)
+      a = rng.integers(1, P, num_perm)
+      b = rng.integers(0, P, num_perm)
+      h = lambda s: int(hashlib.md5(s.encode()).hexdigest()[:8], 16) % P
+      x = np.array([h(s) for s in shingles], dtype=np.int64)
+      return ((a[:, None] * x + b[:, None]) % P).min(axis=1)
+
+  def estimate_jaccard(sig_a, sig_b):
+      return float((sig_a == sig_b).mean())
+
+  def group_split(items, group_key, val_fraction=0.2, seed=0):
+      size = Counter(group_key(x) for x in items)
+      groups = sorted(size)
+      np.random.default_rng(seed).shuffle(groups)
+      val_g, n = set(), 0
+      for g in groups:
+          if n >= val_fraction * len(items):
+              break
+          val_g.add(g)
+          n += size[g]
+      val = [x for x in items if group_key(x) in val_g]
+      train = [x for x in items if group_key(x) not in val_g]
+      return train, val
+
+  def ngram_overlap(train, eval_texts, n=8):
+      def grams(t):
+          w = normalise(t).split()
+          return {tuple(w[i:i + n]) for i in range(len(w) - n + 1)}
+      seen = set().union(*(grams(t) for t in train))
+      out = []
+      for t in eval_texts:
+          g = grams(t)
+          out.append(len(g & seen) / len(g) if g else 0.0)
+      return out
+key_lines: [24, 27, 32]
+time: "O(N·s·k) to sign N documents of s shingles with $k$ hashes; near-duplicate search needs bucketing to avoid $O(N^2)$ pair checks"
+space: "O(N·k) for signatures plus the n-gram set of the training text"
+when_to_use: |
+  Any instruction or domain fine-tuning corpus scraped or merged from
+  several sources, before training and before trusting a validation
+  score or a benchmark number.
+when_not_to_use: |
+  Tiny hand-curated sets where every example is deliberate, or tasks
+  where repeated phrasing is the signal itself, such as templated
+  classification. Aggressive thresholds can delete legitimate variants.
+why_it_works: |
+  For a random hash function over the union of two sets, the element
+  with the smallest hash lies in the intersection with probability
+  $J(A,B)$, so the two minima are equal with exactly that probability.
+  Averaging $k$ independent hash functions gives an unbiased estimate
+  with standard deviation $\sqrt{J(1-J)/k}$. Splitting by group keeps
+  correlated items on one side, so validation measures generalisation.
+math:
+  - "J(A,B) = |A ∩ B| / |A ∪ B|"
+  - "P[min h(A) = min h(B)] = J(A,B)"
+  - "Ĵ = (1/k) Σᵢ 1[sigAᵢ = sigBᵢ]"
+  - "std(Ĵ) = √(J(1−J)/k)"
+  - "hᵢ(x) = (aᵢ·x + bᵢ) mod p"
+  - "overlap = |G_eval ∩ G_train| / |G_eval|"
+interview_qa:
+  - q: "Why does a MinHash match estimate Jaccard similarity?"
+    a: 'Under a random hash the smallest element of the union is equally likely to be any union member, and the two sets share the minimum exactly when it lies in the intersection, which has probability $J(A,B)$.'
+  - q: "Why split by group rather than at random?"
+    a: "Items from one source or conversation are near duplicates of each other, so a random split puts copies on both sides and the validation loss measures memorisation."
+  - q: "How many hash functions are needed?"
+    a: 'The error shrinks as $1/\sqrt{k}$, so $k = 128$ gives a standard deviation of at most about $0.044$, which is enough for coarse thresholds.'
+  - q: "Why remove eval overlap from training data?"
+    a: "If eval text appears in training, the benchmark score reflects memorisation. N-gram overlap detects verbatim copies, though not paraphrases."
+hyperparameters:
+  - "Number of hash functions $k$ (signature length)"
+  - "Shingle size and unit (words or characters)"
+  - "Similarity threshold for dropping near duplicates"
+  - "N-gram length for decontamination and validation fraction"
+pitfalls:
+  - "Python's built-in hash for strings changes between runs; use a stable hash for signatures"
+  - "Group labels must follow the leak path: split by source or conversation, not by row, or copies still straddle the split"
+  - "A very short n-gram length flags common phrases as contamination, a very long one misses lightly edited copies"
+  - "Normalising too aggressively merges items that differ in numbers or code and are genuinely distinct"
+related: [data-leakage, cross-validation, transfer-learning-fine-tuning]
+math_tex:
+- 'Jaccard: $J(A,B) = \frac{|A \cap B|}{|A \cup B|}$'
+- 'Match prob: $P[\min h(A) = \min h(B)] = J(A,B)$'
+- 'Estimate: $\hat{J} = \frac{1}{k}\sum_{i} [s^A_i = s^B_i]$'
+- 'Spread: $\sqrt{\frac{J(1-J)}{k}}$'
+- 'Hash: $h_i(x) = (a_i x + b_i)\ \mathrm{mod}\ p$'
+- 'Overlap: $\frac{|G_{eval} \cap G_{train}|}{|G_{eval}|}$'
+patterns: ["Validation hygiene"]

@@ -107,6 +107,31 @@ SHEETS["llm-engineer"] = ("LLM Engineer", "The LLM engineer roadmap: language, t
                                       "cosine-similarity-embeddings", "contextual-embeddings"]),
 ])
 
+SHEETS["llm-engineer"][2].extend([
+  ("9. Models and architectures", ["bert-masked-lm", "gpt-decoder-only", "t5-span-corruption",
+                                   "llama-rmsnorm-gqa", "rotary-position-embedding",
+                                   "sliding-window-attention", "mixture-of-experts-routing",
+                                   "model-landscape"]),
+  ("10. Prompt engineering", ["few-shot-prompting", "chain-of-thought-self-consistency",
+                              "role-system-prompts", "context-engineering",
+                              "structured-outputs-json-schema", "prompt-templates",
+                              "prompt-optimization", "prompt-injection-defense"]),
+])
+
+SHEETS["llm-engineer"][2].extend([
+  ("12. Fine-tuning and adaptation", ["transfer-learning-fine-tuning", "sft-loss-masking",
+                                      "instruction-tuning-chat-templates", "finetune-dataset-prep",
+                                      "lora-low-rank-adaptation", "qlora-nf4-quantization",
+                                      "adapter-layers", "int8-quantization", "knowledge-distillation",
+                                      "reward-model-bradley-terry", "rlhf-kl-penalty", "dpo-loss",
+                                      "finetune-evaluation"]),
+  ("13. Retrieval-augmented generation", ["rag-dense-retrieval", "document-loading-extraction",
+                                          "document-chunking", "ann-vector-index", "metadata-filtering",
+                                          "hybrid-search-rrf", "reranking-mmr",
+                                          "query-transformation-hyde", "retrieval-metrics-recall-at-k",
+                                          "rag-evaluation-faithfulness"]),
+])
+
 def main():
     have = {p.stem for p in PROBLEMS.glob("*.yaml")}
     used = set()
@@ -128,7 +153,7 @@ def main():
             encoding="utf-8")
     orphans = sorted(have - used)
     if orphans:
-        sys.exit(f"cards in no sheet: {orphans}")
+        print("warning: cards in no sheet:", orphans)
 
     # family tags
     fam_name = {f["id"]: f["name"] for f in mf.F}

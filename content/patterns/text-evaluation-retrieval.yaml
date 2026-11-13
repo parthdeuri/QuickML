@@ -32,5 +32,11 @@ problems:
 - retrieval-metrics-recall-at-k
 - rag-dense-retrieval
 - hallucination-detection
+- rag-evaluation-faithfulness
+- hybrid-search-rrf
+- reranking-mmr
+- query-transformation-hyde
+- document-chunking
+- ann-vector-index
 aliases:
 - Text evaluation and retrieval

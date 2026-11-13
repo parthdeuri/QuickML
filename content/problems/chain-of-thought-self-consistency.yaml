@@ -1,0 +1,94 @@
+slug: chain-of-thought-self-consistency
+title: Chain-of-Thought and Self-Consistency
+url: https://arxiv.org/abs/2203.11171
+difficulty: Medium
+area: LLM
+topics: [LLM, Prompting, Reasoning, Sampling]
+summary: |
+  Ask the model to write its reasoning steps before the answer, then
+  sample $n$ such reasoning paths at temperature above zero, parse each
+  final answer and return the most common one.
+intuition: |
+  Intermediate steps give the model room to compute, because each
+  generated token adds work before the answer is committed. A single
+  path can go wrong anywhere, but wrong paths tend to disagree with
+  each other while correct paths converge on the same result, so a vote
+  over several paths filters out much of the random error.
+  Flow: question → $n$ sampled reasoning paths → parse answers → vote.
+approach:
+  - "Prompt for step-by-step reasoning and a fixed last line such as Answer: X — makes the final answer easy to parse"
+  - "Sample $n$ completions at temperature above 0 — greedy decoding would give the same path every time"
+  - "Extract the final answer from each completion with a regex — only the answer is compared, never the reasoning text"
+  - "Drop completions with no parsable answer — they carry no vote"
+  - "Return the most frequent answer, ties broken by first seen — a deterministic majority vote"
+code: |
+  import re
+  from math import comb
+  from collections import Counter
+
+  def extract_final_answer(text):
+      pat = r"answer\s*:\s*\$?\s*(-?[\d,]*\.?\d+|[^\s.,;]+)"
+      m = re.findall(pat, text, re.I)
+      return m[-1].replace(",", "").lower() if m else None
+
+  def majority_vote(answers):
+      votes = Counter(a for a in answers if a is not None)
+      if not votes:
+          return None
+      return votes.most_common(1)[0][0]
+
+  def majority_accuracy(p, n):
+      # P(more than half of n independent votes are correct), odd n
+      return sum(comb(n, k) * p**k * (1 - p)**(n - k)
+                 for k in range(n // 2 + 1, n + 1))
+key_lines: [6, 14, 18]
+time: "$n$ model calls (parallelisable), so about $n$ times the cost and tokens of one answer; voting itself is O(n)"
+space: "O(n) stored answers, plus the text of each reasoning path if kept"
+when_to_use: |
+  Multi-step problems with a short checkable final answer, such as
+  arithmetic, logic or multiple choice, when accuracy matters more than
+  cost and latency.
+when_not_to_use: |
+  Open-ended generation with no single answer to vote on, latency or
+  cost sensitive paths, and easy questions where one direct answer is
+  already reliable.
+why_it_works: |
+  If each independent sample is correct with probability $p > 0.5$,
+  the number of correct votes is binomial and the chance that more
+  than half are correct is $\sum_{k > n/2}\binom{n}{k}p^k(1-p)^{n-k}$,
+  which rises towards 1 as $n$ grows. When $p < 0.5$ it falls towards
+  0, so voting amplifies whichever side is more likely. Wrong answers
+  that are spread over many values need even fewer correct votes to
+  win a plurality, so this majority figure is a conservative bound.
+math:
+  - "P(correct) = Σ_{k>n/2} C(n,k) pᵏ (1−p)ⁿ⁻ᵏ"
+  - "Votes K ~ Binomial(n, p),  P(correct) = P(K > n/2)"
+  - "answer* = argmax_a Σᵢ 1[aᵢ = a]"
+  - "p = 0.7:  n = 1 → 0.700,  n = 5 → 0.837,  n = 21 → 0.974"
+  - "p < 0.5: P(correct) → 0 as n grows"
+interview_qa:
+  - q: "Why does self-consistency need temperature above zero?"
+    a: "At temperature zero every sample is the same greedy path, so voting adds nothing. Sampling makes the paths differ and the vote averages their errors."
+  - q: "Why is majority-vote accuracy higher than single-sample accuracy?"
+    a: "For $p > 0.5$ the binomial tail above $n/2$ exceeds $p$ and grows with $n$, because independent errors rarely line up on the same wrong answer."
+  - q: "When does self-consistency fail?"
+    a: "When samples are correlated or the model is systematically wrong, since the same wrong answer repeats and wins the vote, and when $p < 0.5$ the vote makes things worse."
+  - q: "How is it different from chain-of-thought alone?"
+    a: "Chain-of-thought is one reasoning path, usually greedy. Self-consistency samples many paths and votes only on the final answers."
+hyperparameters:
+  - "Number of samples $n$ (odd avoids ties; returns diminish)"
+  - "Sampling temperature and top-$p$"
+  - "Answer-extraction pattern and normalisation"
+  - "Tie-break rule"
+pitfalls:
+  - "Samples from one model are not independent; shared blind spots make the same wrong answer repeat, so the binomial formula is optimistic"
+  - "Wrong answers can agree on a popular mistake and win the vote; more samples then make the wrong answer more certain"
+  - "Unnormalised answers split votes (such as 1,200 and 1200); normalise before counting"
+  - "Cost grows linearly with $n$ in tokens and calls, and a shown reasoning chain need not be the real cause of the answer"
+related: [temperature-sampling, hallucination-detection, autoregressive-decoding]
+math_tex:
+- 'Tail: $\sum_{k > n/2}\binom{n}{k}p^k(1-p)^{n-k}$'
+- 'Votes $K \sim \mathrm{Bin}(n, p)$, win if $K > n/2$'
+- 'Vote: $a^{*} = \arg\max_a \sum_i 1[a_i = a]$'
+- 'At $p = 0.7$: 0.700, 0.837, 0.974 for $n$ = 1, 5, 21'
+- 'For $p < 0.5$ accuracy $\rightarrow 0$ as $n$ grows'

@@ -1,0 +1,109 @@
+slug: sft-loss-masking
+title: SFT Loss Masking, Normalisation and Packing
+url: https://huggingface.co/docs/trl/sft_trainer
+difficulty: Medium
+area: LLM
+topics: [LLM, Fine-Tuning, Loss Functions]
+summary: |
+  Supervised fine-tuning scores only the response tokens: prompt and
+  padding labels are set to $-100$, labels are shifted by one, and the
+  loss is normalised either per token or per sequence. Packed rows need
+  a block-diagonal causal mask so examples cannot attend to each other.
+intuition: |
+  The prompt is given, not predicted, so training on it wastes
+  gradient and teaches the model to write user messages. Masking is
+  therefore a choice of what the loss rewards. The normaliser is a
+  second choice in disguise: dividing by all response tokens in the
+  batch gives every token equal weight, so long answers dominate;
+  averaging per-sequence means gives every answer equal weight, so each
+  token of a short answer counts more. Packing saves padding but only
+  stays correct if the attention mask also stops at example borders.
+  Flow: prompt + answer → labels with -100 → shift → masked loss.
+approach:
+  - "Concatenate prompt and response ids — the model reads one sequence"
+  - "Copy the ids to labels and set prompt and padding positions to $-100$ — only the response is scored"
+  - "Shift by one: logits at $t$ are scored against label $t+1$ — each position predicts the next token"
+  - "Sum the negative log-probability over unmasked tokens — masked positions add nothing"
+  - "Divide by the batch token count, or average per-sequence means — chooses how long and short answers are weighted"
+  - "When packing, build a mask that is causal and block-diagonal — no attention leaks across examples"
+code: |
+  import numpy as np
+
+  def build_labels(prompt_ids, response_ids, pad_to):
+      ids = list(prompt_ids) + list(response_ids)
+      lab = [-100] * len(prompt_ids) + list(response_ids)
+      pad = pad_to - len(ids)
+      return ids + [0] * pad, lab + [-100] * pad
+
+  def sft_loss(logits, labels, mode="token"):
+      z = logits[:, :-1]
+      tgt = labels[:, 1:]
+      z = z - z.max(-1, keepdims=True)
+      logp = z - np.log(np.exp(z).sum(-1, keepdims=True))
+      keep = tgt != -100
+      idx = np.where(keep, tgt, 0)[..., None]
+      nll = -np.take_along_axis(logp, idx, -1)[..., 0] * keep
+      if mode == "token":
+          return nll.sum() / keep.sum()
+      n = keep.sum(1)
+      ok = n > 0
+      return (nll.sum(1)[ok] / n[ok]).mean()
+
+  def packed_block_mask(lengths):
+      seg = np.repeat(np.arange(len(lengths)), lengths)
+      same = seg[:, None] == seg[None, :]
+      causal = np.tril(np.ones(same.shape, dtype=bool))
+      return same & causal
+key_lines: [5, 11, 21]
+time: "O(B·T·V) for the log-softmax; the packed mask is O(T²) per row"
+space: "O(B·T·V) for the logits; the mask is O(T²) booleans per packed row"
+when_to_use: |
+  Instruction and chat fine-tuning, where the prompt is fixed context
+  and only the answer should be learned. Use token mean when every
+  response token should count equally, and sequence mean when each
+  example should count equally regardless of length. Pack short
+  examples to remove padding waste.
+when_not_to_use: |
+  Continued pretraining on raw text, where every token is a target.
+  Masking the prompt can also hurt when the data is tiny and the prompt
+  itself is a style you want the model to absorb.
+why_it_works: |
+  The conditional likelihood $p(y \mid x)$ of the response given the
+  prompt factorises as $\prod_t p(y_t \mid x, y_{<t})$, so scoring only
+  response positions maximises exactly that, while the prompt still
+  conditions every prediction through attention. A causal block mask
+  makes each packed example see only its own tokens, so the packed row
+  gives the same logits as separate rows, up to position handling.
+math:
+  - "L_tok = −(Σᵢ mᵢ log pᵢ) / (Σᵢ mᵢ),  mᵢ = 1 on response tokens"
+  - "L_seq = (1/B) Σ_b ℓ_b,  ℓ_b = mean NLL of sequence b"
+  - "Weight of one token: 1/N  versus  1/(B · n_b)"
+  - "Target: y_t = x_t₊₁ if response, else −100 (ignored)"
+  - "Mask: M_ij = 1 if s_i = s_j and j ≤ i"
+interview_qa:
+  - q: "Why set prompt labels to -100 instead of deleting them?"
+    a: "The prompt tokens must stay in the input so attention can read them, but they should not contribute to the loss. The ignore index removes them from the sum and the divisor only."
+  - q: "Token mean or sequence mean?"
+    a: 'Token mean weights each response token equally, so long answers dominate the gradient. Sequence mean weights each answer equally, so tokens of short answers count more. Equal lengths make them identical.'
+  - q: "What goes wrong when packing without a block mask?"
+    a: "Tokens attend to earlier unrelated examples, so the model learns from context that never exists at inference, and the loss is no longer the per-example loss."
+  - q: "Why does gradient accumulation interact with the normaliser?"
+    a: 'Averaging micro-batch means gives each micro-batch equal weight even when token counts differ. Divide by the total unmasked tokens across all accumulation steps to match one large batch.'
+hyperparameters:
+  - "Reduction: token mean or sequence mean"
+  - "Packed row length and packing strategy"
+  - "Ignore index (commonly $-100$)"
+  - "Whether to also train on the prompt (usually off)"
+pitfalls:
+  - "Forgetting that the first response label sits at position $t+1$, so the shift must happen before masking is read"
+  - "A batch whose responses are all masked divides by zero in token mode; guard the count"
+  - "Pad id and EOS id are often the same; masking by token id would also remove the real EOS, so mask by position"
+  - "Cross-example attention in packed rows silently leaks context while the loss still looks normal"
+related: [next-token-prediction-loss, transfer-learning-fine-tuning, lora-low-rank-adaptation]
+math_tex:
+- 'Token mean: $L_{tok} = -\frac{\sum_i m_i \log p_i}{\sum_i m_i}$'
+- 'Sequence mean: $L_{seq} = \frac{1}{B}\sum_{b} \ell_b$'
+- 'Token weight: $\frac{1}{N}$ vs $\frac{1}{B\, n_b}$'
+- 'Target: $y_t = x_{t+1}$ if response, else $-100$'
+- 'Mask: $M_{ij} = 1$ if $s_i = s_j$ and $j \leq i$'
+patterns: ["Transfer and adaptation"]

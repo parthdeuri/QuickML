@@ -1,0 +1,92 @@
+slug: few-shot-prompting
+title: Few-Shot Prompting and Example Selection
+url: https://arxiv.org/abs/2005.14165
+difficulty: Easy
+area: LLM
+topics: [LLM, Prompting, In-Context Learning]
+summary: |
+  Put $k$ worked input-output examples in the prompt before the real
+  query so the model infers the task from context, with no weight
+  updates; choose the examples by embedding similarity to the query.
+intuition: |
+  A language model continues text, so a prompt that already contains
+  several solved instances makes "the next instance, solved" the most
+  likely continuation. The examples specify format, label set and
+  style better than an instruction can, and examples that resemble the
+  query show the model a nearby solved case instead of a random one.
+  Flow: query → embed → top-$k$ similar examples → prompt → completion.
+approach:
+  - "Write a short instruction — states the task once in plain words"
+  - "Embed the query and all candidate examples — puts them in one vector space"
+  - "Rank candidates by cosine similarity and keep the top $k$ — nearby solved cases are the most informative"
+  - "Break ties by index and put the closest example last — the output is deterministic and the most relevant case sits next to the query"
+  - "Check label balance of the chosen set — a skewed set biases the model towards the majority label"
+  - "Render $k$ example blocks and end with the query and an empty label — the model completes exactly the missing part"
+code: |
+  import numpy as np
+  from collections import Counter
+
+  def build_prompt(instruction, examples, query):
+      blocks = [f"Input: {x}\nLabel: {y}" for x, y in examples]
+      tail = f"Input: {query}\nLabel:"
+      return "\n\n".join([instruction.strip()] + blocks + [tail])
+
+  def select_examples(q, E, k):
+      qn = q / np.linalg.norm(q)
+      En = E / np.linalg.norm(E, axis=1, keepdims=True)
+      s = En @ qn
+      idx = np.lexsort((np.arange(len(s)), -s))
+      return idx[:k]
+
+  def label_balance(labels):
+      c = Counter(labels)
+      return dict(c), max(c.values()) / len(labels)
+key_lines: [12, 13]
+time: "O(N·d) to score $N$ candidates, plus sorting; the prompt costs $O(L^2)$ attention for length $L$"
+space: "O(N·d) for the example embeddings, and the $k$ examples add to the context length"
+when_to_use: |
+  A new task with a handful of labelled cases and no budget for
+  fine-tuning, when output format matters, or when a large labelled
+  pool exists and similar cases can be retrieved per query.
+when_not_to_use: |
+  When examples would not fit in the context window, when the task is
+  well served by an instruction alone, or when thousands of labelled
+  cases justify fine-tuning a smaller, cheaper model.
+why_it_works: |
+  Pretraining on text full of repeated patterns teaches a large model
+  to continue a pattern it sees, so the examples act as a task
+  specification read at inference time. Retrieval by cosine similarity
+  chooses demonstrations whose inputs are close to the query, so the
+  needed input-output mapping is shown locally. Why in-context learning
+  works internally is still an open research question.
+math:
+  - "cos(q, eᵢ) = q·eᵢ / (‖q‖ ‖eᵢ‖)"
+  - "S = top-k of cos(q, eᵢ) over i = 1..N"
+  - "L = L_instr + Σ over S (Lₓ + L_y) + L_q"
+  - "Limit: L ≤ context length"
+  - "p_c = n_c / k,  imbalance = max_c p_c"
+interview_qa:
+  - q: "How is few-shot prompting different from fine-tuning?"
+    a: "It changes only the input, not the weights, so it is instant and reversible, but the examples use context on every call and the gain is bounded by what fits."
+  - q: "Why select examples by similarity instead of at random?"
+    a: "Examples close to the query show the model a nearby solved case, which usually helps more than random ones, though it can overfit to surface similarity."
+  - q: "Does the order of the examples matter?"
+    a: "Yes. Models are often sensitive to order, with recent examples weighing more, so teams fix an order such as most similar last and test it."
+  - q: "What goes wrong with an unbalanced example set?"
+    a: "The model leans towards the majority label, so a set that is mostly one class inflates that prediction."
+hyperparameters:
+  - "Number of examples $k$ (limited by the context window)"
+  - "Selection rule: random, cosine top-$k$, or diverse (such as MMR)"
+  - "Example order, for instance most similar last"
+  - "Prompt template and separators between blocks"
+pitfalls:
+  - "Choosing examples that all share one label biases the model towards that label"
+  - "Retrieving near-duplicates of the query can leak the answer in evaluation, so exclude the query itself from the pool"
+  - "A format that differs between examples and the query confuses the completion; use one template for all blocks"
+related: [cosine-similarity-embeddings, rag-dense-retrieval, context-window-limits]
+math_tex:
+- 'Cosine: $\frac{q \cdot e_i}{\|q\|\,\|e_i\|}$'
+- 'Pick $S$ = top-$k$ of $\cos(q, e_i)$'
+- 'Length: $L = L_{instr} + \sum_{S}(L_x + L_y) + L_q$'
+- 'Limit: $L \leq$ context length'
+- 'Balance: $p_c = \frac{n_c}{k}$, imbalance $= \max_c p_c$'

@@ -28,5 +28,6 @@ problems:
 - batch-normalization
 - layer-normalization
 - feature-scaling
+- llama-rmsnorm-gqa
 aliases:
 - Normalisation

@@ -1,0 +1,118 @@
+slug: prompt-templates
+title: Prompt Templates and Safe Variable Filling
+url: https://developers.openai.com/api/docs/guides/prompt-engineering
+difficulty: Easy
+area: LLM
+topics: [LLM, Prompt Engineering, Prompt Injection]
+summary: |
+  A prompt template has named placeholders filled from variables, with
+  strict checks for missing or extra values, delimiters around
+  untrusted text, a token budget, and a version label.
+intuition: |
+  A template separates fixed instructions from variable data, and
+  that boundary is a security boundary. If user text is pasted in raw,
+  it can contain placeholders, braces or a closing tag and rewrite the
+  prompt. Filling in a single pass, wrapping untrusted values in
+  delimiters, and removing the delimiter from the value keeps data
+  as data.
+  Flow: template → check variables → wrap untrusted → fill → fit budget.
+approach:
+  - "Parse $\\{name\\}$ placeholders and treat doubled braces as literals — the template declares exactly what it needs"
+  - "Raise on missing or extra variables — a typo fails loudly instead of leaking a raw placeholder"
+  - "Fill in one regex pass over the template — braces inside values are never re-expanded"
+  - "Wrap untrusted values in delimiters and strip the delimiter from the value — user text cannot close the block"
+  - "Truncate the long variable to the token budget left after the fixed text — the prompt always fits"
+code: |
+  import re
+
+  PAT = re.compile(r"\{\{|\}\}|\{(\w+)\}")
+  OPEN, CLOSE = "<data>", "</data>"
+
+  def fields(t):
+      return sorted({m.group(1) for m in PAT.finditer(t)
+                     if m.group(1)})
+
+  def render(t, **v):
+      need = set(fields(t))
+      if need - v.keys():
+          raise KeyError(f"missing: {sorted(need - v.keys())}")
+      if v.keys() - need:
+          raise KeyError(f"extra: {sorted(v.keys() - need)}")
+      return PAT.sub(
+          lambda m: str(v[m.group(1)]) if m.group(1)
+          else m.group(0)[0], t)
+
+  def wrap(value):
+      s = str(value)
+      while OPEN in s or CLOSE in s:
+          s = s.replace(OPEN, "").replace(CLOSE, "")
+      return OPEN + s + CLOSE
+
+  def safe_render(t, untrusted=(), **v):
+      v = {k: wrap(x) if k in untrusted else x
+           for k, x in v.items()}
+      return render(t, **v)
+
+  def count(s):
+      return len(s.split())
+
+  def render_budget(t, var, limit, **v):
+      room = limit - count(render(t, **{**v, var: ""}))
+      if room < 0:
+          raise ValueError("fixed text exceeds the budget")
+      words = str(v[var]).split()[:room]
+      return render(t, **{**v, var: " ".join(words)})
+
+  TEMPLATES = {("qa", 1): "Answer: {q}", ("qa", 2): "Q: {q}\nA:"}
+
+  def get(name, version=None):
+      v = version or max(k[1] for k in TEMPLATES if k[0] == name)
+      return TEMPLATES[(name, v)], v
+key_lines: [16, 22, 38]
+time: "O(L) per render for template plus values of total length L"
+space: "O(L) for the rendered prompt"
+when_to_use: |
+  Any application that builds prompts from variables: chat apps, RAG
+  prompts with retrieved passages, extraction jobs, evaluation harnesses
+  where the same instructions run over many inputs.
+when_not_to_use: |
+  One-off exploratory prompts. Delimiters reduce but do not remove
+  prompt injection, so they are not a substitute for permission checks
+  on tools and outputs.
+why_it_works: |
+  A single left-to-right substitution pass never re-reads inserted
+  text, so a value like "{secret}" stays literal and cannot pull in
+  another variable. Removing the delimiter from the value until none
+  remains guarantees the block ends only where the template ends it.
+  Whitespace tokens are only an approximation, so real systems count
+  with the model's own tokenizer.
+math:
+  - "prompt = fixed + Σ valueᵢ"
+  - "budget: tokens(fixed) + tokens(var) ≤ limit"
+  - "room = limit − tokens(fixed)"
+  - "kept = min(tokens(var), max(room, 0))"
+math_tex:
+- 'Prompt: $\mathrm{fixed} + \sum_i \mathrm{value}_i$'
+- 'Budget: $n_{fixed} + n_{var} \leq L$'
+- 'Room: $r = L - n_{fixed}$'
+- 'Kept: $\min(n_{var},\, \max(r, 0))$'
+interview_qa:
+  - q: "How can a user value break a naive template?"
+    a: "If values are substituted repeatedly or the delimiter is not stripped, user text can add placeholders or close the data block and inject its own instructions."
+  - q: "Why raise on extra variables as well as missing ones?"
+    a: "An extra variable usually means a renamed or misspelled placeholder, so the intended data silently never reaches the prompt."
+  - q: "Why version templates?"
+    a: "Prompt wording changes model behaviour, so pinning a version lets you reproduce results, compare changes and roll back."
+  - q: "Do delimiters stop prompt injection?"
+    a: "No. They help the model see where data starts and ends, but the model can still follow instructions inside the data, so other defences are needed."
+hyperparameters:
+  - "Delimiter strings (tags that cannot occur in normal data)"
+  - "Token limit $L$ and which variable absorbs truncation"
+  - "Strict or lenient handling of missing and extra variables"
+  - "Template version pinned per deployment"
+pitfalls:
+  - "Using str.format on user-controlled templates lets values reach attributes; use a fixed regex filler"
+  - "Stripping the delimiter once can leave a rebuilt delimiter such as </da</data>ta>; strip until stable"
+  - "Whitespace tokens undercount for real tokenizers, so leave a safety margin below the true context limit"
+  - "Truncating the middle or end of a variable may drop the part that matters; choose what to cut deliberately"
+related: [context-window-limits, autoregressive-decoding, structured-outputs-json-schema]

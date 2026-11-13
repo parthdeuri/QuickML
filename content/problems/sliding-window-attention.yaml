@@ -1,0 +1,86 @@
+slug: sliding-window-attention
+title: Sliding-Window (Local) Attention
+url: https://arxiv.org/abs/2310.06825
+difficulty: Medium
+area: LLM
+topics: [LLM, Attention, Long Context, Inference]
+summary: |
+  Each token attends only to itself and the previous $W - 1$ tokens
+  through a causal band mask, so cost grows as $T \cdot W$ instead of
+  $T^2$, and the KV cache can be a rolling buffer of size $W$.
+intuition: |
+  Most useful context is nearby, so a token does not need to look at
+  the whole prefix in every layer. Information still travels far,
+  because layer $l$ reads outputs that already mixed the previous
+  $W - 1$ positions of layer $l-1$; stacking $L$ layers gives a
+  receptive field of about $L \cdot W$ tokens. The cache only ever
+  needs the last $W$ keys and values, so memory is constant in length.
+  Flow: tokens → band mask → local attention → stack layers → far reach.
+approach:
+  - 'Build the band mask: allow $j \leq i$ and $j > i - W$ — causal and at most $W$ tokens back'
+  - 'Score $QK^{\top}$ and set masked entries to $-\infty$ — outside the window gets zero weight'
+  - 'Softmax over the window and mix values — each row mixes at most $W$ values'
+  - 'Stack layers — each layer extends how far information can travel'
+  - 'At decode time write the new key and value to slot $\mathrm{pos} \mathrm{mod} W$ — the buffer overwrites the oldest entry'
+code: |
+  import numpy as np
+
+  def band_mask(T, W):
+      i = np.arange(T)[:, None]
+      j = np.arange(T)[None, :]
+      return (j <= i) & (j > i - W)
+
+  def window_attn(q, k, v, W):
+      T = len(q)
+      s = q @ k.T / np.sqrt(q.shape[1])
+      s = np.where(band_mask(T, W), s, -np.inf)
+      e = np.exp(s - s.max(-1, keepdims=True))
+      return (e / e.sum(-1, keepdims=True)) @ v
+
+  def ring_update(K, V, k, v, pos):
+      K[pos % len(K)], V[pos % len(V)] = k, v
+key_lines: [6, 11, 16]
+time: "O(T·W·d) with a banded kernel, versus O(T²·d) for full attention"
+space: "O(W·d) KV cache per layer, constant in sequence length"
+when_to_use: |
+  Long sequences where nearby context dominates and a fixed-size cache
+  is needed, such as long-document generation on limited memory.
+when_not_to_use: |
+  Tasks that need exact retrieval of any earlier token in a single
+  layer, such as copying a fact from far back; a window can lose it
+  unless depth carries it forward.
+why_it_works: |
+  Restricting each row of the score matrix to $W$ entries removes the
+  quadratic term. Composing $L$ local layers still links positions up
+  to $L(W-1)$ apart, because each layer reaches $W-1$ tokens back and
+  the reach adds up. The rolling buffer works since keys older than
+  $W$ steps are masked out and never read again.
+math:
+  - "Mᵢⱼ = 0 if i − W < j ≤ i,  else −∞"
+  - "oᵢ = softmax((Qᵢ Kᵀ)/√d + Mᵢ) V"
+  - "Cost: T·W score entries vs T²/2 for full causal attention"
+  - "Receptive field after L layers = L·(W − 1) tokens back"
+  - "Ring slot = pos mod W,  cache = 2·W·d values per layer"
+interview_qa:
+  - q: "How can a window of $W$ see more than $W$ tokens?"
+    a: "Each layer's output already summarises the previous $W - 1$ positions, so after $L$ layers information has travelled about $L(W-1)$ tokens."
+  - q: "How does the rolling-buffer cache work?"
+    a: "The key and value for position $p$ go to slot $p \\mathrm{mod} W$, overwriting the entry from $W$ steps earlier, so the cache holds exactly the last $W$ tokens."
+  - q: "Does a dense mask make attention cheaper?"
+    a: "No. A masked dense matrix still costs $T^2$. The saving needs a banded or blocked kernel that skips masked entries."
+hyperparameters:
+  - "Window size $W$"
+  - "Number of layers $L$ (sets the receptive field with $W$)"
+  - "Optional global or sink tokens that every position can see"
+pitfalls:
+  - "Computing the full score matrix and then masking gives the right output but not the speed-up"
+  - "Off-by-one in the band: a window of $W$ includes the current token, so it reaches $W-1$ tokens back"
+  - "With a ring buffer, the slots are no longer in time order; positional encoding must use true positions"
+related: [causal-masking, kv-cache, self-attention]
+math_tex:
+- 'Mask: $M_{ij} = 0$ if $i - W < j \leq i$ else $-\infty$'
+- 'Out: $\mathrm{softmax}\left(\frac{Q_i K^{\top}}{\sqrt{d}} + M_i\right)V$'
+- 'Cost: $T \cdot W$ entries vs $\frac{T^2}{2}$'
+- 'Reach after $L$ layers: $L\,(W - 1)$'
+- 'Ring slot: $\mathrm{pos} \mathrm{mod} W$'
+patterns: ["Attention and sequences"]

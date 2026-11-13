@@ -1,0 +1,114 @@
+slug: role-system-prompts
+title: Roles, System Prompts and Chat Templates
+url: https://huggingface.co/docs/transformers/chat_templating
+difficulty: Easy
+area: LLM
+topics: [LLM, Prompting, Chat Templates]
+summary: |
+  A chat is a list of role-tagged messages (system, user, assistant,
+  tool); a chat template flattens it into the one token string the
+  model actually reads, ending with a marker that starts the reply.
+intuition: |
+  The model never sees a structured conversation, only a single
+  sequence of tokens in which role markers are ordinary text. The
+  system message is simply the first block of that sequence, trained to
+  be followed, so it sets standing behaviour but is not enforced by
+  anything outside the model. Treat it as strong advice, never as a
+  security boundary.
+  Flow: messages → validate → template → one string → tokens → reply.
+approach:
+  - "Check roles: one leading system message, then alternating user and assistant — malformed chats give out-of-distribution input"
+  - "Render each message as role marker, content and end marker — matches the format the model was tuned on"
+  - "Append the assistant marker as the generation prompt — tells the model the next tokens are its reply"
+  - "Trim old turns when over the token budget but never the system message — standing rules must survive"
+  - "Keep the most recent turns that fit and start on a user turn — the latest context matters most"
+code: |
+  import re
+
+  END = "<|end|>\n"
+
+  def render_chat(messages, gen_prompt=True):
+      s = "".join(f"<|{m['role']}|>\n{m['content']}\n{END}"
+                  for m in messages)
+      return s + ("<|assistant|>\n" if gen_prompt else "")
+
+  def validate_messages(msgs):
+      if not msgs or msgs[0]["role"] != "system":
+          raise ValueError("first message must be system")
+      nxt = {"system": {"user"}, "user": {"assistant"},
+             "assistant": {"user", "tool"},
+             "tool": {"tool", "assistant"}}
+      for a, b in zip(msgs, msgs[1:]):
+          if b["role"] not in nxt[a["role"]]:
+              raise ValueError(f"{a['role']} -> {b['role']}")
+
+  def trim_messages(msgs, budget, count):
+      cost = lambda m: count(render_chat([m], False))
+      left = budget - cost(msgs[0])
+      if left < 0:
+          raise ValueError("system message exceeds budget")
+      keep = []
+      for m in reversed(msgs[1:]):
+          if cost(m) > left:
+              break
+          keep.append(m)
+          left -= cost(m)
+      keep.reverse()
+      while keep and keep[0]["role"] != "user":
+          keep.pop(0)
+      return [msgs[0]] + keep
+
+  def parse_chat(text):
+      pat = r"<\|(\w+)\|>\n(.*?)\n<\|end\|>\n"
+      return [{"role": r, "content": c}
+              for r, c in re.findall(pat, text, re.S)]
+key_lines: [6, 18, 28]
+time: "O(total characters) to render, validate or trim; the model then pays $O(L^2)$ attention over the rendered length $L$"
+space: "O(total characters) for the rendered string"
+when_to_use: |
+  Any chat or agent application: set persistent behaviour and format
+  rules in the system message, pass tool results back with the tool
+  role, and render with the template the model was trained on.
+when_not_to_use: |
+  As the only defence against prompt injection or data leaks. Secrets
+  and permissions belong in application code, because a user or a
+  retrieved document can talk the model out of a system rule.
+why_it_works: |
+  Chat models are fine-tuned on text rendered by one specific template,
+  so reproducing that template exactly puts the input in the
+  distribution the model learned to follow. Role markers let the model
+  weight a system message above later user text, but this is learned
+  behaviour, not enforcement, and the generation prompt makes the next
+  tokens an assistant reply instead of a continuation of the user turn.
+math:
+  - "input = template(m₁, ..., mₙ) + assistant marker"
+  - "T = Σᵢ tokens(mᵢ) + tokens(marker)"
+  - "Need T ≤ context length"
+  - "trim: keep m₀ (system), then the newest turns while T ≤ B"
+  - "P(reply | rendered chat) = Πₜ P(yₜ | rendered chat, y<ₜ)"
+interview_qa:
+  - q: "Why must you use the model's own chat template?"
+    a: "The model was fine-tuned on one exact format of control tokens, and a different format gives out-of-distribution input and usually worse behaviour."
+  - q: "Is a system prompt a security boundary?"
+    a: "No. It is text the model is trained to follow, so a crafted user message or retrieved document can override it. Enforce permissions outside the model."
+  - q: "What does the generation prompt do?"
+    a: "It adds the assistant start marker at the end, so the model writes a reply instead of continuing the user message."
+  - q: "How do you trim a long conversation safely?"
+    a: "Always keep the system message, drop the oldest turns first, and keep what remains well formed, starting on a user turn."
+hyperparameters:
+  - "Template and special tokens (fixed by the model)"
+  - "Token budget $B$ for the whole rendered chat"
+  - "Reserve of tokens for the reply"
+  - "Trimming policy: drop oldest turns or summarise them"
+pitfalls:
+  - "User text containing role markers such as the system tag can forge a role unless markers are escaped or stripped"
+  - "Tokenizing a rendered string with extra special tokens can duplicate BOS or EOS; let the template add them"
+  - "Counting tokens of content only, not of markers, undercounts the budget"
+  - "Dropping the system message to save tokens silently removes the rules and persona"
+related: [context-window-limits, autoregressive-decoding, hallucination-detection]
+math_tex:
+- 'Input: $\mathrm{template}(m_1,\ldots,m_n)$ + marker'
+- 'Budget: $T = \sum_i \mathrm{tokens}(m_i)$'
+- 'Need $T \leq$ context length'
+- 'Trim: keep $m_0$, newest turns while $T \leq B$'
+- 'Reply: $\prod_t P(y_t \mid \mathrm{chat}, y_{<t})$'

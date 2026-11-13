@@ -1,0 +1,110 @@
+slug: context-engineering
+title: Context Engineering and Token Budgeting
+url: https://arxiv.org/abs/2307.03172
+difficulty: Medium
+area: LLM
+topics: [LLM, Context Window, Prompting, RAG]
+summary: |
+  Treat the context window as a budget: reserve room for the output,
+  spend the rest on the system prompt, recent history and the retrieved
+  chunks with the best score per token, and place key facts at the ends.
+intuition: |
+  A context window is a fixed number of tokens shared by everything the
+  model reads and writes, so every extra document displaces something
+  else. Choosing what to include is a knapsack problem: take the chunks
+  that give the most relevance per token, keep the most recent turns of
+  history, and never spend the tokens reserved for the answer. Order
+  matters too, since models use the start and end of a long prompt more
+  reliably than the middle.
+  Flow: window → reserve output → budget history → pack chunks by score per token → order.
+approach:
+  - "Subtract the output reserve and the system prompt from the window — what remains is the input budget"
+  - "Give history a share of that budget and keep the newest turns that fit — recent turns matter most"
+  - "Give the rest to retrieved chunks, sorted by value density $v_i / t_i$ — the greedy knapsack rule"
+  - "Add a chunk only if it still fits, and keep scanning — a smaller later chunk may fit in the leftover space"
+  - "Report tokens used per part and the slack — proves the total never exceeds the window minus the reserve"
+code: |
+  def pack_chunks(chunks, budget):
+      order = sorted(chunks, key=lambda c: -c[2] / c[1])
+      kept, used = [], 0
+      for name, tok, score in order:
+          if used + tok <= budget:
+              kept.append(name)
+              used += tok
+      return kept, used
+
+  def truncate_history(turns, budget):
+      kept, used = [], 0
+      for role, tok in reversed(turns):
+          if used + tok > budget:
+              break
+          kept.append((role, tok))
+          used += tok
+      return kept[::-1], used
+
+  def order_for_attention(chunks):
+      ranked = sorted(chunks, key=lambda c: -c[2])
+      front, back = ranked[0::2], ranked[1::2]
+      return front + back[::-1]
+
+  def build_context(window, system, reserve, history, chunks,
+                    share=0.4):
+      avail = window - reserve - system
+      kept_h, used_h = truncate_history(history, int(share * avail))
+      names, used_c = pack_chunks(chunks, avail - used_h)
+      total = system + used_h + used_c
+      return dict(system=system, history=used_h, docs=used_c,
+                  reserve=reserve, total_in=total,
+                  slack=window - reserve - total, chunks=names)
+key_lines: [2, 5, 27]
+time: "O(n log n) to sort $n$ chunks, then O(n) to pack; O(m) for $m$ history turns"
+space: "O(n + m) for the kept lists"
+when_to_use: |
+  Any prompt assembled from several sources, such as RAG, chat with
+  long history or tool outputs, where the total can exceed the window or
+  where cost and latency grow with prompt length.
+when_not_to_use: |
+  Short prompts that fit comfortably, or tasks where every source is
+  essential, so nothing can be dropped. When exact optimality matters
+  on a small set, solve the knapsack exactly instead of greedily.
+why_it_works: |
+  Greedy by value density is optimal for the fractional knapsack, where
+  a chunk may be split. For whole chunks it can be suboptimal, but the
+  better of the greedy value and the best single chunk is at least half
+  the optimum. Keeping the newest turns reflects that recent context is
+  usually the most relevant, and reserving output tokens guarantees the
+  model has room to answer.
+math:
+  - "Σᵢ∈S tᵢ ≤ W − R − t_sys   (window W, output reserve R)"
+  - "maximise Σᵢ∈S vᵢ  subject to  Σᵢ∈S tᵢ ≤ B"
+  - "density ρᵢ = vᵢ / tᵢ;  take chunks in decreasing ρᵢ while they fit"
+  - "max(V_greedy, max vᵢ) ≥ V_opt / 2"
+  - "B_docs = W − R − t_sys − t_hist"
+  - "slack = W − R − (t_sys + t_hist + t_docs) ≥ 0"
+interview_qa:
+  - q: "Why reserve tokens for the output?"
+    a: "Input and output share the window, so a prompt that fills it leaves no room to generate, which truncates or fails the answer."
+  - q: "Why is greedy by score per token not always optimal?"
+    a: "Chunks are indivisible. A dense chunk can use space that would have fit two slightly less dense ones with more total value."
+  - q: "How do you decide what to drop from long chat history?"
+    a: "Drop the oldest turns first, or replace them with a summary, and keep the system prompt and recent turns that the next reply depends on."
+  - q: "Where should the most important facts go in a long prompt?"
+    a: "Near the start or end, since models tend to use information in the middle of a long context less reliably."
+hyperparameters:
+  - "Output reserve $R$ in tokens"
+  - "History share of the input budget"
+  - "Chunk scoring function (retrieval similarity, reranker score)"
+  - "Summarise-or-drop policy for old turns"
+pitfalls:
+  - "Token counts must come from the model's own tokenizer; counting words or characters undercounts"
+  - "Greedy by density can be suboptimal for whole chunks, so compare against exact search on small cases"
+  - "Stopping at the first chunk that does not fit leaves budget unused; keep scanning smaller ones"
+  - "Dropping turns can remove the question a later turn refers to, so summarise or keep the pairs together"
+related: [context-window-limits, rag-dense-retrieval, kv-cache]
+math_tex:
+- 'Budget: $\sum_{i \in S} t_i \leq W - R - t_{sys}$'
+- 'Maximise $\sum_{i \in S} v_i$ s.t. $\sum t_i \leq B$'
+- 'Density: $\rho_i = \frac{v_i}{t_i}$, take by decreasing $\rho_i$'
+- 'Bound: $\max(V_{greedy}, \max_i v_i) \geq \frac{V_{opt}}{2}$'
+- 'Docs: $B_{docs} = W - R - t_{sys} - t_{hist}$'
+- 'Slack: $W - R - t_{in} \geq 0$'

@@ -1,0 +1,101 @@
+slug: rlhf-kl-penalty
+title: RLHF Objective and the KL Penalty
+url: https://arxiv.org/abs/1909.08593
+difficulty: Hard
+area: LLM
+topics: [LLM, RLHF, KL Divergence, Alignment]
+summary: |
+  RLHF maximises the reward-model score while a KL penalty keeps the
+  policy $\pi$ close to the reference (SFT) policy $\pi_{ref}$; per
+  token, the penalty becomes a small negative reward on every step.
+intuition: |
+  A reward model is only trusted near the data it was trained on, so an
+  optimiser that follows it freely finds gibberish that scores high. The
+  KL term prices every step away from the reference: drift is allowed
+  only when the reward gain pays for it, and $\beta$ sets the exchange
+  rate. Because sequences are sampled from $\pi$, the KL is estimated
+  from samples, and the estimator choice matters for noise.
+  Flow: sample → compare to reference → penalise drift → add score → update.
+approach:
+  - "Sample a response from $\\pi$ and record $\\log\\pi$ at each token — the samples define the expectation"
+  - "Record $\\log\\pi_{ref}$ for the same tokens — the reference is frozen"
+  - "Give every token reward $-\\beta(\\log\\pi - \\log\\pi_{ref})$ — a per-token drift penalty"
+  - "Add the reward-model score at the final token only — a sequence-level score on top"
+  - "Hand these rewards to the policy-gradient step — the penalty is part of the reward, not the loss"
+  - "To monitor KL use $k_3$ — unbiased and lower variance than $k_1$"
+code: |
+  import numpy as np
+
+  def exact_kl(p, q):
+      p, q = np.asarray(p), np.asarray(q)
+      return float(np.sum(p * np.log(p / q)))
+
+  def kl_estimators(logp, logq):
+      # samples x ~ p; ratio r = q/p
+      lr = np.asarray(logq) - np.asarray(logp)
+      k1 = -lr
+      k2 = 0.5 * lr ** 2
+      k3 = (np.exp(lr) - 1) - lr
+      return k1, k2, k3
+
+  def shaped_rewards(logp, logp_ref, final_reward, beta):
+      r = -beta * (np.asarray(logp) - np.asarray(logp_ref))
+      r = r.astype(float)
+      r[-1] += final_reward
+      return r
+key_lines: [10, 12, 18]
+time: "O(T) per sampled sequence of $T$ tokens once log-probabilities are known"
+space: "O(T) per sequence, plus a frozen copy of the reference model"
+when_to_use: |
+  Any RL-style fine-tuning against a learned reward (PPO-style RLHF),
+  and as a monitor of how far a tuned policy has moved from its start.
+when_not_to_use: |
+  Preference methods that fold the reference into the loss, such as
+  DPO, need no separate penalty term. With a verifiable reward and no
+  reward hacking risk the penalty may be set very small.
+why_it_works: |
+  The objective $\mathbb{E}[r] - \beta\,\mathrm{KL}(\pi\|\pi_{ref})$
+  is maximised by a policy proportional to $\pi_{ref}\,e^{r/\beta}$,
+  the reference reweighted by exponentiated reward. KL over a sequence
+  is the expected sum of per-token log-ratios, so charging each token
+  its log-ratio gives the same total. $k_3$ adds the control variate
+  $(q/p - 1)$, which has mean zero under $p$, so it stays unbiased but
+  is always non-negative and has lower variance.
+math:
+  - "J(π) = E[r(x,y)] − β · KL(π ‖ π_ref)"
+  - "KL(p ‖ q) = Σ p(x) log(p(x)/q(x))"
+  - "π* ∝ π_ref(y|x) · exp(r(x,y)/β)"
+  - "rₜ = −β (log π(aₜ|sₜ) − log π_ref(aₜ|sₜ))"
+  - "r_T gets an extra + r_RM(x, y) at the final token"
+  - "k₁ = log(p/q),  k₂ = ½ (log(p/q))²"
+  - "k₃ = (q/p − 1) − log(q/p)"
+  - "E_p[k₁] = E_p[k₃] = KL(p ‖ q)"
+interview_qa:
+  - q: "Why is a KL penalty needed in RLHF?"
+    a: "The reward model is a proxy that is only reliable near the data it was trained on. Without the penalty the policy exploits its errors and drifts to degenerate text that scores high."
+  - q: "How does the sequence-level KL become per-token rewards?"
+    a: "The sequence log-ratio is the sum of per-token log-ratios, so charging $-\\beta$ times each token's log-ratio sums to $-\\beta$ times the sequence log-ratio, and the reward-model score is added at the last token."
+  - q: "Why prefer $k_3$ over $k_1$ for estimating KL?"
+    a: "Both are unbiased under samples from $p$, but $k_1$ can be negative per sample and is noisy, while $k_3$ is always non-negative and has lower variance."
+  - q: "What does $\\beta$ control?"
+    a: "The trade-off between reward and staying near the reference. Large $\\beta$ keeps the policy close and the gain small; small $\\beta$ lets it drift and risks reward hacking."
+hyperparameters:
+  - "KL coefficient $\\beta$, fixed or adapted toward a target KL"
+  - "Choice of estimator ($k_1$, $k_2$ or $k_3$) for logging or for a loss term"
+  - "Whether the penalty is a reward term or a separate loss term"
+pitfalls:
+  - "Samples must come from $\\pi$ (the first argument); sampling from $\\pi_{ref}$ flips the direction and biases the estimate"
+  - "$k_1$ per sample can be negative, so a negative running KL is noise, not a bug in the model"
+  - "Using the policy's log-probabilities under a different temperature or mask than at sampling time corrupts the ratio"
+  - "A reference that is not frozen turns the anchor into a moving target"
+related: [reward-model-bradley-terry, ppo-clipped-objective, dpo-loss]
+math_tex:
+- '$J(\pi) = \mathbb{E}[r(x,y)] - \beta\,\mathrm{KL}(\pi \| \pi_{ref})$'
+- 'KL: $\sum_{x} p(x)\,\log\frac{p(x)}{q(x)}$'
+- 'Optimum: $\pi^{*} \propto \pi_{ref}\,\exp(r/\beta)$'
+- 'Per token: $r_t = -\beta(\log\pi - \log\pi_{ref})$'
+- 'Last token adds $r_{RM}(x,y)$ to $r_T$'
+- '$k_1 = \log\frac{p}{q}$ and $k_2 = \frac{1}{2}(\log\frac{p}{q})^2$'
+- '$k_3 = (\frac{q}{p} - 1) - \log\frac{q}{p}$'
+- 'Unbiased: $\mathbb{E}_p[k_1] = \mathbb{E}_p[k_3] = \mathrm{KL}(p \| q)$'
+patterns: ["Preference alignment and policy gradients"]

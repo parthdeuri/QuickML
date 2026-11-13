@@ -1,0 +1,113 @@
+slug: gpt-decoder-only
+title: GPT Decoder-Only Language Model (Full Forward Pass)
+url: https://huggingface.co/docs/transformers/model_doc/gpt2
+difficulty: Hard
+area: LLM
+topics: [LLM, Transformers, GPT, Weight Tying]
+summary: |
+  The whole GPT model: token plus position embeddings, $N$ pre-norm
+  causal blocks, a final LayerNorm, and a vocabulary projection that
+  reuses the embedding matrix, giving next-token logits at every position.
+intuition: |
+  Where the block card shows one layer, this is the full model. Token
+  ids become vectors, a learned position vector is added so the model
+  knows order, and $N$ identical causal blocks refine a residual stream.
+  A final LayerNorm and the transposed embedding matrix turn each
+  position back into scores over the vocabulary. Training scores every
+  position's next token in one pass; generation feeds the sampled token
+  back in. GPT is decoder-only: no encoder and no cross-attention, unlike
+  BERT (encoder-only, bidirectional) or T5 (encoder-decoder).
+  Flow: token ids → embeddings + positions → N blocks → final norm → logits.
+approach:
+  - "Look up token embeddings $E[\\text{id}]$ and add learned position rows $P[t]$ — the stream starts as $(T, d)$"
+  - "Run $N$ pre-norm blocks, each adding causal attention and a GELU MLP to the stream — the residual path stays identity"
+  - "Apply a final LayerNorm — pre-norm stacks leave the stream unnormalised"
+  - "Multiply by $E^{\\top}$ (weight tying) — logits $(T, V)$ with no extra output matrix"
+  - "Train with cross-entropy of row $t$ against token $t+1$; generate by sampling the last row and appending — same weights, two uses"
+code: |
+  import numpy as np
+
+  def ln(x, g, b, eps=1e-5):
+      m = x.mean(-1, keepdims=True)
+      v = x.var(-1, keepdims=True)
+      return g * (x - m) / np.sqrt(v + eps) + b
+
+  def gelu(t):
+      c = np.sqrt(2 / np.pi)
+      return 0.5 * t * (1 + np.tanh(c * (t + 0.044715 * t**3)))
+
+  def attn(x, B, h):
+      T, d = x.shape
+      q, k, v = np.split(x @ B["Wqkv"] + B["bqkv"], 3, -1)
+      q, k, v = (m.reshape(T, h, d // h).transpose(1, 0, 2)
+                 for m in (q, k, v))
+      s = q @ k.transpose(0, 2, 1) / np.sqrt(d // h)
+      s = np.where(np.triu(np.ones((T, T), bool), 1), -np.inf, s)
+      e = np.exp(s - s.max(-1, keepdims=True))
+      a = (e / e.sum(-1, keepdims=True)) @ v
+      return a.transpose(1, 0, 2).reshape(T, d) @ B["Wo"] + B["bo"]
+
+  def block(x, B, h):
+      x = x + attn(ln(x, B["g1"], B["b1"]), B, h)
+      y = gelu(ln(x, B["g2"], B["b2"]) @ B["W1"] + B["c1"])
+      return x + y @ B["W2"] + B["c2"]
+
+  def gpt_forward(token_ids, params, heads=2):
+      T = len(token_ids)
+      x = params["wte"][token_ids] + params["wpe"][:T]
+      for B in params["blocks"]:
+          x = block(x, B, heads)
+      x = ln(x, params["gf"], params["bf"])
+      return x @ params["wte"].T
+key_lines: [30, 33, 34]
+time: "O(N·(T²·d + T·d²) + T·d·V) per forward pass"
+space: "O(h·T²) scores per block plus O(T·d) stream and O(T·V) logits"
+when_to_use: |
+  Understanding or implementing any GPT-style language model, and for
+  explaining how training (parallel next-token loss) and inference
+  (autoregressive decoding) share one network.
+when_not_to_use: |
+  Tasks that need bidirectional encoding of a fixed input, such as
+  classification or span filling, where an encoder fits better, or
+  sequence-to-sequence tasks where an encoder-decoder is a natural fit.
+why_it_works: |
+  The causal mask makes row $t$ of the logits depend only on tokens up
+  to $t$, so one pass gives $T$ valid training predictions and the same
+  network decodes token by token. Tying the output matrix to $E$ means
+  the embedding and the scoring of each token share one vector, which
+  saves $V \cdot d$ parameters and ties input and output meaning.
+math:
+  - "h⁰ = E[ids] + P[0:T]"
+  - "hˡ = hˡ⁻¹ + Attn(LN(hˡ⁻¹)),  then  + FFN(LN(·))"
+  - "z = LN_f(hᴺ)"
+  - "logits = z Eᵀ  (weight tying), shape (T, V)"
+  - "p(xₜ₊₁ | x≤ₜ) = softmax(logitsₜ)"
+  - "Loss = −(1/T) Σₜ log p(xₜ₊₁ | x≤ₜ)"
+interview_qa:
+  - q: "What makes GPT decoder-only, and how does it differ from BERT and T5?"
+    a: "GPT is a single stack with causal self-attention and no encoder or cross-attention. BERT is encoder-only with bidirectional attention, and T5 pairs an encoder with a decoder that cross-attends to it."
+  - q: "What is weight tying and why use it?"
+    a: "The output projection reuses the token embedding matrix, so logits are $z E^{\\top}$. It saves $V d$ parameters and often helps small models."
+  - q: "How is the same model trained and then used for generation?"
+    a: "Training applies a causal mask and next-token cross-entropy at all positions in parallel. Generation runs the same forward pass, samples from the last row and appends it, usually with a KV cache."
+  - q: "Why a final LayerNorm before the logits?"
+    a: "With pre-norm the residual stream is never normalised inside the stack, so one last LayerNorm gives the output projection a stable scale."
+hyperparameters:
+  - "Vocabulary size $V$ and context length $T_{\\max}$ (size of the position table)"
+  - "Width $d$, heads $h$ and layers $N$"
+  - "MLP hidden size, typically $4d$"
+  - "Whether the output matrix is tied to the embedding"
+pitfalls:
+  - "Using $E$ instead of $E^{\\top}$ for the output, or transposing GPT-2 Conv1D weights that are already stored as (in, out)"
+  - "Feeding more tokens than the position table holds; learned absolute positions cannot extrapolate"
+  - "Forgetting the final LayerNorm, which changes every logit"
+  - "Mixing up shifts: row $t$ predicts token $t+1$, so targets are the inputs shifted left by one"
+related: [decoder-only-block, bert-masked-lm, next-token-prediction-loss]
+math_tex:
+- 'Embed: $h^0 = E[\mathrm{ids}] + P_{0:T}$'
+- 'Blocks: $h^{l} = h^{l-1} + \mathrm{Attn}(\mathrm{LN}(h^{l-1}))$, then FFN'
+- 'Final norm: $z = \mathrm{LN}_f(h^N)$'
+- 'Tied: $\mathrm{logits} = z\,E^{\top}$, shape $(T, V)$'
+- 'Next token: $p(x_{t+1} \mid x_{\leq t}) = \mathrm{softmax}(\mathrm{logits}_t)$'
+- 'Loss: $-\frac{1}{T}\sum_t \log p(x_{t+1} \mid x_{\leq t})$'
+patterns: ["Attention and sequences"]

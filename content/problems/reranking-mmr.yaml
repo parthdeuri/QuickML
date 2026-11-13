@@ -1,0 +1,105 @@
+slug: reranking-mmr
+title: Reranking and MMR Diversity
+url: https://www.sbert.net/examples/applications/retrieve_rerank/README.html
+difficulty: Medium
+area: LLM
+topics: [Reranking, Cross-Encoder, Maximal Marginal Relevance, Retrieval]
+summary: |
+  Retrieve many candidates with a fast first stage, reorder the best few
+  with a slower, more accurate reranker, and pick results with Maximal
+  Marginal Relevance so they are relevant and not redundant.
+intuition: |
+  A bi-encoder embeds the query and each document separately, so one
+  vector search scans millions of items cheaply, but the query and
+  document never see each other. A cross-encoder reads them together and
+  judges far better, yet is too slow to run on the whole corpus. So use
+  the cheap model for recall over about 100 candidates and the costly one
+  for precision over the top few. MMR adds a second fix: the top-k by
+  similarity are often near-duplicates, so each new pick is penalised for
+  resembling what is already chosen.
+  Flow: query → 100 candidates → cross-encoder rerank → MMR → top few.
+why_it_works: |
+  Joint encoding lets every query word interact with every document
+  word, which a single dot product between two independent vectors
+  cannot express, and running it on only $N \ll |D|$ candidates keeps
+  the cost bounded. MMR is greedy: the score $\lambda\,\mathrm{sim}(d,q)$
+  rewards relevance while $(1-\lambda)\max_{s \in S}\mathrm{sim}(d,s)$
+  charges for overlap with the closest already selected item, so
+  $\lambda=1$ is plain top-$k$ and smaller $\lambda$ trades relevance for
+  coverage.
+when_to_use: |
+  RAG and search where the first stage has good recall but noisy order,
+  and where the prompt budget is small enough that duplicated passages
+  waste it.
+when_not_to_use: |
+  When latency is tight and the first stage is already precise, when the
+  candidate list is tiny, or when the task wants every near-duplicate,
+  for example exhaustive legal or audit retrieval.
+math:
+  - "MMR: next = argmax over d ∉ S of"
+  - "   λ·sim(d, q) − (1 − λ)·max over s ∈ S of sim(d, s)"
+  - "λ = 1 gives plain top-k;  λ = 0 gives pure diversity"
+  - "Unit vectors: sim(a, b) = a·b"
+  - "Diversity(S) = mean over pairs i<j of sim(sᵢ, sⱼ)"
+  - "Rerank: sort candidates by f(q, d), keep the top n"
+approach:
+  - "Retrieve N candidates with the fast bi-encoder index — cheap and high recall"
+  - "Score each (query, candidate) pair with the cross-encoder — reads both together, so it is more accurate"
+  - "Sort by that score and keep top_n — the expensive model only saw N pairs"
+  - "Run MMR over the kept vectors, starting from the most relevant — the first pick has no redundancy penalty"
+  - "At each step pick the item with the best relevance minus redundancy — avoids near-duplicates"
+  - "Measure mean pairwise similarity of the result — lower means more diverse"
+code: |
+  import numpy as np
+
+  def mmr(q, D, k, lam):
+      rel = D @ q
+      sel, rest = [], list(range(len(D)))
+      while rest and len(sel) < k:
+          def score(i):
+              red = max((D[i] @ D[j] for j in sel), default=0.0)
+              return lam * rel[i] - (1 - lam) * red
+          best = max(rest, key=score)
+          sel.append(best)
+          rest.remove(best)
+      return sel
+
+  def rerank(candidates, score_fn, top_n):
+      ranked = sorted(candidates, key=score_fn, reverse=True)
+      return ranked[:top_n]
+
+  def diversity(D, idx):
+      S = D[idx] @ D[idx].T
+      n = len(idx)
+      return (S.sum() - n) / (n * (n - 1))
+key_lines: [8, 9, 10]
+time: "O(k·n·d) for MMR over n candidates; the reranker costs one model forward pass per candidate"
+space: "O(n·d) for candidate vectors"
+hyperparameters:
+  - "Number of first-stage candidates N"
+  - "Number kept after reranking, top_n"
+  - "Trade-off $\\lambda$ in MMR (about 0.5 to 0.7 is common)"
+  - "Choice of reranker model and its max input length"
+pitfalls:
+  - "MMR scores here use vector similarity; mixing a cross-encoder score with a cosine in the same formula puts them on different scales"
+  - "If the first stage misses the right document, no reranker can recover it; check first-stage recall"
+  - "Reranker latency grows linearly with candidates; cap N and batch the pairs"
+  - "Lowering $\\lambda$ too far drops relevant items just to be different"
+interview_qa:
+  - q: "Why not use a cross-encoder for the whole corpus?"
+    a: "It must run a forward pass per query-document pair, so cost scales with corpus size and nothing can be precomputed. A bi-encoder precomputes document vectors, so search is a fast nearest-neighbour lookup."
+  - q: "What does $\\lambda$ control in MMR?"
+    a: "$\\lambda=1$ ignores redundancy and returns plain top-$k$ by similarity to the query, while $\\lambda=0$ ignores the query and keeps picking the item least similar to those chosen."
+  - q: "Where does the first MMR pick come from?"
+    a: "The redundancy term is empty for an empty selected set, so the first pick is the most relevant document whenever $\\lambda>0$."
+  - q: "How would you measure whether reranking helped?"
+    a: "Compare ranking metrics such as recall@k or MRR on labelled queries with and without the reranker, and check the added latency."
+related: [rag-dense-retrieval, cosine-similarity-embeddings, retrieval-metrics-recall-at-k]
+math_tex:
+- 'MMR: next $= \arg\max_{d \notin S}$'
+- '$\lambda\,\mathrm{sim}(d,q) - (1-\lambda)\max_{s \in S}\mathrm{sim}(d,s)$'
+- '$\lambda=1$ gives plain top-$k$; $\lambda=0$ pure diversity'
+- 'Unit vectors: $\mathrm{sim}(a,b) = a \cdot b$'
+- 'Diversity: $\frac{2}{n(n-1)}\sum_{i<j}\mathrm{sim}(s_i,s_j)$'
+- 'Rerank: sort by $f(q,d)$, keep the top $n$'
+patterns: ["Text evaluation and retrieval"]

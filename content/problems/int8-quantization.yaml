@@ -1,0 +1,99 @@
+slug: int8-quantization
+title: Int8 Post-Training Quantization
+url: https://arxiv.org/abs/2208.07339
+difficulty: Medium
+area: LLM
+topics: [Quantization, Inference, Efficiency]
+summary: |
+  Store weights and activations as 8-bit integers plus a float scale,
+  multiply in integers with 32-bit accumulation, then rescale the result.
+intuition: |
+  A float tensor only needs enough levels to land within rounding
+  distance of its true values, and 255 evenly spaced levels between
+  $-\max|x|$ and $\max|x|$ often suffice. The cost is that one scale
+  serves a whole group of numbers, so a single outlier stretches the step
+  size for everyone else; giving each output channel its own scale, or
+  handling outliers separately, keeps the step small.
+  Flow: float tensor → absmax scale → round to int8 → integer matmul → rescale.
+approach:
+  - "Find $\\max|x|$ over the group (tensor or channel) — it sets the range"
+  - "Set $s = \\max|x|/127$ — the largest value maps to 127"
+  - "Round $q = \\mathrm{clip}(\\mathrm{round}(x/s), -127, 127)$ — every value lands on an integer level"
+  - "Multiply int8 operands accumulating in int32 — products of 8-bit values overflow 8 bits"
+  - "Rescale the int32 result by $s_x s_w$ — returns to the float scale of $XW^{\\top}$"
+code: |
+  import numpy as np
+
+  def quantize_sym(x, axis=None):
+      m = np.abs(x).max(axis=axis, keepdims=True)
+      s = np.where(m == 0, 1.0, m / 127)
+      q = np.clip(np.round(x / s), -127, 127)
+      return q.astype(np.int8), s
+
+  def dequantize(q, s):
+      return q.astype(np.float64) * s
+
+  def quantize_asym(x):
+      lo, hi = x.min(), x.max()
+      s = (hi - lo) / 255
+      z = -128 - int(round(lo / s))
+      q = np.clip(np.round(x / s) + z, -128, 127)
+      return q.astype(np.int8), s, z
+
+  def int8_matmul(xq, sx, wq, sw):
+      acc = xq.astype(np.int32) @ wq.astype(np.int32).T
+      return acc * (sx * sw.T)
+key_lines: [5, 6, 20]
+time: "O(n·d·m) integer multiply-adds, plus O(n·m) to rescale"
+space: "1 byte per value plus one float scale per group, versus 4 bytes in float32"
+when_to_use: |
+  Reducing memory and bandwidth for inference of trained models, where
+  weights are fixed and activations can be scaled on the fly. Per-channel
+  weight scales are the usual default for linear layers.
+when_not_to_use: |
+  Models with strong activation outliers when only a single per-tensor
+  scale is available, or when you need training in low precision, which
+  needs different techniques than post-training rounding.
+why_it_works: |
+  Rounding to the nearest level gives an error of at most $s/2$ per
+  element, which is small relative to the tensor when $s$ is small.
+  Because $x \approx s_x q_x$ and $w \approx s_w q_w$, the product
+  $xw \approx s_x s_w\, q_x q_w$, so the dot product runs in integers and
+  one multiplication rescales it. Smaller groups give smaller maxima and
+  so smaller steps. LLM.int8() observes that a few feature dimensions in
+  large transformers carry outliers and keeps those in 16-bit while the
+  rest runs in 8-bit; this card does not implement that.
+math:
+  - "s = max|x| / 127,   q = clip(round(x / s), −127, 127)"
+  - "x̂ = s · q,   |x − x̂| ≤ s / 2  (inside the range)"
+  - "Asymmetric: s = (x_max − x_min)/255,  z = −128 − round(x_min/s)"
+  - "x̂ = s · (q − z)"
+  - "Y ≈ (X_q W_qᵀ)ᵢₙₜ₃₂ · s_x s_wᵀ"
+  - "Per-channel: s_j = max_i |W_ji| / 127"
+math_tex:
+- '$s = \max|x|/127,\;\; q = \mathrm{clip}(\mathrm{round}(x/s), -127, 127)$'
+- '$\hat{x} = s\,q,\;\; |x - \hat{x}| \leq s/2$ in range'
+- '$s = (x_{max} - x_{min})/255$, asymmetric'
+- '$z = -128 - \mathrm{round}(x_{min}/s),\;\; \hat{x} = s\,(q - z)$'
+- '$Y \approx (X_q W_q^{\top})_{int32}\; s_x\, s_w^{\top}$'
+- 'Per channel: $s_j = \max_i |W_{ji}|/127$'
+interview_qa:
+  - q: "Why accumulate int8 products in int32?"
+    a: "Each product of two 8-bit values needs up to 16 bits and a dot product sums many of them, so 8-bit accumulators would overflow. The int32 result is exact and is rescaled once at the end."
+  - q: "Why is per-channel weight quantisation better than per-tensor?"
+    a: "Each channel's step is set by its own maximum, so channels with small ranges are not coarsened by one large channel. The error bound $s_j/2$ is tighter for them."
+  - q: "What problem do outliers cause and how does LLM.int8() address it?"
+    a: "One large value inflates $s$ and wastes most levels on rare magnitudes, so ordinary values round coarsely. LLM.int8() splits outlier feature dimensions into a 16-bit matmul and quantises the rest per vector."
+  - q: "When would you use asymmetric quantisation?"
+    a: "When values are skewed, such as post-ReLU activations, a zero point shifts the range so no levels are wasted on the empty negative side."
+hyperparameters:
+  - "Granularity: per tensor, per channel or per group"
+  - "Symmetric versus asymmetric (zero point)"
+  - "Clipping range: absmax or a percentile"
+  - "Which tensors to quantise (weights only or activations too)"
+pitfalls:
+  - "A single outlier sets $s$ and degrades every other value in its group"
+  - "Clipping to $[-127, 127]$ keeps the grid symmetric; using $-128$ breaks the exact symmetry of the scale"
+  - "This code uses float64 for clarity; real kernels use float16 scales and fused integer ops"
+  - "Activation scales must come from calibration or be computed per batch, which costs extra"
+related: [feature-scaling, knowledge-distillation, parameter-count-flops]

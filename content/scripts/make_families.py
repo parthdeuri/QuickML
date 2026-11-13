@@ -524,6 +524,26 @@ EXTRA3 = {
 for _k, _v in EXTRA3.items():
     MEMBERS[_k] = MEMBERS[_k] + [x for x in _v if x not in MEMBERS[_k]]
 
+EXTRA4 = {
+ "attention-and-sequences": ["gpt-decoder-only", "llama-rmsnorm-gqa", "sliding-window-attention"],
+ "normalisation": ["llama-rmsnorm-gqa"],
+ "network-building-blocks": ["mixture-of-experts-routing"],
+ "text-processing": ["t5-span-corruption"],
+}
+for _k, _v in EXTRA4.items():
+    MEMBERS[_k] = MEMBERS[_k] + [x for x in _v if x not in MEMBERS[_k]]
+
+EXTRA5 = {
+ "transfer-and-adaptation": ["adapter-layers", "qlora-nf4-quantization", "sft-loss-masking",
+                             "instruction-tuning-chat-templates"],
+ "preference-alignment": ["rlhf-kl-penalty"],
+ "text-evaluation-retrieval": ["rag-evaluation-faithfulness", "hybrid-search-rrf", "reranking-mmr",
+                               "query-transformation-hyde", "document-chunking", "ann-vector-index"],
+ "validation-hygiene": ["finetune-dataset-prep"],
+}
+for _k, _v in EXTRA5.items():
+    MEMBERS[_k] = MEMBERS[_k] + [x for x in _v if x not in MEMBERS[_k]]
+
 KEYS = ["id", "name", "order", "summary", "when_to_use", "key_idea",
         "template", "complexity", "pitfalls", "problems", "aliases"]
 

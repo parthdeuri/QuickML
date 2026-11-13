@@ -1,0 +1,99 @@
+slug: hybrid-search-rrf
+title: Hybrid Search (BM25 + Dense, Reciprocal Rank Fusion)
+url: https://www.elastic.co/docs/reference/elasticsearch/rest-apis/reciprocal-rank-fusion
+difficulty: Medium
+area: LLM
+topics: [Hybrid Retrieval, BM25, Rank Fusion]
+summary: |
+  Run a lexical retriever (BM25) and a dense vector retriever side by
+  side, then merge their ranked lists with Reciprocal Rank Fusion, which
+  uses only ranks so the incompatible score scales never need to be
+  calibrated.
+intuition: |
+  Lexical and dense search fail in opposite ways: BM25 nails exact
+  terms, names and IDs but misses paraphrases, while embeddings catch
+  meaning but blur rare tokens. A BM25 score and a cosine similarity
+  live on unrelated scales, so adding them needs fragile tuning. Ranks
+  are comparable across any scorer, and giving each list a vote of
+  $\frac{1}{k + \mathrm{rank}}$ rewards documents that both systems like
+  while the constant $k$ stops one list's top spot from dominating.
+  Flow: query → BM25 list + dense list → rank votes → fused top-k.
+why_it_works: |
+  BM25 weights each query term by how rare it is (IDF) and saturates the
+  gain from repeated occurrences while normalising for document length.
+  RRF then depends only on positions in each list, so any monotonic
+  rescaling of either scorer leaves the fused ranking unchanged. A
+  document ranked high in both lists collects two large votes and beats
+  documents that only one retriever favours.
+when_to_use: |
+  Retrieval for RAG and search where queries mix exact keywords or
+  identifiers with natural-language intent, and where you cannot
+  calibrate scores across retrievers.
+when_not_to_use: |
+  When one retriever clearly dominates on your data, since fusion adds
+  latency and a second index. Also when you have labelled data to train
+  a learned ranker, which can use the actual scores.
+math:
+  - "IDF(t) = ln(1 + (N − n + 0.5) / (n + 0.5))"
+  - "BM25(D) = Σₜ IDF(t) · f(k₁+1) / (f + k₁(1 − b + b|D|/avgdl))"
+  - "f = count of t in D, N docs, n docs containing t"
+  - "RRF(d) = Σ over lists 1 / (k + rank(d)),  k ≈ 60"
+  - "Monotone map of scores keeps ranks, so RRF is unchanged"
+approach:
+  - "Tokenise the query and score every document with BM25 — the lexical ranking"
+  - "Score the same documents with a dense retriever — the semantic ranking (given here as a ranked list)"
+  - "Convert each list to ranks starting at 1 — drops score scale entirely"
+  - "Give each document $\\frac{1}{k + \\mathrm{rank}}$ from every list that contains it — a vote that decays with rank"
+  - "Sum the votes and sort, breaking ties by document id — a deterministic fused list"
+code: |
+  import numpy as np
+
+  def bm25_scores(query_terms, docs, k1=1.5, b=0.75):
+      N = len(docs)
+      avgdl = sum(len(d) for d in docs) / N
+      scores = np.zeros(N)
+      for t in set(query_terms):
+          n = sum(t in d for d in docs)
+          idf = np.log(1 + (N - n + 0.5) / (n + 0.5))
+          for i, d in enumerate(docs):
+              f = d.count(t)
+              norm = f + k1 * (1 - b + b * len(d) / avgdl)
+              scores[i] += idf * f * (k1 + 1) / norm
+      return scores
+
+  def rrf(rank_lists, k=60):
+      fused = {}
+      for ranking in rank_lists:
+          for r, doc in enumerate(ranking, start=1):
+              fused[doc] = fused.get(doc, 0.0) + 1.0 / (k + r)
+      return sorted(fused.items(), key=lambda p: (-p[1], p[0]))
+key_lines: [9, 13, 20]
+time: "O(|q|·N·L) for naive BM25 over N documents of length L (an inverted index avoids scanning); O(total list length) to fuse"
+space: "O(N) scores plus the ranked lists"
+hyperparameters:
+  - "$k_1$, term-frequency saturation, typically 1.2 to 2"
+  - "$b$, length normalisation from 0 to 1, typically 0.75"
+  - "RRF constant $k$, about 60"
+  - "Depth of each list fed into fusion"
+pitfalls:
+  - "RRF discards score margins, so a dominant lexical match and a barely better one count the same; keep lists long enough that good documents appear in both"
+  - "Tokenisation and casing must match between the index and the query, otherwise BM25 silently scores zero"
+  - "This BM25 scans every document; real engines use an inverted index and precomputed statistics"
+  - "Ties in the fused score need a stable rule, here the document id, or results vary between runs"
+interview_qa:
+  - q: "Why use rank fusion instead of adding the scores?"
+    a: "BM25 scores are unbounded and corpus dependent while cosine similarity is in a fixed range. RRF uses only ranks, so no normalisation or weight tuning is needed and monotonic score changes cannot alter the result."
+  - q: "What does the constant $k$ in RRF do?"
+    a: "It flattens the vote curve. A small $k$ makes the top ranks dominate, while a large $k$ makes lower ranks count more. About 60 is a common default."
+  - q: "Why does BM25 saturate term frequency?"
+    a: "The factor $\\frac{f(k_1+1)}{f+k_1(\\ldots)}$ approaches $k_1+1$ as $f$ grows, so the tenth occurrence of a word adds far less than the first, unlike raw TF-IDF."
+  - q: "When does hybrid retrieval beat dense-only?"
+    a: "When queries contain rare terms, names, codes or exact phrases that embeddings blur. The lexical list restores exact matches and fusion keeps the semantic ones."
+related: [rag-dense-retrieval, tf-idf, retrieval-metrics-recall-at-k]
+math_tex:
+- '$\mathrm{IDF}(t) = \ln\left(1 + \frac{N - n + 0.5}{n + 0.5}\right)$'
+- '$\mathrm{BM25}(D) = \sum_{t} \mathrm{IDF}(t) \cdot \frac{f(k_1+1)}{f + k_1(1 - b + b|D|/\mathrm{avgdl})}$'
+- 'Here $f$ = count of $t$ in $D$, $N$ docs, $n$ with $t$'
+- 'Over lists: $\mathrm{RRF}(d) = \sum \frac{1}{k + \mathrm{rank}(d)}$, $k \approx 60$'
+- 'Monotone score maps keep ranks, so RRF is unchanged'
+patterns: ["Text evaluation and retrieval"]

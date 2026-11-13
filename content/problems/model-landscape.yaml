@@ -1,0 +1,113 @@
+slug: model-landscape
+title: Choosing Among LLM Families (Decision Rule)
+url: https://arxiv.org/abs/2303.18223
+difficulty: Easy
+area: LLM
+topics: [LLM, Model Selection, Cost, Deployment]
+summary: |
+  Pick a model by constraints, not by name: filter out candidates that
+  break a must-have, rank the survivors by a weighted utility, and
+  price the workload as cost per request.
+intuition: |
+  Model names and leaderboards go stale within months, but the
+  trade-offs between hosted-large, open-medium, open-small, mixture and
+  reasoning-tuned families stay put. Requirements such as privacy or
+  on-device execution are not preferences you can trade away, so they
+  are hard filters; only the soft goals (quality, cost, speed) enter a
+  weighted score. This card teaches that method, with made-up profiles.
+  Flow: requirements → hard filter → normalise scores → weighted utility → rank.
+approach:
+  - "Write requirements as must-haves (privacy, on-device, licence) and limits (context, memory) — these are pass or fail"
+  - "Drop every candidate that fails any must-have — a failed constraint cannot be bought back with quality"
+  - "Compute cost per request $= (n_{in} p_{in} + n_{out} p_{out}) / 10^6$ — turns price per million tokens into a workload cost"
+  - "Normalise each soft criterion to $(0, 1]$ against the best survivor — puts quality, cost and speed on one scale"
+  - "Rank by $U = \\sum_c w_c s_c / \\sum_c w_c$ — dividing by the weight total makes the weights relative, not absolute"
+code: |
+  def request_cost(n_in, n_out, p_in, p_out):
+      return (n_in * p_in + n_out * p_out) / 1e6
+
+  def feasible(req, c):
+      if any(c[k] != v for k, v in req["must"].items()):
+          return False
+      return (c["context"] >= req["min_context"]
+              and c["memory_gb"] <= req["max_memory_gb"])
+
+  def rank(req, cands):
+      ok = {n: c for n, c in cands.items() if feasible(req, c)}
+      if not ok:
+          return []
+      n_in, n_out = req["tokens"]
+      cost = {n: request_cost(n_in, n_out, c["p_in"], c["p_out"])
+              for n, c in ok.items()}
+      best_c = min(cost.values())
+      best_l = min(c["latency"] for c in ok.values())
+      w = req["weights"]
+      tot = sum(w.values())
+      u = {n: (w["quality"] * c["quality"]
+               + w["cost"] * best_c / cost[n]
+               + w["speed"] * best_l / c["latency"]) / tot
+           for n, c in ok.items()}
+      return sorted(u.items(), key=lambda kv: -kv[1])
+
+  CANDS = {
+      "hosted-large": dict(on_device=False, private=False,
+          context=200000, memory_gb=0, latency=2.0,
+          p_in=3.0, p_out=15.0, quality=0.95),
+      "open-medium": dict(on_device=False, private=True,
+          context=32000, memory_gb=80, latency=1.0,
+          p_in=0.5, p_out=1.5, quality=0.80),
+      "open-small": dict(on_device=True, private=True,
+          context=8000, memory_gb=6, latency=0.4,
+          p_in=0.1, p_out=0.2, quality=0.60),
+  }
+key_lines: [2, 5, 21]
+time: "O(n·m) for n candidates and m criteria"
+space: "O(n) for the filtered set and scores"
+when_to_use: |
+  Choosing between model families for a product, or justifying a choice
+  to a team, when requirements such as privacy, latency, budget and
+  context length are known and written down.
+when_not_to_use: |
+  As a replacement for evaluating candidates on your own task data. The
+  utility only orders profiles you filled in; it does not measure
+  quality, which you must test.
+why_it_works: |
+  A hard filter encodes constraints that no amount of quality can
+  offset, which a plain weighted sum would wrongly allow. Normalising
+  against the best survivor makes scores comparable across units, and
+  dividing by the weight total means $U$ and its ranking are unchanged
+  if every weight is multiplied by the same positive constant.
+math:
+  - "cost = (n_in · p_in + n_out · p_out) / 10⁶"
+  - "Feasible(m) = ∀ must-have satisfied ∧ ctx ≥ need ∧ mem ≤ budget"
+  - "s_cost(m) = min_j cost_j / cost_m,   s_speed(m) = min_j lat_j / lat_m"
+  - "U(m) = Σ_c w_c s_c(m) / Σ_c w_c"
+  - "U is unchanged when every w_c → λ w_c,  λ > 0"
+  - "Monthly cost = requests per month × cost per request"
+interview_qa:
+  - q: "Why treat privacy or on-device execution as a filter instead of a weight?"
+    a: "A model that violates it is unusable however good it scores. A weighted sum could let high quality compensate, which is wrong for a hard requirement."
+  - q: "Why price input and output tokens separately?"
+    a: "Providers usually charge different rates for each, and output tokens are typically more expensive, so cost depends on the prompt-to-completion ratio of your workload."
+  - q: "Why not just rank models by a public leaderboard?"
+    a: "Leaderboards go stale, may not match your task or data, and ignore cost, privacy and latency. Evaluate the shortlist on your own examples."
+  - q: "When does a larger weight on quality change the winner?"
+    a: "When the quality gap between candidates outweighs their cost and speed ratios, as the weight on quality grows the best model moves toward the highest-quality family."
+hyperparameters:
+  - "Criterion weights $w_c$ (only their ratios matter)"
+  - "Request mix: input and output tokens per request"
+  - "Hard limits: context length, memory budget"
+  - "Normalisation scheme (ratio to best, or min-max)"
+pitfalls:
+  - "Model names, versions, prices and scores go stale quickly; use this as a method and refill the profiles from current data"
+  - "The quality field in a profile is a placeholder; replace it with scores from your own evaluation set"
+  - "Ratio-to-best normalisation depends on which candidates survive the filter, so adding a model can reorder the rest"
+  - "Self-hosting cost is hardware and operations, not a clean price per million tokens; the profile values are an estimate"
+related: [scaling-laws, context-window-limits, transfer-learning-fine-tuning]
+math_tex:
+- 'Cost: $\frac{n_{in}\, p_{in} + n_{out}\, p_{out}}{10^6}$'
+- 'Feasible: all must-haves hold, ctx $\geq$ need'
+- 'Cost score: $s_{cost}(m) = \frac{\min_j c_j}{c_m}$'
+- 'Speed score: $s_{speed}(m) = \frac{\min_j \ell_j}{\ell_m}$'
+- 'Utility: $U(m) = \frac{\sum_c w_c\, s_c(m)}{\sum_c w_c}$'
+- 'Scaling: $w_c \rightarrow \lambda w_c$ leaves $U$ unchanged'

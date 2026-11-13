@@ -37,5 +37,6 @@ problems:
 - wordpiece
 - sentencepiece-unigram
 - contextual-embeddings
+- t5-span-corruption
 aliases:
 - Text processing

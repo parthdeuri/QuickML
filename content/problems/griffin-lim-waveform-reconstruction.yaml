@@ -1,0 +1,106 @@
+slug: griffin-lim-waveform-reconstruction
+title: Griffin-Lim Waveform Reconstruction
+url: https://docs.pytorch.org/audio/stable/generated/torchaudio.transforms.GriffinLim.html
+difficulty: Medium
+area: Deep Learning
+topics: [Audio, Speech, Signal Processing]
+summary: |
+  Recover a waveform from a magnitude-only spectrogram by starting
+  with random phase and alternating inverse STFT and STFT, resetting
+  the magnitude to the known one after every round.
+intuition: |
+  The magnitude tells how much energy each time-frequency cell has but
+  not the phase that makes neighbouring overlapping frames agree. Not
+  every complex spectrogram is a valid STFT of some signal, so the
+  loop bounces between two sets: spectrograms with the target
+  magnitude, and spectrograms that a real waveform could produce. Each
+  projection can only move closer to the other set, so the magnitude
+  error never grows, though it may settle in a local minimum.
+  Flow: magnitude + random phase → ISTFT → STFT → reset magnitude → repeat.
+approach:
+  - "Write the STFT with a Hann window and the ISTFT as overlap-add — the pair must invert each other"
+  - "Divide the overlap-added signal by the summed squared window — makes ISTFT the least-squares inverse"
+  - "Start from the target magnitude $S$ with uniformly random phase — phase is unknown, so any guess is as good"
+  - "Go to the time domain with ISTFT and back with STFT — projects onto spectrograms a real signal can have"
+  - "Keep the phase of the result, replace its magnitude with $S$ — projects onto the known magnitude"
+  - "Track $\\|\\,|\\mathrm{STFT}(x)| - S\\| / \\|S\\|$ each round — it should never increase"
+code: |
+  import numpy as np
+
+  def hann(n):
+      return 0.5 - 0.5 * np.cos(2 * np.pi * np.arange(n) / n)
+
+  def stft(x, n_fft, hop):
+      n = 1 + (len(x) - n_fft) // hop
+      idx = np.arange(n_fft)[None] + hop * np.arange(n)[:, None]
+      return np.fft.rfft(x[idx] * hann(n_fft), axis=1)
+
+  def istft(X, n_fft, hop):
+      n, w = X.shape[0], hann(n_fft)
+      out = np.zeros(n_fft + hop * (n - 1))
+      den = np.zeros_like(out)
+      for t, f in enumerate(np.fft.irfft(X, n_fft, axis=1)):
+          out[t * hop:t * hop + n_fft] += f * w
+          den[t * hop:t * hop + n_fft] += w * w
+      return out / np.maximum(den, 1e-8)
+
+  def griffin_lim(S, n_iter, n_fft, hop, rng):
+      phase = np.exp(2j * np.pi * rng.random(S.shape))
+      X = S * phase
+      errs = []
+      for _ in range(n_iter):
+          x = istft(X, n_fft, hop)
+          Y = stft(x, n_fft, hop)
+          err = np.linalg.norm(np.abs(Y) - S)
+          errs.append(err / np.linalg.norm(S))
+          X = S * Y / np.maximum(np.abs(Y), 1e-12)
+      return istft(X, n_fft, hop), errs
+key_lines: [16, 25, 29]
+time: "O(n_iter · F · n_fft log n_fft) for F frames"
+space: "O(F · n_fft) for the spectrogram and the framed signal"
+when_to_use: |
+  Turning a magnitude or linear spectrogram back into audio without
+  training a model, as the classic vocoder step after a text-to-speech
+  network predicts a mel spectrogram and it is mapped to a linear one.
+when_not_to_use: |
+  When audio quality matters. The output is smeared and metallic
+  because the phase is only consistent, not true, and neural vocoders
+  sound better. Also unnecessary when the complex STFT is available.
+why_it_works: |
+  The ISTFT with window-square normalisation is the orthogonal
+  projection onto valid spectrograms, and replacing the magnitude is
+  the projection onto the known-magnitude set. Alternating projections
+  between a closed set and a subspace never increase the distance
+  between them, so the spectral convergence error is non-increasing.
+  The problem is non-convex, so the limit depends on the initial phase.
+math:
+  - "Frames = 1 + ⌊(N − n_fft) / hop⌋"
+  - "Xₜ[k] = Σₙ x[tH+n] w[n] e^(−2πi kn/n_fft)"
+  - "x[n] = Σₜ w[n−tH] x̃ₜ[n−tH] / Σₜ w[n−tH]²"
+  - "Xᵢ₊₁ = S · Yᵢ / |Yᵢ|"
+  - "where Yᵢ = STFT(ISTFT(Xᵢ))"
+  - "Spectral convergence = ‖ |STFT(x)| − S ‖ / ‖S‖"
+interview_qa:
+  - q: "Why is phase missing and why does it matter?"
+    a: "Mel and magnitude spectrograms discard phase. Overlapping frames must agree on phase to form a coherent waveform, otherwise the result has audible artefacts."
+  - q: "Why is the reconstructed waveform not equal to the original?"
+    a: "Many signals share one STFT magnitude, for example a global sign flip, so the phase is ambiguous. Only the magnitude is matched, not the waveform."
+  - q: "Why do neural vocoders beat Griffin-Lim?"
+    a: "They learn to generate natural phase and fine waveform structure from data, while Griffin-Lim only finds a self-consistent phase, which sounds smeared and metallic."
+hyperparameters:
+  - "Number of iterations $n_{iter}$ (error falls with diminishing returns)"
+  - "Window length $n_{fft}$ and hop (more overlap constrains phase better)"
+  - "Phase initialisation (random or zero) and random seed"
+  - "Optional momentum on the projection, as in fast variants"
+pitfalls:
+  - "The dtype and scaling of the STFT must match the one used to make $S$, or the target magnitude is wrong"
+  - "Samples at the signal edges are covered by few or no windows, so they are poorly determined"
+  - "The result depends on the random phase init; a different seed gives a different waveform with similar spectral error"
+related: [convolution-2d, rnn-cell]
+math_tex:
+- 'Frames: $1 + \lfloor (N - n_{fft}) / \mathrm{hop} \rfloor$'
+- 'STFT: $X_t[k] = \sum_{n} x[tH+n]\,w[n]\,e^{-2\pi i kn/n_{fft}}$'
+- 'ISTFT: $x[n] = \frac{\sum_t w[n-tH]\,\tilde{x}_t[n-tH]}{\sum_t w[n-tH]^2}$'
+- 'Update: $X_{i+1} = S \cdot \frac{Y_i}{|Y_i|}$'
+- 'where $Y_i = \mathrm{STFT}(\mathrm{ISTFT}(X_i))$'
+- 'Error: $\frac{\|\,|\mathrm{STFT}(x)| - S\,\|}{\|S\|}$'

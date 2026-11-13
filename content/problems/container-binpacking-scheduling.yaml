@@ -1,0 +1,136 @@
+slug: container-binpacking-scheduling
+title: Bin Packing and Cluster Scheduling
+url: https://en.wikipedia.org/wiki/Bin_packing_problem
+difficulty: Medium
+area: MLOps
+topics: [Scheduling, Bin Packing, GPU Clusters]
+summary: |
+  A scheduler places each container on a node whose remaining capacity
+  covers every requested resource; this is bin packing, NP-hard, so
+  heuristics such as first-fit-decreasing are used.
+intuition: |
+  Placement is packing items of several sizes into bins that cannot
+  be stretched. Every dimension must fit separately, so a node with
+  free CPU and no free memory is full for that pod, and indivisible
+  GPUs strand leftovers: two nodes with 3 free GPUs each cannot host
+  a pod that needs 4. Sorting big items first works because large
+  items are the hard ones to fit; small ones fill the gaps later.
+  Requests drive placement while limits only cap runtime use.
+  Flow: pod requests → filter nodes that fit → pick one → update free capacity.
+approach:
+  - 'Take each pod request as a vector — one entry per resource such as CPU, memory, GPUs'
+  - 'Order pods by size, largest first — hard-to-place items go before the gaps fill up'
+  - 'Keep the free vector of every node — placement only needs the remaining capacity'
+  - 'Place on a node only if every dimension fits — one short resource rules the node out'
+  - 'Choose by rule: first-fit takes the first node, best-fit the tightest — trades speed against leftover gaps'
+  - 'Subtract the request from the node — later pods see the reduced capacity'
+  - 'Leave the pod pending if nothing fits — more nodes or smaller requests are needed'
+code: |
+  import math
+
+  def first_fit(items, cap):
+      bins = []
+      for x in items:
+          for i, used in enumerate(bins):
+              if used + x <= cap:
+                  bins[i] += x
+                  break
+          else:
+              bins.append(x)
+      return bins
+
+  def first_fit_decreasing(items, cap):
+      return first_fit(sorted(items, reverse=True), cap)
+
+  def best_fit(items, cap):
+      bins = []
+      for x in items:
+          fits = [i for i, u in enumerate(bins) if u + x <= cap]
+          if fits:
+              bins[max(fits, key=lambda i: bins[i])] += x
+          else:
+              bins.append(x)
+      return bins
+
+  def lower_bound(items, cap):
+      return math.ceil(sum(items) / cap)
+
+  def place_pods(pods, nodes):
+      free = [list(n) for n in nodes]
+      where = []
+      for p in pods:
+          for i, f in enumerate(free):
+              if all(r <= x for r, x in zip(p, f)):
+                  free[i] = [x - r for r, x in zip(p, f)]
+                  where.append(i)
+                  break
+          else:
+              where.append(None)
+      return where, free
+
+  def optimal_bins(items, cap):
+      best = len(items)
+      def go(i, bins):
+          nonlocal best
+          if len(bins) >= best:
+              return
+          if i == len(items):
+              best = len(bins)
+              return
+          for j in range(len(bins)):
+              if bins[j] + items[i] <= cap:
+                  bins[j] += items[i]
+                  go(i + 1, bins)
+                  bins[j] -= items[i]
+          go(i + 1, bins + [items[i]])
+      go(0, [])
+      return best
+key_lines: [7, 22, 35]
+time: "O(n·m) for n pods and m nodes; exact packing is exponential in the worst case"
+space: "O(m·d) free capacity for m nodes and d resource dimensions"
+when_to_use: |
+  Understanding why pods stay pending although total free capacity
+  looks sufficient, and sizing requests and node shapes so the
+  scheduler can pack tightly, especially for scarce GPU nodes.
+when_not_to_use: |
+  Do not search for the optimal packing at scale, since it is NP-hard
+  and the heuristics are near optimal. These simple rules also ignore
+  affinity, spreading, priorities and preemption, which real
+  schedulers add on top.
+why_it_works: |
+  At least $\lceil \frac{\sum s_i}{C} \rceil$ bins are needed because
+  bins hold at most $C$ each. For one dimension, first-fit-decreasing
+  uses at most $\frac{11}{9}\,\mathrm{OPT} + \frac{6}{9}$ bins, a tight
+  bound, because placing the largest items first leaves only small
+  items to fill gaps. Several dimensions make the problem harder, but
+  checking each dimension separately keeps every node within capacity.
+math:
+  - "bins needed ≥ ⌈ Σ sᵢ / C ⌉"
+  - "FFD(I) ≤ (11/9) · OPT(I) + 6/9"
+  - "pod p fits node n  iff  r_p,d ≤ free_n,d  for every dimension d"
+  - "free_n,d ← free_n,d − r_p,d  after placement"
+math_tex:
+- 'Bins $\geq \lceil \frac{\sum_{i} s_i}{C} \rceil$'
+- '$\mathrm{FFD}(I) \leq \frac{11}{9}\,\mathrm{OPT}(I) + \frac{6}{9}$'
+- 'Fits iff $r_{p,d} \leq f_{n,d}$ for all $d$'
+- 'Update $f_{n,d} \leftarrow f_{n,d} - r_{p,d}$'
+interview_qa:
+  - q: "Why is scheduling a bin-packing problem?"
+    a: 'Each pod requests a vector of resources and each node has a fixed capacity vector, so placing all pods on the fewest nodes is packing items into bins, which is NP-hard.'
+  - q: "Why sort items by decreasing size?"
+    a: 'Large items are hardest to fit, so placing them first leaves small items to fill gaps. In one dimension first-fit-decreasing uses at most $\frac{11}{9}\,\mathrm{OPT} + \frac{6}{9}$ bins.'
+  - q: "What is the difference between requests and limits?"
+    a: 'Requests are what the scheduler reserves and uses for placement. Limits cap runtime use: exceeding a memory limit gets the container killed, exceeding a CPU limit gets it throttled.'
+  - q: "Why can a pod stay pending with enough total free GPUs?"
+    a: 'GPUs are indivisible and a pod needs them on one node, so free GPUs spread across nodes are fragmented. Three free on each of two nodes cannot serve a pod needing four.'
+hyperparameters:
+  - 'Placement rule (first-fit, best-fit, or scoring)'
+  - 'Pod ordering (arrival order or largest first)'
+  - 'Request sizes per resource'
+  - 'Node shape (CPU, memory, GPUs per node)'
+pitfalls:
+  - 'Over-requesting resources strands capacity because placement uses requests, not actual use'
+  - 'Multi-dimensional packing is not solved by sorting on one dimension; a node can fill up on memory while CPU stays free'
+  - 'Best-fit is not always better than first-fit; both can be worse than first-fit-decreasing'
+  - 'Setting memory limits below real peaks gets containers killed; CPU limits only slow them down'
+related: [gpu-memory-estimation, continuous-batching, gpu-computing-roofline]

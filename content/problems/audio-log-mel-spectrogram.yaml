@@ -1,0 +1,113 @@
+slug: audio-log-mel-spectrogram
+title: Log-Mel Spectrogram (Audio as Model Input)
+url: https://docs.pytorch.org/audio/stable/generated/torchaudio.transforms.MelSpectrogram.html
+difficulty: Medium
+area: Deep Learning
+topics: [Audio, Speech, Signal Processing]
+summary: |
+  Cut a waveform into overlapping windowed frames, take the FFT power
+  of each, pool the bins with triangular mel filters and compress with
+  a log; the result is a time by mel-bin image that speech models read.
+intuition: |
+  A raw waveform is too long and too phase-sensitive to learn from
+  directly. Frames turn it into a sequence, the FFT says which
+  frequencies are present in each frame, the mel filters keep fine
+  resolution at low pitch where speech detail lives and blur the highs
+  like the ear does, and the log matches loudness perception and tames
+  the huge dynamic range, so a convolutional or attention model sees a
+  well-scaled picture.
+  Flow: waveform → frames → spectrum → mel bands → log.
+approach:
+  - "Slice the signal into frames of $n_{fft}$ samples every $\\text{hop}$ — gives $1 + \\lfloor (N - n_{fft}) / \\text{hop} \\rfloor$ frames without padding"
+  - "Multiply each frame by a Hann window — smooth edges reduce spectral leakage"
+  - "Take the real FFT and square the magnitude — power at each of the $n_{fft}/2 + 1$ bins"
+  - "Build triangular filters equally spaced on the mel scale — narrow at low frequency, wide at high"
+  - "Multiply power by the filterbank — pools bins into $n_{mels}$ bands per frame"
+  - "Take the log with a small floor — compresses dynamic range and avoids $\\log 0$"
+code: |
+  import numpy as np
+
+  def hz_to_mel(f):
+      return 2595.0 * np.log10(1.0 + f / 700.0)
+
+  def mel_to_hz(m):
+      return 700.0 * (10.0 ** (m / 2595.0) - 1.0)
+
+  def stft_power(x, n_fft, hop):
+      n = 1 + (len(x) - n_fft) // hop
+      idx = np.arange(n_fft)[None] + hop * np.arange(n)[:, None]
+      k = np.arange(n_fft)
+      w = 0.5 - 0.5 * np.cos(2 * np.pi * k / n_fft)  # periodic Hann
+      X = np.fft.rfft(x[idx] * w, axis=1)
+      return X.real ** 2 + X.imag ** 2
+
+  def mel_filterbank(sr, n_fft, n_mels):
+      # HTK mel scale, triangles with peak 1 (no area norm)
+      freqs = np.arange(n_fft // 2 + 1) * sr / n_fft
+      top = hz_to_mel(sr / 2)
+      edges = mel_to_hz(np.linspace(0, top, n_mels + 2))
+      fb = np.zeros((n_mels, len(freqs)))
+      for i in range(n_mels):
+          lo, mid, hi = edges[i:i + 3]
+          up = (freqs - lo) / (mid - lo)
+          down = (hi - freqs) / (hi - mid)
+          fb[i] = np.maximum(0, np.minimum(up, down))
+      return fb
+
+  def log_mel(x, sr, n_fft, hop, n_mels, eps=1e-10):
+      P = stft_power(x, n_fft, hop)
+      M = P @ mel_filterbank(sr, n_fft, n_mels).T
+      return np.log(M + eps)
+key_lines: [13, 21, 27]
+time: "O(F · n_fft log n_fft) for the FFTs plus O(F · n_fft · n_mels) for the filterbank, with F frames"
+space: "O(F · n_mels) output plus O(F · n_fft) for the framed signal"
+when_to_use: |
+  Feeding speech or audio to a neural network (recognition, keyword
+  spotting, audio classification, text-to-speech targets), where a
+  compact perceptual time-frequency image is easier to learn from than
+  raw samples.
+when_not_to_use: |
+  When phase matters or the waveform must be recovered exactly, since
+  the mel projection and magnitude discard it. Models that learn
+  directly from raw waveforms skip this front end.
+why_it_works: |
+  Speech structure such as formants and pitch harmonics is visible in
+  short-time spectra, and a window of tens of milliseconds is short
+  enough to treat speech as stationary. Mel pooling reduces
+  $n_{fft}/2 + 1$ bins to a few dozen bands with perceptually even
+  spacing, and the log turns multiplicative loudness changes into
+  additive shifts that a network handles easily.
+math:
+  - "Frames = 1 + ⌊(N − n_fft) / hop⌋"
+  - "w[n] = ½ − ½ cos(2πn / n_fft)"
+  - "Pₜ[k] = |Σₙ x[tH+n] w[n] e^(−2πi kn/n_fft)|²"
+  - "mel(f) = 2595 · log₁₀(1 + f / 700)"
+  - "f(m) = 700 · (10^(m/2595) − 1)"
+  - "Mₜ[j] = Σₖ Hⱼ[k] Pₜ[k]"
+  - "Lₜ[j] = log(Mₜ[j] + ε)"
+interview_qa:
+  - q: "Why use the mel scale instead of linear frequency?"
+    a: "Human pitch resolution is roughly logarithmic above about 1 kHz, so mel bands give fine detail at low frequency and coarse bands at high frequency, matching where speech information lies."
+  - q: "Why take the log?"
+    a: "Loudness perception is roughly logarithmic and power values span many orders of magnitude, so the log compresses the range and makes volume changes additive shifts."
+  - q: "What trade-off does the window length set?"
+    a: "Long windows give fine frequency resolution but blur timing, short windows the reverse. Speech systems typically use tens of milliseconds with a hop of a fraction of that."
+hyperparameters:
+  - "Window length $n_{fft}$ and hop length (time versus frequency resolution)"
+  - "Number of mel bands $n_{mels}$"
+  - "Window function, mel formula (HTK or Slaney) and filter normalisation"
+  - "Power exponent (1 for magnitude, 2 for power) and the log floor $\\epsilon$"
+pitfalls:
+  - "Mel formulas and filter normalisation differ between libraries; a model trained with one convention degrades if fed another"
+  - "Padding the signal at the edges (centered frames) changes the frame count to $1 + \\lfloor N / \\text{hop} \\rfloor$; this code uses none"
+  - "Taking the log of exactly zero power gives $-\\infty$, so always add a floor $\\epsilon$"
+  - "Too many mel bands for a small $n_{fft}$ leaves empty filters with no FFT bin under them"
+related: [convolution-2d, rnn-cell, bidirectional-rnn]
+math_tex:
+- 'Frames: $1 + \lfloor (N - n_{fft}) / \mathrm{hop} \rfloor$'
+- 'Hann: $w[n] = \frac{1}{2} - \frac{1}{2}\cos\frac{2\pi n}{n_{fft}}$'
+- 'Power: $P_t[k] = \left|\sum_{n} x[tH+n]\,w[n]\,e^{-2\pi i kn/n_{fft}}\right|^2$'
+- 'Mel: $\mathrm{mel}(f) = 2595\,\log_{10}(1 + f/700)$'
+- 'Inverse: $f(m) = 700\,(10^{m/2595} - 1)$'
+- 'Bands: $M_t[j] = \sum_{k} H_j[k]\,P_t[k]$'
+- 'Log: $L_t[j] = \log(M_t[j] + \epsilon)$'

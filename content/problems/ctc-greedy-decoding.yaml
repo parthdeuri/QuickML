@@ -1,0 +1,110 @@
+slug: ctc-greedy-decoding
+title: CTC Loss and Greedy Decoding
+url: https://distill.pub/2017/ctc/
+difficulty: Hard
+area: Deep Learning
+topics: [Speech, Sequence Modeling, OCR]
+summary: |
+  CTC lets a model emit a label or a blank at every frame and trains on
+  the total probability of all frame alignments that collapse to the
+  target; greedy decoding takes the best label per frame and collapses.
+intuition: |
+  Speech and handwriting have no per-frame labels, since nobody knows
+  which frame each letter starts in. CTC avoids choosing: any frame
+  path that collapses to the target text counts, and the loss sums
+  their probabilities. The blank is the key device, because it lets
+  the model say nothing at a frame and separates genuine double
+  letters from one letter held over several frames.
+  Flow: frame probabilities → path → merge repeats → drop blanks → text.
+approach:
+  - "Collapse a path by merging repeated labels, then deleting blanks — so $aa{-}b{-}bb$ becomes $abb$ and a blank between equal letters keeps both"
+  - "Greedy decode with the argmax at each frame, then collapse — cheapest estimate of the best output"
+  - "Interleave blanks around the target to get $2L + 1$ states — each state is a place a path can be"
+  - "Start in the first blank or first label at $t = 0$ — a path may begin with silence or the first letter"
+  - "Update $\\alpha_t(s)$ from $s$, $s-1$ and, when allowed, $s-2$ in log space — sums all alignments that reach state $s$"
+  - "End in the last label or the last blank and return $-\\log$ of the sum — the negative log-likelihood of the target"
+code: |
+  import numpy as np
+
+  def ctc_collapse(path, blank=0):
+      out, prev = [], None
+      for p in path:
+          if p != prev and p != blank:
+              out.append(int(p))
+          prev = p
+      return out
+
+  def greedy_decode(logprobs, blank=0):
+      return ctc_collapse(logprobs.argmax(1), blank)
+
+  def ctc_forward_loss(logprobs, target, blank=0):
+      ext = [blank]
+      for c in target:
+          ext += [c, blank]
+      T, S = len(logprobs), len(ext)
+      a = np.full((T, S), -np.inf)
+      a[0, 0] = logprobs[0, blank]
+      if S > 1:
+          a[0, 1] = logprobs[0, ext[1]]
+      for t in range(1, T):
+          for s in range(S):
+              terms = [a[t - 1, s]]
+              if s >= 1:
+                  terms.append(a[t - 1, s - 1])
+              if s >= 2 and ext[s] != blank and ext[s] != ext[s - 2]:
+                  terms.append(a[t - 1, s - 2])
+              prev = np.logaddexp.reduce(terms)
+              a[t, s] = prev + logprobs[t, ext[s]]
+      return -np.logaddexp.reduce(a[-1, -2:])
+key_lines: [6, 27, 30]
+time: "O(T · L) for the forward recursion with target length L and T frames, O(T · V) to decode"
+space: "O(T · L) for the table of $\\alpha$ values"
+when_to_use: |
+  Sequence tasks where input and output lengths differ and alignment is
+  unknown, such as speech recognition, handwriting and scene-text OCR,
+  and where per-frame outputs are acceptable.
+when_not_to_use: |
+  When outputs depend strongly on each other, since CTC assumes frames
+  are conditionally independent given the input. Attention or
+  transducer models handle that better. It also needs at least as many
+  frames as the target plus required blanks between repeats.
+why_it_works: |
+  Enumerating every alignment is exponential, but alignments that reach
+  the same state at the same frame share their future, so the sum can
+  be computed by dynamic programming in $O(TL)$. The recursion allows
+  staying, advancing one state, or skipping a blank when the two
+  neighbouring labels differ, and that rule is exactly the set of paths
+  that collapse to the target. The loss is differentiable in the
+  per-frame outputs, so it trains by backpropagation.
+math:
+  - "B(a a − b − b b) = a b b"
+  - "p(y|x) = Σ_{π: B(π)=y} Πₜ pₜ(πₜ)"
+  - "Extended target l′ has length 2L + 1 with blanks at both ends"
+  - "αₜ(s) = [αₜ₋₁(s) + αₜ₋₁(s−1) + αₜ₋₁(s−2)] · pₜ(l′ₛ)"
+  - "The s−2 term only if l′ₛ ≠ blank and l′ₛ ≠ l′ₛ₋₂"
+  - "Loss = −log(α_T(2L) + α_T(2L+1))"
+interview_qa:
+  - q: "Why does CTC need a blank symbol?"
+    a: "It lets the model emit nothing at a frame and separates genuine repeated letters from one letter spanning several frames, since repeats merge but a blank between them blocks the merge."
+  - q: "Why is greedy decoding not exact?"
+    a: "It picks the best path, but a text's probability is the sum over many paths. A text with many mediocre alignments can beat the text of the single best path."
+  - q: "What does CTC assume about the outputs?"
+    a: "Conditional independence of frame outputs given the input, so it cannot model dependencies between output labels without an external language model."
+hyperparameters:
+  - "Blank index and vocabulary (characters, subwords, phonemes)"
+  - "Frame rate of the encoder, which must exceed the output rate"
+  - "Decoding method: greedy, beam search, optional language model weight"
+  - "Loss reduction (sum or mean over frames or targets)"
+pitfalls:
+  - "A target with repeated letters needs blanks between them, so it requires more frames than its length"
+  - "Probabilities must be normalised log-probabilities; raw logits give a wrong loss"
+  - "Working in probability space underflows over long sequences; use log space and logsumexp"
+  - "Greedy output can contain stray labels or miss rare ones; beam search or a language model usually improves it"
+related: [rnn-cell, bidirectional-rnn, hidden-markov-forward]
+math_tex:
+- 'Collapse: $\mathcal{B}(aa{-}b{-}bb) = abb$'
+- 'Sum: $p(y|x) = \sum_{\pi:\,\mathcal{B}(\pi)=y}\,\prod_t p_t(\pi_t)$'
+- 'Extended target $l^{\prime}$ has length $2L + 1$'
+- 'Forward: $\alpha_t(s) = \left[\alpha_{t-1}(s) + \alpha_{t-1}(s-1) + \alpha_{t-1}(s-2)\right] p_t(l^{\prime}_s)$'
+- 'Skip allowed only if $l^{\prime}_s \neq \mathrm{blank}$ and $l^{\prime}_s \neq l^{\prime}_{s-2}$'
+- 'Loss: $-\log\left(\alpha_T(2L) + \alpha_T(2L+1)\right)$'

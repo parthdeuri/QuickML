@@ -1,0 +1,126 @@
+slug: reliability-circuit-breaker-slo
+title: SLO Error Budgets, Circuit Breakers and Retry Load
+url: https://sre.google/workbook/alerting-on-slos/
+difficulty: Medium
+area: MLOps
+topics: [Reliability, SLO, Serving]
+summary: |
+  An SLO such as 99.9% success over 30 days leaves an error budget of
+  $0.001$ of requests; a circuit breaker fails fast on a broken
+  dependency, and retries must be bounded because they multiply load.
+intuition: |
+  An SLO below 100% is a spendable allowance. The budget is
+  $1-\mathrm{SLO}$, and the burn rate $\frac{e}{1-\mathrm{SLO}}$ for error rate $e$
+  says how fast you spend it: 1 empties it exactly at the end of the
+  window, 5 empties it in a fifth of the window. A circuit breaker
+  protects the budget and the caller by refusing calls to a dependency
+  that is already failing, so threads are not tied up waiting and the
+  dependency gets room to recover. Retries do the opposite: each
+  failure triggers extra calls, which is exactly when the dependency
+  can least afford them.
+  Flow: failures counted → threshold crossed → fail fast → probe → recover.
+approach:
+  - 'Pick the SLO and window — they fix the budget $1-\mathrm{SLO}$ of bad requests'
+  - 'Convert the budget to time — $0.001 \cdot 43200 = 43.2$ minutes of full outage per 30 days'
+  - 'Alert on burn rate — a rate well above 1 means the budget runs out before the window ends'
+  - 'Count consecutive failures per dependency — closed state, normal calls'
+  - 'Open after the threshold — calls fail immediately and cost nothing downstream'
+  - 'After the cool-down allow one probe — half-open tests recovery with minimal load'
+  - 'Close on probe success, re-open on failure — the breaker heals itself'
+  - 'Cap retries and add backoff — expected attempts are $\sum_{k=0}^{r} p^k$'
+code: |
+  def error_budget(slo, window_minutes):
+      allowed = 1 - slo
+      return allowed, allowed * window_minutes
+
+  def burn_rate(error_rate, slo):
+      return error_rate / (1 - slo)
+
+  class CircuitBreaker:
+      def __init__(self, failure_threshold, cooldown, clock):
+          self.n, self.cooldown, self.clock = (
+              failure_threshold, cooldown, clock)
+          self.state, self.fails, self.opened = "closed", 0, 0.0
+          self.probing = False
+
+      def allow(self):
+          if self.state == "open":
+              if self.clock() - self.opened < self.cooldown:
+                  return False
+              self.state, self.probing = "half_open", False
+          if self.state == "half_open":
+              if self.probing:
+                  return False
+              self.probing = True
+          return True
+
+      def record(self, ok):
+          if self.state == "half_open":
+              self.probing = False
+              self.state = "closed" if ok else "open"
+              self.opened, self.fails = self.clock(), 0
+          elif ok:
+              self.fails = 0
+          else:
+              self.fails += 1
+              if self.fails >= self.n:
+                  self.state, self.opened = "open", self.clock()
+
+  def retry_load_multiplier(p, r):
+      return sum(p ** k for k in range(r + 1))
+key_lines: [17, 23, 29]
+time: "O(1) per request for the breaker and the budget arithmetic"
+space: "O(1) state per dependency (a counter, a timestamp, a flag)"
+when_to_use: |
+  Any model service with an availability target, and any call to a
+  dependency (feature store, vector index, model backend) that can
+  fail or slow down: set an SLO, track burn rate, and wrap the
+  dependency in a breaker with a bounded retry policy.
+when_not_to_use: |
+  Do not add a breaker around a call that must succeed or block, such
+  as a write that cannot be dropped, and do not set an SLO tighter
+  than the dependencies underneath can support. With very low traffic
+  a failure count over a few calls is noise.
+why_it_works: |
+  The budget is plain arithmetic: allowed bad events are the fraction
+  $1-\mathrm{SLO}$ of all events, so a burn rate of 1 consumes it in
+  exactly one window. The breaker turns a slow, expensive failure
+  into an instant one, which keeps queues short. With failure
+  probability $p$ and up to $r$ retries, attempts form a truncated
+  geometric series, so even $p = 0.5$ with 3 retries multiplies load
+  by $1.875$ just when the dependency is struggling.
+math:
+  - "budget = 1 − SLO"
+  - "minutes of full outage = (1 − SLO) · window minutes"
+  - "burn rate = error rate / (1 − SLO)"
+  - "time to exhaust budget = window / burn rate"
+  - "attempts per request = 1 + p + p² + … + pʳ"
+  - "= (1 − pʳ⁺¹) / (1 − p)  for p ≠ 1"
+math_tex:
+- 'Budget $= 1 - \mathrm{SLO}$'
+- 'Outage minutes $= (1 - \mathrm{SLO}) \cdot T$'
+- 'Burn rate $= \frac{\mathrm{error\ rate}}{1 - \mathrm{SLO}}$'
+- 'Time to empty $= \frac{T}{\mathrm{burn\ rate}}$'
+- 'Attempts $= \sum_{k=0}^{r} p^{k}$'
+- 'Closed form $= \frac{1 - p^{r+1}}{1 - p}$'
+interview_qa:
+  - q: "What is an error budget and what is burn rate?"
+    a: 'The budget is the fraction of requests allowed to fail, $1-\mathrm{SLO}$. Burn rate is the observed error rate divided by that budget; 1 spends it exactly over the window and higher values run out early.'
+  - q: "Describe the circuit breaker states."
+    a: "Closed passes calls and counts failures. After a threshold it opens and fails fast. After a cool-down it goes half-open and lets one probe through, closing on success and re-opening on failure."
+  - q: "Why can retries make an outage worse?"
+    a: 'Each failed request triggers up to $r$ more calls, so load grows by $\sum_{k=0}^{r} p^k$ exactly when the dependency is failing. Use backoff with jitter and a retry budget.'
+  - q: "Why alert on burn rate instead of raw error rate?"
+    a: "Burn rate is relative to the SLO, so one threshold means the same thing for any target and tells you how soon the budget will be gone."
+hyperparameters:
+  - "SLO target and window length"
+  - "Failure threshold before opening"
+  - "Cool-down time before the half-open probe"
+  - "Maximum retries and backoff schedule"
+  - "Burn-rate alert thresholds"
+pitfalls:
+  - "Letting several callers probe in half-open; allow exactly one so a recovering dependency is not flooded"
+  - 'Retrying at every layer of a call chain multiplies attempts, $(r+1)^{\mathrm{depth}}$ in the worst case'
+  - "Counting only hard errors; slow responses should count as failures too"
+  - "Treating the budget as a target to spend rather than a limit that gates risky releases"
+related: [llm-api-retries-rate-limits, provider-fallback-router, tracing-and-logging]

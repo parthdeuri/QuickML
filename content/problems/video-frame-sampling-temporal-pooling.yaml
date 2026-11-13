@@ -1,0 +1,96 @@
+slug: video-frame-sampling-temporal-pooling
+title: Video Frame Sampling and Temporal Pooling
+url: https://arxiv.org/abs/1608.00859
+difficulty: Medium
+area: Vision
+topics: [Video, Frame Sampling, Token Budget]
+summary: |
+  A video has far too many frames for a model, so sample $T$ frames, fit
+  them in the token budget, pool features over time, and optionally
+  keep frames where the content changes.
+intuition: |
+  Consecutive frames are nearly identical, so most of a video's pixels
+  repeat information, while the cost of a frame in tokens is real and
+  the context window is fixed. Taking the centre of $T$ equal segments
+  spreads samples over the whole clip so no part is missed, and the
+  budget decides how large $T$ can be. Averaging features over groups of
+  frames or keeping only frames where features jump trades temporal
+  resolution for cost.
+  Flow: video → sampled frames → features → temporal pooling → LLM tokens.
+approach:
+  - "Pick the centre of each of $T$ equal segments, $\\lfloor (i+0.5)n/T \\rfloor$ — even coverage with no clustering at the ends"
+  - "Compute the frame budget $\\lfloor (C - R)/m \\rfloor$ — frames times tokens per frame must fit after reserving room for text and answer"
+  - "Average features over groups of $k$ frames — cuts the frame count to $\\lceil T/k \\rceil$ and smooths noise"
+  - "Optionally mark frames whose feature change $\\|f_t - f_{t-1}\\|$ exceeds a threshold — keyframes at scene cuts"
+  - "Choose $T$ as the smaller of what you want and what the budget allows — temporal detail against cost"
+code: |
+  import numpy as np
+
+  def uniform_indices(n, T):
+      i = np.arange(T)
+      return ((2 * i + 1) * n) // (2 * T)
+
+  def budget_frames(context, tokens_per_frame, reserve):
+      return max(0, (context - reserve) // tokens_per_frame)
+
+  def temporal_mean_pool(feats, k):
+      T = len(feats)
+      return np.stack([feats[i:i + k].mean(axis=0)
+                       for i in range(0, T, k)])
+
+  def keyframes_by_change(feats, thr):
+      step = np.linalg.norm(np.diff(feats, axis=0), axis=1)
+      return [0] + [t + 1 for t in np.flatnonzero(step > thr)]
+key_lines: [5, 13, 16]
+time: "O(T·d) for pooling and keyframe scan; the downstream model pays for T·m tokens"
+space: "O(T·d) features, O(T·m) tokens passed to the language model"
+when_to_use: |
+  Feeding video to a vision-language model under a fixed context size,
+  where you must choose how many frames to take and how to reduce the
+  tokens each frame costs.
+when_not_to_use: |
+  Tasks that need precise motion or fine timing, such as action
+  boundaries, where sparse sampling can miss the event and a model
+  with dense temporal processing is better.
+why_it_works: |
+  Segment-centre sampling places one sample in every equal-length part
+  of the clip, so the gap between samples is $n/T$ up to rounding and
+  nothing is skipped over a long stretch. Mean pooling over $k$ frames
+  keeps the average content while dividing the token count by $k$.
+  Feature change between neighbours is small within a shot and large at
+  a cut, so a threshold separates the two.
+math:
+  - "tᵢ = ⌊(i + 0.5)·n / T⌋,   i = 0 … T−1"
+  - "Gap between samples ≈ n / T (differs by at most 1)"
+  - "T_max = ⌊(C − R) / m⌋"
+  - "Tokens = T·m ≤ C − R"
+  - "T′ = ⌈T / k⌉"
+  - "zⱼ = (1/k) Σ over frames in group j of fₜ"
+  - "Δₜ = ‖fₜ − fₜ₋₁‖₂,   keyframe if Δₜ > τ"
+interview_qa:
+  - q: "Why sample the centre of each segment rather than the first frame?"
+    a: "The centre of equal segments spreads samples evenly across the clip and avoids bias toward the start of each segment, so coverage is uniform."
+  - q: "How many frames can you afford?"
+    a: "Subtract the tokens reserved for the text prompt and the answer from the context, then divide by the tokens per frame and round down."
+  - q: "What does temporal pooling cost you?"
+    a: "Averaging over $k$ frames reduces tokens by $k$ but blurs fast changes inside a group, so very short events can vanish."
+  - q: "When are keyframes better than uniform sampling?"
+    a: "When the video has distinct shots and long static stretches, since keyframes spend tokens on changes. Uniform sampling is better when change is gradual."
+hyperparameters:
+  - "Number of sampled frames $T$"
+  - "Tokens per frame $m$ (depends on resolution and pooling)"
+  - "Temporal pooling group size $k$"
+  - "Keyframe threshold $\\tau$ on feature change"
+pitfalls:
+  - "Uniform indices only work for $T \\leq n$; for short clips repeat or take all frames instead"
+  - "A fixed threshold on feature change depends on the encoder's scale, so tune it per model"
+  - "Forgetting the reserve for text and answer overflows the context after the video tokens"
+related: [vision-transformer-patch-embed, context-window-limits, clip-contrastive-loss]
+math_tex:
+- '$t_i = \lfloor (i + 0.5) n / T \rfloor$, $i = 0 \ldots T-1$'
+- 'Gap $\approx n / T$ (varies by at most 1)'
+- 'Budget: $T_{\max} = \lfloor (C - R) / m \rfloor$'
+- 'Tokens: $T \cdot m \leq C - R$'
+- 'After pooling: $T^{\prime} = \lceil T / k \rceil$'
+- 'Pooled: $z_j = \frac{1}{k} \sum_{t \in G_j} f_t$'
+- 'Keyframe if $\|f_t - f_{t-1}\| > \tau$'

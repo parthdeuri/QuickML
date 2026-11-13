@@ -1,0 +1,107 @@
+slug: autoscaling-littles-law
+title: Little's Law, Erlang C and Capacity Planning
+url: https://en.wikipedia.org/wiki/M/M/c_queue
+difficulty: Hard
+area: MLOps
+topics: [Capacity Planning, Queueing Theory, Autoscaling]
+summary: |
+  Concurrent requests equal arrival rate times time in system
+  ($L = \lambda W$); the M/M/c queue and the Erlang C formula give the
+  wait for $c$ servers, so you can size a fleet to a wait target.
+intuition: |
+  Throughput and latency fix concurrency: $L = \lambda W$, so 50
+  requests per second at 2 seconds each keeps 100 requests in flight.
+  Capacity is then about queues, not averages. Utilisation
+  $\rho = \frac{\lambda}{c\mu}$ must stay below 1 or the queue grows
+  without bound, and as $\rho$ approaches 1 the wait explodes, so the
+  last servers you add buy the most. Autoscalers react with lag, so
+  you size for the wait target plus headroom, not for $\rho$ near 1.
+  Flow: arrival rate → offered load → Erlang C wait → add servers → meet target.
+approach:
+  - 'Measure the arrival rate $\lambda$ and service rate $\mu$ per server — they define the offered load $a = \frac{\lambda}{\mu}$'
+  - 'Check stability, $a < c$ — otherwise the queue grows forever and no wait exists'
+  - 'Compute $C(c, a)$ — the probability that an arrival finds every server busy'
+  - 'Get the mean wait $W_q = \frac{C(c, a)}{c\mu - \lambda}$ — the queueing delay before service starts'
+  - 'Start at the smallest stable $c$ and add servers until $W_q$ meets the target — the smallest $c$ is the cheapest fleet'
+  - 'Add headroom for scaling lag — new replicas take time to start, so load can outrun them'
+code: |
+  import math
+
+  def littles_L(lam, W):
+      return lam * W
+
+  def erlang_c(c, a):
+      if a >= c:
+          raise ValueError("unstable: offered load a >= servers c")
+      term, s = 1.0, 1.0
+      for k in range(1, c):
+          term *= a / k
+          s += term
+      top = term * a / (c - a)
+      return top / (s + top)
+
+  def mean_wait_mmc(lam, mu, c):
+      a = lam / mu
+      if a >= c:
+          raise ValueError("unstable: rho = lam/(c*mu) >= 1")
+      return erlang_c(c, a) / (c * mu - lam)
+
+  def servers_needed(lam, mu, target_wait):
+      c = int(lam / mu) + 1
+      while mean_wait_mmc(lam, mu, c) > target_wait:
+          c += 1
+      return c
+key_lines: [13, 23, 24]
+time: "O(c) per Erlang C evaluation; servers_needed tries a few values of c"
+space: "O(1)"
+when_to_use: |
+  Sizing replica counts or GPU pools for a service with roughly
+  Poisson arrivals and similar request sizes, and sanity-checking
+  concurrency limits from QPS and latency with Little's law.
+when_not_to_use: |
+  Bursty or heavy-tailed traffic, and LLM requests whose service times
+  vary by orders of magnitude with output length. Batched servers also
+  break the one-request-per-server model. Use the formulas as a
+  first estimate and confirm with load tests or simulation.
+why_it_works: |
+  Little's law holds for any stable system regardless of the arrival
+  or service distribution, because total time spent by customers
+  equals the time-average count integrated over the window. Erlang C
+  is the exact waiting probability for Poisson arrivals, exponential
+  service times and $c$ identical servers. Given it, the mean wait is
+  the waiting probability times the mean wait of a waiter,
+  $\frac{1}{c\mu - \lambda}$.
+math:
+  - "L = λ · W"
+  - "a = λ / μ,   ρ = λ / (c·μ) < 1"
+  - "N = (aᶜ / c!) · c / (c − a)"
+  - "C(c, a) = N / ( Σₖ₌₀ᶜ⁻¹ aᵏ/k!  +  N )"
+  - "W_q = C(c, a) / (c·μ − λ)"
+  - "W = W_q + 1/μ"
+math_tex:
+- '$L = \lambda \cdot W$'
+- '$a = \frac{\lambda}{\mu}, \;\; \rho = \frac{\lambda}{c\mu} < 1$'
+- '$N = \frac{a^{c}}{c!} \cdot \frac{c}{c - a}$'
+- '$C(c, a) = \frac{N}{\sum_{k=0}^{c-1} \frac{a^{k}}{k!} + N}$'
+- '$W_q = \frac{C(c, a)}{c\mu - \lambda}$'
+- '$W = W_q + \frac{1}{\mu}$'
+interview_qa:
+  - q: "State Little's law and use it for an LLM service."
+    a: 'The average number in the system equals arrival rate times average time in the system, $L = \lambda W$. At 50 QPS and 2 s latency about 100 requests are concurrent, which bounds the batch or replica count you need.'
+  - q: "Why does the wait blow up near full utilisation?"
+    a: 'The mean wait scales like $\frac{1}{c\mu - \lambda}$, which diverges as $\lambda$ approaches $c\mu$. Small load increases then cause large queues, so run at moderate $\rho$.'
+  - q: "What does Erlang C give you?"
+    a: 'The probability that an arriving request must wait because all $c$ servers are busy, assuming Poisson arrivals and exponential service. Multiply by $\frac{1}{c\mu - \lambda}$ for the mean wait.'
+  - q: "Why keep headroom even if the formulas say the target is met?"
+    a: 'Autoscaling reacts with lag and real traffic is burstier than Poisson, so capacity sized exactly to the mean misses the target during spikes.'
+hyperparameters:
+  - 'Target mean or tail wait'
+  - 'Per-server service rate $\mu$'
+  - 'Arrival rate $\lambda$ (peak, not average)'
+  - 'Headroom factor for scaling lag'
+pitfalls:
+  - 'Planning on average load; size for the peak and the scale-up delay'
+  - 'Mean wait hides the tail; the p99 wait can be several times larger'
+  - 'Assuming exponential service times when output lengths vary widely'
+  - 'Using $\mu$ measured at low load; per-server speed can drop under contention'
+related: [continuous-batching, gpu-memory-estimation, llm-api-retries-rate-limits]

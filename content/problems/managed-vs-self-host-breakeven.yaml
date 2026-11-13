@@ -1,0 +1,101 @@
+slug: managed-vs-self-host-breakeven
+title: Managed API vs Self-Hosting Break-Even
+url: https://www.databricks.com/blog/llm-inference-performance-engineering-best-practices
+difficulty: Medium
+area: MLOps
+topics: [LLM, Cost, Serving, Capacity Planning]
+summary: |
+  A managed API costs linearly with tokens, while self-hosting costs a
+  whole number of GPUs plus operations, a step function of volume. The
+  break-even volume is where the two curves cross.
+intuition: |
+  Self-hosting is a fixed bill you pay whether the GPUs are busy or
+  not, so it only wins when volume is high enough to keep them
+  utilised. Because you buy GPUs in whole units, the cost jumps each
+  time volume passes the capacity of the current fleet, so the
+  curves can cross, separate and cross again. Utilisation is the lever
+  that matters: the same fleet serves more tokens, so each costs less.
+  Flow: monthly tokens → GPUs needed (ceiling) → self-host cost vs API cost → cheaper option.
+approach:
+  - "Price the API as $t\\,p$ for $t$ tokens — a straight line through the origin"
+  - "Compute GPUs as $\\lceil t/(u\\,\\mathrm{cap}) \\rceil$ — you cannot rent a fraction of a GPU"
+  - "Add fixed operations $O$ to $k\\,G$ — self-hosting has a non-zero floor even at tiny volume"
+  - "Scan fleet sizes $k$ and find the first $t$ where cost drops to the API line — inside segment $((k-1)u\\,\\mathrm{cap},\\, k\\,u\\,\\mathrm{cap}]$"
+  - "Divide cost by $t$ for cost per token — compare setups of different size on one scale"
+code: |
+  import math
+
+  def api_cost(t, p):
+      return t * p
+
+  def selfhost_cost(t, gpu_month, ops, cap, util):
+      gpus = math.ceil(t / (util * cap))
+      return gpus * gpu_month + ops
+
+  def cost_per_token(cost, t):
+      return cost / t
+
+  def breakeven_tokens(p, gpu_month, ops, cap, util, t_max):
+      seg = util * cap
+      k = 1
+      while (k - 1) * seg < t_max:
+          fixed = k * gpu_month + ops
+          t = max(fixed / p, (k - 1) * seg)
+          if t <= k * seg and t <= t_max:
+              return t
+          k += 1
+      return None
+key_lines: [8, 17, 18]
+time: "O(t_max / (u·cap)) to scan fleet sizes; each cost evaluation is O(1)"
+space: "O(1)"
+when_to_use: |
+  Deciding whether a steady, high-volume workload justifies running
+  your own models, or sizing the volume at which a pilot on a managed
+  API should be re-evaluated.
+when_not_to_use: |
+  Spiky or uncertain traffic, where idle GPUs make utilisation low, or
+  when non-cost factors decide it: data privacy, control over the
+  model, latency, and whether the team can run the system. Numbers
+  here are illustrative parameters, not real prices.
+why_it_works: |
+  Within one fleet size the self-host cost is a constant while the API
+  cost rises linearly, so they cross at $t = (kG + O)/p$ if that falls
+  inside the segment. Scanning segments in order finds the first such
+  crossing exactly. As volume grows, the per-token self-host cost
+  approaches $G/(u\,\mathrm{cap})$, so it wins in the long run only if
+  that is below $p$.
+math:
+  - "API cost = t·p"
+  - "GPUs k = ⌈ t / (u·cap) ⌉"
+  - "Self-host cost = k·G + O"
+  - "cost per token = cost(t) / t"
+  - "Break-even in segment k: t = (k·G + O) / p"
+  - "Valid if (k − 1)·u·cap < t ≤ k·u·cap"
+  - "Long-run self-host cost per token → G / (u·cap)"
+interview_qa:
+  - q: "Why is the self-host cost a step function?"
+    a: "GPUs are rented in whole units, so cost is flat until volume exceeds $u\\,\\mathrm{cap}$ per GPU and then jumps by one GPU's monthly price."
+  - q: "How does utilisation change the decision?"
+    a: "Higher utilisation lets each GPU serve more tokens, so fewer GPUs are needed and cost per token falls. Low utilisation can make self-hosting more expensive than the API at any volume."
+  - q: "Roughly where is the break-even at low volume?"
+    a: "Near $(G + O)/p$ tokens a month, when one GPU plus operations costs the same as the API bill, provided one GPU can serve that volume."
+  - q: "What can outweigh the cost comparison?"
+    a: "Data privacy and residency, control over model versions, latency needs, and whether the team has the skills to run and monitor the serving stack."
+hyperparameters:
+  - "API price per token $p$"
+  - "GPU monthly price $G$ and operations cost $O$"
+  - "Per-GPU capacity $\\mathrm{cap}$ in tokens per month"
+  - "Utilisation $u$ you can sustain"
+pitfalls:
+  - "Using peak throughput as capacity; sustained utilisation is lower, and traffic peaks need headroom"
+  - "Forgetting operations cost $O$ and on-call effort, which makes self-hosting look cheaper than it is"
+  - "Reading one crossing as final: after the next step up the API can be cheaper again"
+related: [gpu-memory-estimation, int8-quantization, continuous-batching]
+math_tex:
+- 'API: $C_{api} = t\,p$'
+- 'Fleet: $k = \lceil \frac{t}{u\,\mathrm{cap}} \rceil$'
+- 'Self-host: $C_{self} = kG + O$'
+- 'Per token: $\frac{C(t)}{t}$'
+- 'Break-even in segment: $t = \frac{kG + O}{p}$'
+- 'Valid if $(k-1)u\,\mathrm{cap} < t \leq k\,u\,\mathrm{cap}$'
+- 'Long run: $\frac{G}{u\,\mathrm{cap}}$ per token'

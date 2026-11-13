@@ -1,0 +1,106 @@
+slug: multimodal-rag-fusion
+title: Multimodal RAG Retrieval and Fusion
+url: https://arxiv.org/abs/2103.00020
+difficulty: Medium
+area: Vision
+topics: [Multimodal Retrieval, Rank Fusion, Score Normalisation]
+summary: |
+  Retrieve over text and images either through one shared embedding
+  space or through separate indexes whose results are fused by rank or
+  by normalised, weighted scores.
+intuition: |
+  If text and images are embedded so that matching pairs sit close, a
+  text query can fetch images with the same nearest-neighbour search
+  used for text. With separate per-modality indexes the lists must be
+  merged, and raw scores from different encoders live on unrelated
+  scales, so a plain sum is decided by whichever scorer has the larger
+  numbers. Normalising scores, or using only ranks, makes each list's
+  vote comparable.
+  Flow: query → per-modality search → normalise or rank → fused top-k → LLM context.
+approach:
+  - "Embed the query and the items and score by cosine similarity — in a shared space this finds images from text directly"
+  - "Rescale each list's scores with min-max or z-score — puts different encoders on one scale"
+  - "Add the rescaled scores with weights $w_m$ — lets you trust one modality more"
+  - "Or ignore scores and give each item $\\frac{1}{k + \\mathrm{rank}}$ per list (RRF) — immune to any monotone rescaling"
+  - "Sort by the fused score and take the top-k — the context passed to the generator"
+code: |
+  import numpy as np
+
+  def unit(x):
+      return x / np.linalg.norm(x, axis=-1, keepdims=True)
+
+  def cross_modal_retrieve(q_vec, item_vecs, k):
+      s = unit(item_vecs) @ unit(q_vec)
+      top = np.argsort(-s, kind="stable")[:k]
+      return top, s[top]
+
+  def minmax(s):
+      r = s.max() - s.min()
+      return (s - s.min()) / r if r > 0 else np.zeros_like(s)
+
+  def zscore(s):
+      sd = s.std()
+      return (s - s.mean()) / sd if sd > 0 else np.zeros_like(s)
+
+  def late_fusion(score_lists, weights, norm=None):
+      f = {"minmax": minmax, "zscore": zscore, None: lambda s: s}[norm]
+      return sum(w * f(np.asarray(s, float))
+                 for w, s in zip(weights, score_lists))
+
+  def rrf(rank_lists, k=60):
+      score = {}
+      for ranks in rank_lists:
+          for r, d in enumerate(ranks, start=1):
+              score[d] = score.get(d, 0) + 1 / (k + r)
+      return sorted(score.items(), key=lambda x: (-x[1], x[0]))
+key_lines: [7, 20, 28]
+time: "O(M·d) to score M items, O(M log M) to rank, O(L·M) to fuse L lists"
+space: "O(M·d) for the item embeddings, O(M) for scores"
+when_to_use: |
+  RAG over documents that mix text and images, where the corpus has a
+  text index and an image index, or where a shared space lets a text
+  query retrieve pictures.
+when_not_to_use: |
+  When the images carry no information beyond their captions, so text
+  retrieval on captions is simpler. Also when one modality's scores are
+  already calibrated to the other's, so fusion adds nothing.
+why_it_works: |
+  A contrastive objective pulls matching text and image embeddings
+  together, so cosine similarity across modalities is meaningful. For
+  fusion, min-max and z-score are affine maps that remove each scorer's
+  offset and scale, so weights then express real preference. RRF depends
+  only on positions, so it is unchanged by any monotone rescaling of a
+  scorer.
+math:
+  - "score(q, i) = cos(q, xᵢ) = q·xᵢ / (‖q‖‖xᵢ‖)"
+  - "minmax(s) = (s − min s) / (max s − min s) ∈ [0, 1]"
+  - "zscore(s) = (s − mean s) / std s"
+  - "fused(i) = Σₘ wₘ · norm(sₘ)(i)"
+  - "RRF(i) = Σ over lists 1 / (k + rankₘ(i)),   k ≈ 60"
+  - "Raw sum: the list with larger scale decides the order"
+interview_qa:
+  - q: "Why can a text query retrieve images with a shared embedding space?"
+    a: "Training pulls matching text and image pairs close in one space, so the same cosine search compares a text vector with image vectors."
+  - q: "Why normalise scores before fusing lists?"
+    a: "Different encoders produce scores on different ranges, so an unnormalised sum is dominated by the larger-scale list. Min-max or z-score puts them on a common scale first."
+  - q: "When would you prefer RRF to weighted score fusion?"
+    a: "When scores are not comparable or not available, or you want a robust default. RRF uses only ranks, but it discards how confident each score was."
+  - q: "What does a modality weight do?"
+    a: "It scales the normalised scores of one list, so a weight of 1 for one list and 0 for the other reproduces that list's ranking."
+hyperparameters:
+  - "Fusion method (RRF, min-max, z-score)"
+  - "Modality weights $w_m$"
+  - "RRF constant $k$ (often about 60)"
+  - "Number of candidates $k$ taken from each index"
+pitfalls:
+  - "Min-max is sensitive to outliers because one extreme score squeezes everything else; z-score is steadier"
+  - "Normalising over only the top-k candidates changes the scale per query, so keep the candidate pool size consistent"
+  - "Cross-modal similarity in a shared space is often lower than same-modality similarity, so comparing raw scores across the two is misleading"
+related: [clip-contrastive-loss, hybrid-search-rrf, cosine-similarity-embeddings]
+math_tex:
+- 'Cosine: $\cos(q, x_i) = \frac{q \cdot x_i}{\|q\| \|x_i\|}$'
+- 'Min-max: $\frac{s - \min s}{\max s - \min s} \in [0, 1]$'
+- 'Z-score: $\frac{s - \bar{s}}{\mathrm{std}(s)}$'
+- 'Fusion: $\sum_{m} w_m \cdot \mathrm{norm}(s_m)(i)$'
+- 'RRF: $\sum_{m} \frac{1}{k + \mathrm{rank}_m(i)}$, $k \approx 60$'
+- 'Raw sum: larger-scale list sets the order'

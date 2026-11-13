@@ -1,0 +1,103 @@
+slug: experiment-tracking-runs
+title: Experiment Tracking - Runs, Params and Metrics
+url: https://mlflow.org/docs/latest/ml/tracking/
+difficulty: Easy
+area: MLOps
+topics: [MLOps, Experiment Tracking, Reproducibility]
+summary: |
+  Record every training attempt as a run with fixed parameters, metrics
+  logged per step, tags and artifacts, then compare runs by a metric
+  while checking that the gap is larger than seed noise.
+intuition: |
+  A result you cannot reproduce is an anecdote. A run is the unit of
+  evidence: its parameters are write-once inputs, its metrics are a
+  time series indexed by step, and together with the code version, data
+  version and random seed they pin down how the number was produced.
+  Picking the best run is then a query, but a gap between two runs is
+  only meaningful if it exceeds the spread across seeds, $s/\sqrt{n}$.
+  Flow: run → params fixed → metrics per step → compare → pick.
+approach:
+  - "Create a run with an id and status — every attempt becomes a record"
+  - "Log parameters once and refuse a changed value — inputs stay immutable, so the run can be reproduced"
+  - "Log metrics with a step — a curve per metric, kept ordered by step"
+  - "End the run with a status — failed runs must not win a comparison"
+  - "Pick the best run by the final metric value, $\\max$ or $\\min$ — direction depends on the metric"
+  - "Repeat over seeds and compare with $s/\\sqrt{n}$ — a gap inside the noise is not a win"
+code: |
+  import bisect
+  import statistics as st
+
+  class Run:
+      def __init__(self, run_id):
+          self.id = run_id
+          self.params, self.metrics = {}, {}
+          self.status = "RUNNING"
+
+      def log_param(self, key, value):
+          old = self.params.setdefault(key, value)
+          if old != value:
+              raise ValueError(f"param {key!r} is already {old!r}")
+
+      def log_metric(self, key, value, step):
+          hist = self.metrics.setdefault(key, [])
+          bisect.insort(hist, (step, value))
+
+      def end(self, status="FINISHED"):
+          self.status = status
+
+  def best_run(runs, metric, mode="max"):
+      assert mode in ("max", "min")
+      ok = [r for r in runs
+            if r.status == "FINISHED" and metric in r.metrics]
+      pick = max if mode == "max" else min
+      return pick(ok, key=lambda r: r.metrics[metric][-1][1])
+
+  def sem(xs):
+      return st.stdev(xs) / len(xs) ** 0.5
+key_lines: [11, 12, 17]
+time: "O(1) per logged param, O(log h) per metric point in a history of length h, O(r) to pick the best of r runs"
+space: "O(p + h) per run for params and metric history, plus artifact files on disk"
+when_to_use: |
+  Any experiment you may want to compare, repeat or audit later:
+  hyperparameter searches, ablations, fine-tuning attempts and
+  evaluation reruns, especially when several people share results.
+when_not_to_use: |
+  A throwaway notebook cell with nothing to compare. Tracking also does
+  not replace versioning: if code and data are not pinned by a commit
+  and a data version, the recorded params alone cannot reproduce a run.
+why_it_works: |
+  Making parameters write-once means a run id always refers to one
+  configuration, so the metrics under it can be trusted to belong to it.
+  Metrics keyed by step keep curves comparable across runs. The standard
+  error $s/\sqrt{n}$ shrinks with the number of seeds, so a gap larger
+  than about twice $\mathrm{SE}_{\Delta}$ is unlikely to be seed noise.
+math:
+  - "SE = s / √n"
+  - "SE_Δ = √(s_A²/n_A + s_B²/n_B)"
+  - "Gap Δ = x̄_A − x̄_B is credible if |Δ| > 2 · SE_Δ"
+  - "n ≥ 2 · (1.96 · s / δ)²  seeds per arm to resolve a gap δ"
+interview_qa:
+  - q: "What do you need to reproduce a training result?"
+    a: "The code version, the data version, all parameters and the random seed, plus the environment. A tracked run records these so the same number can be regenerated."
+  - q: "Why are parameters immutable but metrics are appended?"
+    a: "Parameters define what the run is, so changing one would make the record lie. Metrics describe how training progressed, so they grow as a time series over steps."
+  - q: "Run A beats run B by 0.3 points. Is A better?"
+    a: "Not necessarily. Repeat each configuration over several seeds and compare the gap with its standard error; if the gap is within about two standard errors it may be seed noise."
+  - q: "Should the best run be chosen by the best step or the final step?"
+    a: "Decide before looking. Best-step on a validation metric is fine if that checkpoint is what you ship, but selecting on test data leaks; report the test metric once."
+hyperparameters:
+  - "Random seed (and number of seeds per configuration)"
+  - "Metric to optimise and its direction (higher or lower is better)"
+  - "Logging frequency in steps"
+  - "Which run status counts as comparable (finished only)"
+pitfalls:
+  - "Logging params after the fact or overwriting them silently, so the record no longer matches the run"
+  - "Choosing the best run from one seed per configuration and mistaking noise for a win"
+  - "Comparing runs trained on different data versions or code commits as if they were equal"
+  - "Selecting a run on the test metric, which leaks the test set into model selection"
+related: [hyperparameter-search, cross-validation, prompt-versioning]
+math_tex:
+- $\mathrm{SE} = \frac{s}{\sqrt{n}}$
+- $\mathrm{SE}_{\Delta} = \sqrt{\frac{s_A^2}{n_A} + \frac{s_B^2}{n_B}}$
+- Credible gap $\Delta = \bar{x}_A - \bar{x}_B$ if $|\Delta| > 2\,\mathrm{SE}_{\Delta}$
+- Seeds per arm $n \geq 2\left(\frac{1.96\,s}{\delta}\right)^2$

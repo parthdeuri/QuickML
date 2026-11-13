@@ -1,0 +1,122 @@
+slug: model-serving-api-contract
+title: Model Serving API Contract and Dynamic Batching
+url: https://fastapi.tiangolo.com/tutorial/handling-errors/
+difficulty: Medium
+area: MLOps
+topics: [MLOps, Serving, API Design, Batching]
+summary: |
+  A model behind an HTTP API needs typed schemas, validation errors with
+  field paths, versioned routes, separate liveness and readiness probes,
+  and a server-side batcher that trades a bounded wait for throughput.
+intuition: |
+  The API is a contract: callers depend on the shape of requests and
+  responses, so schemas are enforced at the edge and breaking changes go
+  under a new route prefix. Liveness asks whether the process is up,
+  readiness asks whether it can serve, and they differ while the model
+  is still loading. Batching is a deliberate delay: waiting at most
+  $W$ for company lets one forward pass serve many requests, raising
+  throughput at the price of up to $W$ extra latency.
+  Flow: request → validate → batch (size or wait) → forward pass → response.
+approach:
+  - "Define typed request and response models — bad input is rejected with a 422 and the field path before reaching the model"
+  - "Mount the prediction route under /v1 — a breaking change ships as /v2 while old callers keep working"
+  - "Expose /healthz for liveness and /readyz for readiness — orchestrators restart dead processes but only route to ready ones"
+  - "Return 503 from readiness until the model object is loaded — no traffic during warm-up"
+  - "Open a batch at the first arrival — the wait clock starts there"
+  - "Close the batch at max_batch requests or after $W$ — bounds both batch size and added latency"
+code: |
+  from pydantic import BaseModel, Field
+  from fastapi import FastAPI, HTTPException, Response
+
+  class PredictRequest(BaseModel):
+      features: list[float] = Field(min_length=1, max_length=8)
+      request_id: str | None = None
+
+  class PredictResponse(BaseModel):
+      score: float
+      model_version: str
+      request_id: str | None = None
+
+  def make_app(state):
+      app = FastAPI()
+
+      @app.get("/healthz")
+      def healthz():
+          return {"status": "ok"}
+
+      @app.get("/readyz")
+      def readyz(resp: Response):
+          ready = state["model"] is not None
+          resp.status_code = 200 if ready else 503
+          return {"ready": ready}
+
+      @app.post("/v1/predict", response_model=PredictResponse)
+      def predict(req: PredictRequest):
+          if state["model"] is None:
+              raise HTTPException(503, "model not loaded")
+          score = state["model"](req.features)
+          return PredictResponse(score=score, model_version="v1",
+                                 request_id=req.request_id)
+
+      return app
+
+  def dynamic_batches(arrivals, max_batch, max_wait):
+      out, i, n = [], 0, len(arrivals)
+      while i < n:
+          t0, j = arrivals[i], i
+          while (j < n and j - i < max_batch
+                 and arrivals[j] <= t0 + max_wait):
+              j += 1
+          full = j - i == max_batch
+          t = arrivals[j - 1] if full else t0 + max_wait
+          out.append((t, list(range(i, j))))
+          i = j
+      return out
+key_lines: [28, 29, 44]
+time: "O(n) to form all batches from n sorted arrivals; one forward pass per batch"
+space: "O(max_batch) requests held in the open batch"
+when_to_use: |
+  Any model exposed to other services: schemas and versioned routes keep
+  callers stable, probes let an orchestrator manage the process, and
+  dynamic batching suits accelerators where one batched pass costs far
+  less than many single ones.
+when_not_to_use: |
+  Skip dynamic batching when traffic is so low that batches never fill
+  (you only add latency) or when a strict latency target leaves no room
+  for $W$. Offline scoring needs no HTTP contract; run it as a batch job.
+why_it_works: |
+  A forward pass has a fixed cost plus a per-item cost, $S(b) = a + cb$,
+  so throughput $b/S(b)$ rises with $b$ toward $1/c$ as the fixed cost
+  is amortised. A request waits at most $W$ because the batch closes
+  then, so worst-case latency is $W + S(B)$. Larger batches therefore
+  raise throughput and also the tail latency.
+math:
+  - "Worst-case latency L_max = W + S(B)"
+  - "Service time S(b) = a + c·b   (fixed cost + per-item cost)"
+  - "Throughput(b) = b / S(b) = b / (a + c·b)  →  1/c as b grows"
+  - "Expected batch size b ≈ min(B, 1 + λ·W) at arrival rate λ"
+interview_qa:
+  - q: "What is the difference between liveness and readiness?"
+    a: "Liveness says the process is running and should not be restarted. Readiness says the model is loaded and the service can take traffic, so it is false during warm-up or when a dependency is down."
+  - q: "Why return 422 with the field path?"
+    a: "The caller learns exactly which field broke the contract, for example body then features, without the request ever touching the model. The status says the request was well formed but semantically invalid."
+  - q: "How does dynamic batching affect latency and throughput?"
+    a: "It raises throughput because the fixed cost of a forward pass is shared, but a request can wait up to the max wait, so tail latency grows with both the wait and the batch size."
+  - q: "How do timeouts and retries interact with a prediction API?"
+    a: "Clients set a timeout and retry with backoff. To make retries safe the request carries an id so the server can return the earlier result instead of doing the work twice."
+hyperparameters:
+  - "max_batch, the largest batch sent to the model"
+  - "max_wait, the longest a request may be held for batching"
+  - "Request timeout and number of retries at the client"
+  - "Schema limits such as maximum feature count"
+pitfalls:
+  - "Reporting ready before the model is loaded, so the first real requests fail"
+  - "Using one health endpoint for both liveness and readiness, so a slow model load causes restart loops"
+  - "Setting the wait too high for the latency target; $W$ is added to every request that arrives to a quiet queue"
+  - "Retrying a non-idempotent call without a request id, which can run the work twice"
+related: [continuous-batching, structured-outputs-json-schema, tracing-and-logging]
+math_tex:
+- Worst case $L_{\max} = W + S(B)$
+- $S(b) = a + c\,b$ (fixed + per item)
+- $\mathrm{thr}(b) = \frac{b}{a + c\,b} \rightarrow \frac{1}{c}$
+- Batch size $b \approx \min(B,\; 1 + \lambda W)$

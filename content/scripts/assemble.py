@@ -185,6 +185,15 @@ _insert_before("llm-engineer", "16.", ("14. AI agents and tool calling", [
     "reflection-self-correction", "agentic-workflow-patterns", "multi-agent-orchestration",
     "state-graph-workflows", "agent-evaluation-safety"]))
 
+_insert_before("llm-engineer", "16.", ("15. Multimodal LLMs", [
+    "clip-contrastive-loss", "vision-transformer-patch-embed", "vlm-projector-image-tokens",
+    "video-frame-sampling-temporal-pooling", "audio-log-mel-spectrogram", "ctc-greedy-decoding",
+    "griffin-lim-waveform-reconstruction", "multimodal-rag-fusion"]))
+SHEETS["llm-engineer"][2].append(("19. LLMOps and production deployment", [
+    "llm-cost-latency-optimisation", "semantic-cache", "reliability-circuit-breaker-slo",
+    "autoscaling-littles-law", "container-binpacking-scheduling", "experiment-tracking-runs",
+    "model-serving-api-contract", "managed-vs-self-host-breakeven"]))
+
 def main():
     have = {p.stem for p in PROBLEMS.glob("*.yaml")}
     used = set()

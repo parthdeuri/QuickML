@@ -1,0 +1,110 @@
+slug: vlm-projector-image-tokens
+title: VLM Projector and Image Tokens
+url: https://arxiv.org/abs/2310.03744
+difficulty: Medium
+area: Vision
+topics: [Vision-Language Models, Projector, Token Budget]
+summary: |
+  A vision-language model splits the image into patches, encodes each
+  patch, maps the features to the language model's embedding size with
+  a projector, and feeds the result as image tokens before the text.
+intuition: |
+  A language model only understands vectors of size $d_l$, so the image
+  must be turned into a sequence of such vectors. The vision encoder
+  already gives one feature per patch, and a small projector (a linear
+  layer or two-layer MLP) is the only adapter that translates its
+  $d_v$-dimensional space into the language model's embedding space.
+  After that the image tokens are ordinary tokens, so their count
+  directly sets the cost: attention is quadratic in length and the KV
+  cache linear, which is why neighbouring patches are pooled.
+  Flow: image → patches → encoder features → projector → LLM tokens.
+approach:
+  - "Cut the image into $P \\times P$ patches — gives $N = (H/P)(W/P)$ patches, one feature vector each after the encoder"
+  - "Project each feature with $\\mathrm{GELU}(fW_1 + b_1)W_2 + b_2$ — maps $d_v$ to the language model size $d_l$"
+  - "Average each $k \\times k$ group of neighbouring tokens — divides the token count by $k^2$ at little loss of detail"
+  - "Concatenate image tokens before the text embeddings — the language model sees one sequence of $d_l$-vectors"
+  - "Count tokens as $N/k^2 + L$ before serving — this length sets attention cost and KV cache size"
+code: |
+  import numpy as np
+  from scipy.special import erf
+
+  def patchify(img, P):
+      H, W, C = img.shape
+      g = img.reshape(H // P, P, W // P, P, C)
+      g = g.transpose(0, 2, 1, 3, 4)
+      return g.reshape(-1, P * P * C)
+
+  def gelu(x):
+      return 0.5 * x * (1 + erf(x / np.sqrt(2)))
+
+  def project(feats, W1, b1, W2, b2):
+      return gelu(feats @ W1 + b1) @ W2 + b2
+
+  def pool_tokens(grid, k):
+      gh, gw, d = grid.shape
+      g = grid.reshape(gh // k, k, gw // k, k, d)
+      return g.mean(axis=(1, 3)).reshape(-1, d)
+
+  def build_inputs(image_tokens, text_embeds):
+      return np.concatenate([image_tokens, text_embeds], axis=0)
+
+  def token_count(H, W, P, k=1):
+      return (H // P // k) * (W // P // k)
+key_lines: [6, 7, 18]
+time: "O(N·d_v·d_h) for the projector; the language model then pays O((N/k² + L)²·d)"
+space: "O((N/k² + L)·d_l) for the input and the per-layer KV cache"
+when_to_use: |
+  Connecting a pretrained vision encoder to a pretrained language model,
+  and budgeting how many tokens an image costs before choosing the patch
+  size and the pooling factor.
+when_not_to_use: |
+  Models that use cross-attention to read image features instead of
+  inserting them into the token sequence, or tasks where one global
+  image embedding is enough, as in retrieval or classification.
+why_it_works: |
+  The language model's layers only need inputs in its own embedding
+  space; training the projector (and optionally the model) teaches it to
+  place image features where text-like meaning lives. A nonlinearity
+  between two layers lets the map be more than a rotation or scaling.
+  Averaging a $k \times k$ group keeps the local mean feature while
+  cutting the sequence $k^2$ times, and sequence length is what cost
+  depends on.
+math:
+  - "N = (H/P)·(W/P),   patch size P, channels C, patch dim P²C"
+  - "F ∈ ℝ^{N×d_v},  W₁ ∈ ℝ^{d_v×d_h}"
+  - "W₂ ∈ ℝ^{d_h×d_l}"
+  - "Z = GELU(F W₁ + b₁) W₂ + b₂ ∈ ℝ^{N×d_l}"
+  - "Pooled token = (1/k²) Σ over the k×k group of z"
+  - "N' = N / k²"
+  - "Input X = [Z' ; E_text] ∈ ℝ^{(N'+L)×d_l}"
+  - "Attention cost ∝ (N'+L)²·d_l,   KV cache ∝ (N'+L)"
+  - "Example: 336/14 = 24, N = 576, k = 2 gives N' = 144"
+interview_qa:
+  - q: "Why does a VLM need a projector at all?"
+    a: "The vision encoder and the language model have different feature sizes and different meaning spaces. The projector is the small trainable bridge that maps one into the other."
+  - q: "How does the image affect inference cost?"
+    a: "Each image adds N image tokens to the sequence, so attention grows quadratically with the total length and the KV cache grows linearly. Reducing tokens reduces both."
+  - q: "How do you cut image tokens without a new encoder?"
+    a: "Pool neighbouring patch features, for example averaging k by k groups, or use a larger patch size. Both trade spatial detail for fewer tokens."
+  - q: "Where do image tokens go relative to the text?"
+    a: "Typically they are placed in the same sequence as the text embeddings, often before the question, and the language model attends over all of them with ordinary self-attention."
+hyperparameters:
+  - "Patch size $P$ and image resolution, which set $N$"
+  - "Pooling factor $k$, which divides tokens by $k^2$"
+  - "Projector type (linear or MLP) and hidden width $d_h$"
+  - "Whether the encoder and language model are frozen or fine-tuned"
+pitfalls:
+  - "The grid sizes must be divisible by $k$ (and the image by $P$); real systems pad or resize first"
+  - "Pooling features that came from different positions loses exact layout, so fine text in images may suffer"
+  - "Counting only image tokens forgets the text and the answer, which also need room in the context"
+related: [vision-transformer-patch-embed, clip-contrastive-loss, kv-cache]
+math_tex:
+- 'Patches: $N = \frac{H}{P} \cdot \frac{W}{P}$'
+- 'Shapes: $F \in \mathbb{R}^{N \times d_v}$, $W_1 \in \mathbb{R}^{d_v \times d_h}$'
+- 'and $W_2 \in \mathbb{R}^{d_h \times d_l}$'
+- 'Projector: $Z = \mathrm{GELU}(F W_1 + b_1) W_2 + b_2$'
+- 'Pooled token: $\bar{z} = \frac{1}{k^2} \sum_{(i,j)} z_{ij}$'
+- 'Pooled count: $N^{\prime} = N / k^2$'
+- 'Input: $X = [Z^{\prime} ; E_{text}] \in \mathbb{R}^{(N^{\prime}+L) \times d_l}$'
+- 'Cost: attention $\propto (N^{\prime}+L)^2 d_l$'
+- 'Example: $N = 24^2 = 576$, so $N^{\prime} = 144$ at $k = 2$'

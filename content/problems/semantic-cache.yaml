@@ -1,0 +1,112 @@
+slug: semantic-cache
+title: Semantic Cache for LLM Answers
+url: https://arxiv.org/abs/2411.05276
+difficulty: Medium
+area: MLOps
+topics: [LLM, Caching, Embeddings, Cost]
+summary: |
+  Cache LLM answers by meaning: embed the query, find the nearest cached
+  query and reuse its answer when cosine similarity reaches a threshold
+  $\tau$, with expiry and per-tenant isolation.
+intuition: |
+  An exact-match cache misses "reset my password" versus "how do I
+  change my password", but their embeddings are close. The threshold
+  $\tau$ is the whole trade: lower it and the hit rate rises, but more
+  hits are wrong answers served confidently. Pick it from labelled
+  pairs so the precision of hits meets a target, then check that the
+  hit rate times the model cost still beats the price of the lookup.
+  Flow: query → embed → nearest cached query → hit if above τ, else call model → store answer.
+approach:
+  - "Keep entries per tenant as (unit vector, answer, time) — one customer must never see another's answer"
+  - "Drop entries older than the TTL on lookup — answers go stale"
+  - "Take the maximum dot product with live entries — for unit vectors this is the cosine similarity"
+  - "Return the answer only if the best score is at least $\\tau$ — otherwise it is a miss and the model is called"
+  - "Tune $\\tau$ as the smallest score threshold with precision at least the target — most hits at an acceptable error rate"
+  - "Compare $h\\,c_{llm} - c_{lookup}$ with zero — a cache that rarely hits loses money"
+code: |
+  import numpy as np
+
+  class SemanticCache:
+      def __init__(self, threshold, ttl, clock):
+          self.tau, self.ttl, self.clock = threshold, ttl, clock
+          self.store = {}
+
+      def put(self, tenant, q_vec, answer):
+          entry = (np.asarray(q_vec, float), answer, self.clock())
+          self.store.setdefault(tenant, []).append(entry)
+
+      def get(self, tenant, q_vec):
+          now = self.clock()
+          live = [e for e in self.store.get(tenant, [])
+                  if now - e[2] < self.ttl]
+          self.store[tenant] = live
+          if not live:
+              return None
+          sims = np.array([e[0] @ q_vec for e in live])
+          best = int(sims.argmax())
+          if sims[best] >= self.tau:
+              return live[best][1]
+          return None
+
+  def tune_threshold(scores, labels, min_precision):
+      scores, labels = np.asarray(scores, float), np.asarray(labels)
+      for t in np.unique(scores):
+          hit = scores >= t
+          if labels[hit].mean() >= min_precision:
+              return float(t)
+      return None
+
+  def expected_savings(h, c_llm, c_lookup):
+      return h * c_llm - c_lookup
+key_lines: [19, 21, 29]
+time: "O(n·d) per lookup over n live entries of dimension d; an ANN index makes it sublinear"
+space: "O(n·d) for stored vectors plus the cached answers"
+when_to_use: |
+  Workloads with many paraphrased repeats of the same questions, such
+  as support bots or FAQ-style assistants, where an answer stays valid
+  for a while and is safe to share.
+when_not_to_use: |
+  Personalised, time-sensitive or high-stakes answers, where a
+  near-duplicate question can need a different answer. Also when the
+  hit rate is too low to cover the lookup cost.
+why_it_works: |
+  Embeddings place paraphrases close together, so cosine similarity
+  above a threshold is a cheap proxy for "same question". Precision
+  as a function of the threshold can be measured on labelled pairs, so
+  $\tau$ becomes a controlled risk instead of a guess, and the
+  savings formula says whether the hit rate justifies the lookup.
+math:
+  - "cos(q, c) = q·c / (‖q‖ ‖c‖) = q·c for unit vectors"
+  - "hit iff maxᵢ cos(q, cᵢ) ≥ τ"
+  - "precision(τ) = TP(τ) / (TP(τ) + FP(τ))"
+  - "τ* = min { τ : precision(τ) ≥ target }"
+  - "savings per request = h·c_llm − c_lookup"
+  - "break-even hit rate h* = c_lookup / c_llm"
+  - "entry is live iff now − t_put < TTL"
+interview_qa:
+  - q: "How do you choose the similarity threshold?"
+    a: "Score labelled pairs of same-meaning and different-meaning queries, then take the lowest threshold whose hit precision meets the target. A lower threshold gives more hits but more wrong answers."
+  - q: "What is the risk of a semantic cache?"
+    a: "A false hit returns a confident but wrong answer for a question that only looked similar, so thresholds, TTL and tenant isolation are correctness controls, not just tuning."
+  - q: "When does the cache pay for itself?"
+    a: "When the hit rate $h$ exceeds $c_{lookup}/c_{llm}$. Every request pays the lookup, and only hits avoid the model call."
+  - q: "Why key the cache by tenant?"
+    a: "Without it, one customer's question can match another customer's cached answer and leak private data."
+hyperparameters:
+  - "Similarity threshold $\\tau$"
+  - "TTL for expiring stale answers"
+  - "Embedding model and its dimension"
+  - "Tenant or scope key used to isolate entries"
+pitfalls:
+  - "Comparing non-normalised vectors with a dot product, so the score is no longer a cosine in $[-1, 1]$"
+  - "Tuning $\\tau$ on pairs that do not look like production traffic, so real precision is lower than measured"
+  - "Caching answers that depend on user, time or tool output, which are wrong for the next asker"
+related: [cosine-similarity-embeddings, probability-calibration, ann-vector-index]
+math_tex:
+- 'Cosine: $\cos(q,c) = \frac{q \cdot c}{\|q\|\,\|c\|}$'
+- 'Hit iff $\max_i \cos(q, c_i) \geq \tau$'
+- 'Precision: $\frac{TP(\tau)}{TP(\tau) + FP(\tau)}$'
+- 'Pick $\tau^{*} = \min\{\tau : \mathrm{prec}(\tau) \geq \mathrm{target}\}$'
+- 'Savings: $h\,c_{llm} - c_{lookup}$'
+- 'Break-even: $h^{*} = \frac{c_{lookup}}{c_{llm}}$'
+- 'Live iff $\mathrm{now} - t_{put} < \mathrm{TTL}$'

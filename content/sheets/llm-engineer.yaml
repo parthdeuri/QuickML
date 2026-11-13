@@ -165,6 +165,16 @@ sections:
   - multi-agent-orchestration
   - state-graph-workflows
   - agent-evaluation-safety
+- name: 15. Multimodal LLMs
+  problems:
+  - clip-contrastive-loss
+  - vision-transformer-patch-embed
+  - vlm-projector-image-tokens
+  - video-frame-sampling-temporal-pooling
+  - audio-log-mel-spectrogram
+  - ctc-greedy-decoding
+  - griffin-lim-waveform-reconstruction
+  - multimodal-rag-fusion
 - name: 16. Evaluation and observability
   problems:
   - bleu-score
@@ -191,3 +201,13 @@ sections:
   - output-validation-guardrails
   - content-safety-classifiers
   - fairness-metrics
+- name: 19. LLMOps and production deployment
+  problems:
+  - llm-cost-latency-optimisation
+  - semantic-cache
+  - reliability-circuit-breaker-slo
+  - autoscaling-littles-law
+  - container-binpacking-scheduling
+  - experiment-tracking-runs
+  - model-serving-api-contract
+  - managed-vs-self-host-breakeven

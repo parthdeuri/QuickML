@@ -1,5 +1,5 @@
 {
- "contentVersion": 14,
+ "contentVersion": 15,
  "problems": [
   {
    "slug": "ab-test-significance",
@@ -964,6 +964,84 @@
    "diagram": []
   },
   {
+   "slug": "audio-log-mel-spectrogram",
+   "title": "Log-Mel Spectrogram (Audio as Model Input)",
+   "platform": "Deep Learning",
+   "url": "https://docs.pytorch.org/audio/stable/generated/torchaudio.transforms.MelSpectrogram.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Audio",
+    "Speech",
+    "Signal Processing"
+   ],
+   "patterns": [],
+   "summary": "Cut a waveform into overlapping windowed frames, take the FFT power of each, pool the bins with triangular mel filters and compress with a log; the result is a time by mel-bin image that speech models read.",
+   "bruteForce": "When phase matters or the waveform must be recovered exactly, since the mel projection and magnitude discard it. Models that learn directly from raw waveforms skip this front end.",
+   "intuition": "A raw waveform is too long and too phase-sensitive to learn from directly. Frames turn it into a sequence, the FFT says which frequencies are present in each frame, the mel filters keep fine resolution at low pitch where speech detail lives and blur the highs like the ear does, and the log matches loudness perception and tames the huge dynamic range, so a convolutional or attention model sees a well-scaled picture. Flow: waveform → frames → spectrum → mel bands → log.",
+   "whyItWorks": "Speech structure such as formants and pitch harmonics is visible in short-time spectra, and a window of tens of milliseconds is short enough to treat speech as stationary. Mel pooling reduces $n_{fft}/2 + 1$ bins to a few dozen bands with perceptually even spacing, and the log turns multiplicative loudness changes into additive shifts that a network handles easily.",
+   "approach": [
+    "Slice the signal into frames of $n_{fft}$ samples every $\\text{hop}$ — gives $1 + \\lfloor (N - n_{fft}) / \\text{hop} \\rfloor$ frames without padding",
+    "Multiply each frame by a Hann window — smooth edges reduce spectral leakage",
+    "Take the real FFT and square the magnitude — power at each of the $n_{fft}/2 + 1$ bins",
+    "Build triangular filters equally spaced on the mel scale — narrow at low frequency, wide at high",
+    "Multiply power by the filterbank — pools bins into $n_{mels}$ bands per frame",
+    "Take the log with a small floor — compresses dynamic range and avoids $\\log 0$"
+   ],
+   "time": "O(F · n_fft log n_fft) for the FFTs plus O(F · n_fft · n_mels) for the filterbank, with F frames",
+   "space": "O(F · n_mels) output plus O(F · n_fft) for the framed signal",
+   "solution": "import numpy as np\n\ndef hz_to_mel(f):\n    return 2595.0 * np.log10(1.0 + f / 700.0)\n\ndef mel_to_hz(m):\n    return 700.0 * (10.0 ** (m / 2595.0) - 1.0)\n\ndef stft_power(x, n_fft, hop):\n    n = 1 + (len(x) - n_fft) // hop\n    idx = np.arange(n_fft)[None] + hop * np.arange(n)[:, None]\n    k = np.arange(n_fft)\n    w = 0.5 - 0.5 * np.cos(2 * np.pi * k / n_fft)  # periodic Hann\n    X = np.fft.rfft(x[idx] * w, axis=1)\n    return X.real ** 2 + X.imag ** 2\n\ndef mel_filterbank(sr, n_fft, n_mels):\n    # HTK mel scale, triangles with peak 1 (no area norm)\n    freqs = np.arange(n_fft // 2 + 1) * sr / n_fft\n    top = hz_to_mel(sr / 2)\n    edges = mel_to_hz(np.linspace(0, top, n_mels + 2))\n    fb = np.zeros((n_mels, len(freqs)))\n    for i in range(n_mels):\n        lo, mid, hi = edges[i:i + 3]\n        up = (freqs - lo) / (mid - lo)\n        down = (hi - freqs) / (hi - mid)\n        fb[i] = np.maximum(0, np.minimum(up, down))\n    return fb\n\ndef log_mel(x, sr, n_fft, hop, n_mels, eps=1e-10):\n    P = stft_power(x, n_fft, hop)\n    M = P @ mel_filterbank(sr, n_fft, n_mels).T\n    return np.log(M + eps)",
+   "keyLines": [
+    13,
+    21,
+    27
+   ],
+   "dryRun": [
+    "Frames: $1 + \\lfloor (N - n_{fft}) / \\mathrm{hop} \\rfloor$",
+    "Hann: $w[n] = \\frac{1}{2} - \\frac{1}{2}\\cos\\frac{2\\pi n}{n_{fft}}$",
+    "Power: $P_t[k] = \\left|\\sum_{n} x[tH+n]\\,w[n]\\,e^{-2\\pi i kn/n_{fft}}\\right|^2$",
+    "Mel: $\\mathrm{mel}(f) = 2595\\,\\log_{10}(1 + f/700)$",
+    "Inverse: $f(m) = 700\\,(10^{m/2595} - 1)$",
+    "Bands: $M_t[j] = \\sum_{k} H_j[k]\\,P_t[k]$",
+    "Log: $L_t[j] = \\log(M_t[j] + \\epsilon)$"
+   ],
+   "description": "Feeding speech or audio to a neural network (recognition, keyword spotting, audio classification, text-to-speech targets), where a compact perceptual time-frequency image is easier to learn from than raw samples.",
+   "examples": [
+    {
+     "input": "Why use the mel scale instead of linear frequency?",
+     "output": "Human pitch resolution is roughly logarithmic above about 1 kHz, so mel bands give fine detail at low frequency and coarse bands at high frequency, matching where speech information lies.",
+     "explanation": ""
+    },
+    {
+     "input": "Why take the log?",
+     "output": "Loudness perception is roughly logarithmic and power values span many orders of magnitude, so the log compresses the range and makes volume changes additive shifts.",
+     "explanation": ""
+    },
+    {
+     "input": "What trade-off does the window length set?",
+     "output": "Long windows give fine frequency resolution but blur timing, short windows the reverse. Speech systems typically use tens of milliseconds with a hop of a fraction of that.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Window length $n_{fft}$ and hop length (time versus frequency resolution)",
+    "Number of mel bands $n_{mels}$",
+    "Window function, mel formula (HTK or Slaney) and filter normalisation",
+    "Power exponent (1 for magnitude, 2 for power) and the log floor $\\epsilon$"
+   ],
+   "edgeCases": [
+    "Mel formulas and filter normalisation differ between libraries; a model trained with one convention degrades if fed another",
+    "Padding the signal at the edges (centered frames) changes the frame count to $1 + \\lfloor N / \\text{hop} \\rfloor$; this code uses none",
+    "Taking the log of exactly zero power gives $-\\infty$, so always add a floor $\\epsilon$",
+    "Too many mel bands for a small $n_{fft}$ leaves empty filters with no FFT bin under them"
+   ],
+   "related": [
+    "convolution-2d",
+    "rnn-cell",
+    "bidirectional-rnn"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "autocorrelation-acf-pacf",
    "title": "Autocorrelation (ACF and PACF)",
    "platform": "Math",
@@ -1202,6 +1280,88 @@
     "kv-cache",
     "top-k-top-p-sampling",
     "beam-search"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "autoscaling-littles-law",
+   "title": "Little's Law, Erlang C and Capacity Planning",
+   "platform": "MLOps",
+   "url": "https://en.wikipedia.org/wiki/M/M/c_queue",
+   "difficulty": "Hard",
+   "topics": [
+    "Capacity Planning",
+    "Queueing Theory",
+    "Autoscaling"
+   ],
+   "patterns": [],
+   "summary": "Concurrent requests equal arrival rate times time in system ($L = \\lambda W$); the M/M/c queue and the Erlang C formula give the wait for $c$ servers, so you can size a fleet to a wait target.",
+   "bruteForce": "Bursty or heavy-tailed traffic, and LLM requests whose service times vary by orders of magnitude with output length. Batched servers also break the one-request-per-server model. Use the formulas as a first estimate and confirm with load tests or simulation.",
+   "intuition": "Throughput and latency fix concurrency: $L = \\lambda W$, so 50 requests per second at 2 seconds each keeps 100 requests in flight. Capacity is then about queues, not averages. Utilisation $\\rho = \\frac{\\lambda}{c\\mu}$ must stay below 1 or the queue grows without bound, and as $\\rho$ approaches 1 the wait explodes, so the last servers you add buy the most. Autoscalers react with lag, so you size for the wait target plus headroom, not for $\\rho$ near 1. Flow: arrival rate → offered load → Erlang C wait → add servers → meet target.",
+   "whyItWorks": "Little's law holds for any stable system regardless of the arrival or service distribution, because total time spent by customers equals the time-average count integrated over the window. Erlang C is the exact waiting probability for Poisson arrivals, exponential service times and $c$ identical servers. Given it, the mean wait is the waiting probability times the mean wait of a waiter, $\\frac{1}{c\\mu - \\lambda}$.",
+   "approach": [
+    "Measure the arrival rate $\\lambda$ and service rate $\\mu$ per server — they define the offered load $a = \\frac{\\lambda}{\\mu}$",
+    "Check stability, $a < c$ — otherwise the queue grows forever and no wait exists",
+    "Compute $C(c, a)$ — the probability that an arrival finds every server busy",
+    "Get the mean wait $W_q = \\frac{C(c, a)}{c\\mu - \\lambda}$ — the queueing delay before service starts",
+    "Start at the smallest stable $c$ and add servers until $W_q$ meets the target — the smallest $c$ is the cheapest fleet",
+    "Add headroom for scaling lag — new replicas take time to start, so load can outrun them"
+   ],
+   "time": "O(c) per Erlang C evaluation; servers_needed tries a few values of c",
+   "space": "O(1)",
+   "solution": "import math\n\ndef littles_L(lam, W):\n    return lam * W\n\ndef erlang_c(c, a):\n    if a >= c:\n        raise ValueError(\"unstable: offered load a >= servers c\")\n    term, s = 1.0, 1.0\n    for k in range(1, c):\n        term *= a / k\n        s += term\n    top = term * a / (c - a)\n    return top / (s + top)\n\ndef mean_wait_mmc(lam, mu, c):\n    a = lam / mu\n    if a >= c:\n        raise ValueError(\"unstable: rho = lam/(c*mu) >= 1\")\n    return erlang_c(c, a) / (c * mu - lam)\n\ndef servers_needed(lam, mu, target_wait):\n    c = int(lam / mu) + 1\n    while mean_wait_mmc(lam, mu, c) > target_wait:\n        c += 1\n    return c",
+   "keyLines": [
+    13,
+    23,
+    24
+   ],
+   "dryRun": [
+    "$L = \\lambda \\cdot W$",
+    "$a = \\frac{\\lambda}{\\mu}, \\;\\; \\rho = \\frac{\\lambda}{c\\mu} < 1$",
+    "$N = \\frac{a^{c}}{c!} \\cdot \\frac{c}{c - a}$",
+    "$C(c, a) = \\frac{N}{\\sum_{k=0}^{c-1} \\frac{a^{k}}{k!} + N}$",
+    "$W_q = \\frac{C(c, a)}{c\\mu - \\lambda}$",
+    "$W = W_q + \\frac{1}{\\mu}$"
+   ],
+   "description": "Sizing replica counts or GPU pools for a service with roughly Poisson arrivals and similar request sizes, and sanity-checking concurrency limits from QPS and latency with Little's law.",
+   "examples": [
+    {
+     "input": "State Little's law and use it for an LLM service.",
+     "output": "The average number in the system equals arrival rate times average time in the system, $L = \\lambda W$. At 50 QPS and 2 s latency about 100 requests are concurrent, which bounds the batch or replica count you need.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does the wait blow up near full utilisation?",
+     "output": "The mean wait scales like $\\frac{1}{c\\mu - \\lambda}$, which diverges as $\\lambda$ approaches $c\\mu$. Small load increases then cause large queues, so run at moderate $\\rho$.",
+     "explanation": ""
+    },
+    {
+     "input": "What does Erlang C give you?",
+     "output": "The probability that an arriving request must wait because all $c$ servers are busy, assuming Poisson arrivals and exponential service. Multiply by $\\frac{1}{c\\mu - \\lambda}$ for the mean wait.",
+     "explanation": ""
+    },
+    {
+     "input": "Why keep headroom even if the formulas say the target is met?",
+     "output": "Autoscaling reacts with lag and real traffic is burstier than Poisson, so capacity sized exactly to the mean misses the target during spikes.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Target mean or tail wait",
+    "Per-server service rate $\\mu$",
+    "Arrival rate $\\lambda$ (peak, not average)",
+    "Headroom factor for scaling lag"
+   ],
+   "edgeCases": [
+    "Planning on average load; size for the peak and the scale-up delay",
+    "Mean wait hides the tail; the p99 wait can be several times larger",
+    "Assuming exponential service times when output lengths vary widely",
+    "Using $\\mu$ measured at low load; per-server speed can drop under contention"
+   ],
+   "related": [
+    "continuous-batching",
+    "gpu-memory-estimation",
+    "llm-api-retries-rate-limits"
    ],
    "diagram": []
   },
@@ -2713,6 +2873,87 @@
    "diagram": []
   },
   {
+   "slug": "container-binpacking-scheduling",
+   "title": "Bin Packing and Cluster Scheduling",
+   "platform": "MLOps",
+   "url": "https://en.wikipedia.org/wiki/Bin_packing_problem",
+   "difficulty": "Medium",
+   "topics": [
+    "Scheduling",
+    "Bin Packing",
+    "GPU Clusters"
+   ],
+   "patterns": [],
+   "summary": "A scheduler places each container on a node whose remaining capacity covers every requested resource; this is bin packing, NP-hard, so heuristics such as first-fit-decreasing are used.",
+   "bruteForce": "Do not search for the optimal packing at scale, since it is NP-hard and the heuristics are near optimal. These simple rules also ignore affinity, spreading, priorities and preemption, which real schedulers add on top.",
+   "intuition": "Placement is packing items of several sizes into bins that cannot be stretched. Every dimension must fit separately, so a node with free CPU and no free memory is full for that pod, and indivisible GPUs strand leftovers: two nodes with 3 free GPUs each cannot host a pod that needs 4. Sorting big items first works because large items are the hard ones to fit; small ones fill the gaps later. Requests drive placement while limits only cap runtime use. Flow: pod requests → filter nodes that fit → pick one → update free capacity.",
+   "whyItWorks": "At least $\\lceil \\frac{\\sum s_i}{C} \\rceil$ bins are needed because bins hold at most $C$ each. For one dimension, first-fit-decreasing uses at most $\\frac{11}{9}\\,\\mathrm{OPT} + \\frac{6}{9}$ bins, a tight bound, because placing the largest items first leaves only small items to fill gaps. Several dimensions make the problem harder, but checking each dimension separately keeps every node within capacity.",
+   "approach": [
+    "Take each pod request as a vector — one entry per resource such as CPU, memory, GPUs",
+    "Order pods by size, largest first — hard-to-place items go before the gaps fill up",
+    "Keep the free vector of every node — placement only needs the remaining capacity",
+    "Place on a node only if every dimension fits — one short resource rules the node out",
+    "Choose by rule: first-fit takes the first node, best-fit the tightest — trades speed against leftover gaps",
+    "Subtract the request from the node — later pods see the reduced capacity",
+    "Leave the pod pending if nothing fits — more nodes or smaller requests are needed"
+   ],
+   "time": "O(n·m) for n pods and m nodes; exact packing is exponential in the worst case",
+   "space": "O(m·d) free capacity for m nodes and d resource dimensions",
+   "solution": "import math\n\ndef first_fit(items, cap):\n    bins = []\n    for x in items:\n        for i, used in enumerate(bins):\n            if used + x <= cap:\n                bins[i] += x\n                break\n        else:\n            bins.append(x)\n    return bins\n\ndef first_fit_decreasing(items, cap):\n    return first_fit(sorted(items, reverse=True), cap)\n\ndef best_fit(items, cap):\n    bins = []\n    for x in items:\n        fits = [i for i, u in enumerate(bins) if u + x <= cap]\n        if fits:\n            bins[max(fits, key=lambda i: bins[i])] += x\n        else:\n            bins.append(x)\n    return bins\n\ndef lower_bound(items, cap):\n    return math.ceil(sum(items) / cap)\n\ndef place_pods(pods, nodes):\n    free = [list(n) for n in nodes]\n    where = []\n    for p in pods:\n        for i, f in enumerate(free):\n            if all(r <= x for r, x in zip(p, f)):\n                free[i] = [x - r for r, x in zip(p, f)]\n                where.append(i)\n                break\n        else:\n            where.append(None)\n    return where, free\n\ndef optimal_bins(items, cap):\n    best = len(items)\n    def go(i, bins):\n        nonlocal best\n        if len(bins) >= best:\n            return\n        if i == len(items):\n            best = len(bins)\n            return\n        for j in range(len(bins)):\n            if bins[j] + items[i] <= cap:\n                bins[j] += items[i]\n                go(i + 1, bins)\n                bins[j] -= items[i]\n        go(i + 1, bins + [items[i]])\n    go(0, [])\n    return best",
+   "keyLines": [
+    7,
+    22,
+    35
+   ],
+   "dryRun": [
+    "Bins $\\geq \\lceil \\frac{\\sum_{i} s_i}{C} \\rceil$",
+    "$\\mathrm{FFD}(I) \\leq \\frac{11}{9}\\,\\mathrm{OPT}(I) + \\frac{6}{9}$",
+    "Fits iff $r_{p,d} \\leq f_{n,d}$ for all $d$",
+    "Update $f_{n,d} \\leftarrow f_{n,d} - r_{p,d}$"
+   ],
+   "description": "Understanding why pods stay pending although total free capacity looks sufficient, and sizing requests and node shapes so the scheduler can pack tightly, especially for scarce GPU nodes.",
+   "examples": [
+    {
+     "input": "Why is scheduling a bin-packing problem?",
+     "output": "Each pod requests a vector of resources and each node has a fixed capacity vector, so placing all pods on the fewest nodes is packing items into bins, which is NP-hard.",
+     "explanation": ""
+    },
+    {
+     "input": "Why sort items by decreasing size?",
+     "output": "Large items are hardest to fit, so placing them first leaves small items to fill gaps. In one dimension first-fit-decreasing uses at most $\\frac{11}{9}\\,\\mathrm{OPT} + \\frac{6}{9}$ bins.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the difference between requests and limits?",
+     "output": "Requests are what the scheduler reserves and uses for placement. Limits cap runtime use: exceeding a memory limit gets the container killed, exceeding a CPU limit gets it throttled.",
+     "explanation": ""
+    },
+    {
+     "input": "Why can a pod stay pending with enough total free GPUs?",
+     "output": "GPUs are indivisible and a pod needs them on one node, so free GPUs spread across nodes are fragmented. Three free on each of two nodes cannot serve a pod needing four.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Placement rule (first-fit, best-fit, or scoring)",
+    "Pod ordering (arrival order or largest first)",
+    "Request sizes per resource",
+    "Node shape (CPU, memory, GPUs per node)"
+   ],
+   "edgeCases": [
+    "Over-requesting resources strands capacity because placement uses requests, not actual use",
+    "Multi-dimensional packing is not solved by sorting on one dimension; a node can fill up on memory while CPU stays free",
+    "Best-fit is not always better than first-fit; both can be worse than first-fit-decreasing",
+    "Setting memory limits below real peaks gets containers killed; CPU limits only slow them down"
+   ],
+   "related": [
+    "gpu-memory-estimation",
+    "continuous-batching",
+    "gpu-computing-roofline"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "content-safety-classifiers",
    "title": "Content Safety Classifiers and Thresholds",
    "platform": "LLM",
@@ -3505,6 +3746,83 @@
    "diagram": [
     "cross-validation"
    ]
+  },
+  {
+   "slug": "ctc-greedy-decoding",
+   "title": "CTC Loss and Greedy Decoding",
+   "platform": "Deep Learning",
+   "url": "https://distill.pub/2017/ctc/",
+   "difficulty": "Hard",
+   "topics": [
+    "Speech",
+    "Sequence Modeling",
+    "OCR"
+   ],
+   "patterns": [],
+   "summary": "CTC lets a model emit a label or a blank at every frame and trains on the total probability of all frame alignments that collapse to the target; greedy decoding takes the best label per frame and collapses.",
+   "bruteForce": "When outputs depend strongly on each other, since CTC assumes frames are conditionally independent given the input. Attention or transducer models handle that better. It also needs at least as many frames as the target plus required blanks between repeats.",
+   "intuition": "Speech and handwriting have no per-frame labels, since nobody knows which frame each letter starts in. CTC avoids choosing: any frame path that collapses to the target text counts, and the loss sums their probabilities. The blank is the key device, because it lets the model say nothing at a frame and separates genuine double letters from one letter held over several frames. Flow: frame probabilities → path → merge repeats → drop blanks → text.",
+   "whyItWorks": "Enumerating every alignment is exponential, but alignments that reach the same state at the same frame share their future, so the sum can be computed by dynamic programming in $O(TL)$. The recursion allows staying, advancing one state, or skipping a blank when the two neighbouring labels differ, and that rule is exactly the set of paths that collapse to the target. The loss is differentiable in the per-frame outputs, so it trains by backpropagation.",
+   "approach": [
+    "Collapse a path by merging repeated labels, then deleting blanks — so $aa{-}b{-}bb$ becomes $abb$ and a blank between equal letters keeps both",
+    "Greedy decode with the argmax at each frame, then collapse — cheapest estimate of the best output",
+    "Interleave blanks around the target to get $2L + 1$ states — each state is a place a path can be",
+    "Start in the first blank or first label at $t = 0$ — a path may begin with silence or the first letter",
+    "Update $\\alpha_t(s)$ from $s$, $s-1$ and, when allowed, $s-2$ in log space — sums all alignments that reach state $s$",
+    "End in the last label or the last blank and return $-\\log$ of the sum — the negative log-likelihood of the target"
+   ],
+   "time": "O(T · L) for the forward recursion with target length L and T frames, O(T · V) to decode",
+   "space": "O(T · L) for the table of $\\alpha$ values",
+   "solution": "import numpy as np\n\ndef ctc_collapse(path, blank=0):\n    out, prev = [], None\n    for p in path:\n        if p != prev and p != blank:\n            out.append(int(p))\n        prev = p\n    return out\n\ndef greedy_decode(logprobs, blank=0):\n    return ctc_collapse(logprobs.argmax(1), blank)\n\ndef ctc_forward_loss(logprobs, target, blank=0):\n    ext = [blank]\n    for c in target:\n        ext += [c, blank]\n    T, S = len(logprobs), len(ext)\n    a = np.full((T, S), -np.inf)\n    a[0, 0] = logprobs[0, blank]\n    if S > 1:\n        a[0, 1] = logprobs[0, ext[1]]\n    for t in range(1, T):\n        for s in range(S):\n            terms = [a[t - 1, s]]\n            if s >= 1:\n                terms.append(a[t - 1, s - 1])\n            if s >= 2 and ext[s] != blank and ext[s] != ext[s - 2]:\n                terms.append(a[t - 1, s - 2])\n            prev = np.logaddexp.reduce(terms)\n            a[t, s] = prev + logprobs[t, ext[s]]\n    return -np.logaddexp.reduce(a[-1, -2:])",
+   "keyLines": [
+    6,
+    27,
+    30
+   ],
+   "dryRun": [
+    "Collapse: $\\mathcal{B}(aa{-}b{-}bb) = abb$",
+    "Sum: $p(y|x) = \\sum_{\\pi:\\,\\mathcal{B}(\\pi)=y}\\,\\prod_t p_t(\\pi_t)$",
+    "Extended target $l^{\\prime}$ has length $2L + 1$",
+    "Forward: $\\alpha_t(s) = \\left[\\alpha_{t-1}(s) + \\alpha_{t-1}(s-1) + \\alpha_{t-1}(s-2)\\right] p_t(l^{\\prime}_s)$",
+    "Skip allowed only if $l^{\\prime}_s \\neq \\mathrm{blank}$ and $l^{\\prime}_s \\neq l^{\\prime}_{s-2}$",
+    "Loss: $-\\log\\left(\\alpha_T(2L) + \\alpha_T(2L+1)\\right)$"
+   ],
+   "description": "Sequence tasks where input and output lengths differ and alignment is unknown, such as speech recognition, handwriting and scene-text OCR, and where per-frame outputs are acceptable.",
+   "examples": [
+    {
+     "input": "Why does CTC need a blank symbol?",
+     "output": "It lets the model emit nothing at a frame and separates genuine repeated letters from one letter spanning several frames, since repeats merge but a blank between them blocks the merge.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is greedy decoding not exact?",
+     "output": "It picks the best path, but a text's probability is the sum over many paths. A text with many mediocre alignments can beat the text of the single best path.",
+     "explanation": ""
+    },
+    {
+     "input": "What does CTC assume about the outputs?",
+     "output": "Conditional independence of frame outputs given the input, so it cannot model dependencies between output labels without an external language model.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Blank index and vocabulary (characters, subwords, phonemes)",
+    "Frame rate of the encoder, which must exceed the output rate",
+    "Decoding method: greedy, beam search, optional language model weight",
+    "Loss reduction (sum or mean over frames or targets)"
+   ],
+   "edgeCases": [
+    "A target with repeated letters needs blanks between them, so it requires more frames than its length",
+    "Probabilities must be normalised log-probabilities; raw logits give a wrong loss",
+    "Working in probability space underflows over long sequences; use log space and logsumexp",
+    "Greedy output can contain stray labels or miss rare ones; beam search or a language model usually improves it"
+   ],
+   "related": [
+    "rnn-cell",
+    "bidirectional-rnn",
+    "hidden-markov-forward"
+   ],
+   "diagram": []
   },
   {
    "slug": "data-augmentation",
@@ -4945,6 +5263,86 @@
     "softmax-cross-entropy",
     "maximum-likelihood",
     "bayes-theorem"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "experiment-tracking-runs",
+   "title": "Experiment Tracking - Runs, Params and Metrics",
+   "platform": "MLOps",
+   "url": "https://mlflow.org/docs/latest/ml/tracking/",
+   "difficulty": "Easy",
+   "topics": [
+    "MLOps",
+    "Experiment Tracking",
+    "Reproducibility"
+   ],
+   "patterns": [],
+   "summary": "Record every training attempt as a run with fixed parameters, metrics logged per step, tags and artifacts, then compare runs by a metric while checking that the gap is larger than seed noise.",
+   "bruteForce": "A throwaway notebook cell with nothing to compare. Tracking also does not replace versioning: if code and data are not pinned by a commit and a data version, the recorded params alone cannot reproduce a run.",
+   "intuition": "A result you cannot reproduce is an anecdote. A run is the unit of evidence: its parameters are write-once inputs, its metrics are a time series indexed by step, and together with the code version, data version and random seed they pin down how the number was produced. Picking the best run is then a query, but a gap between two runs is only meaningful if it exceeds the spread across seeds, $s/\\sqrt{n}$. Flow: run → params fixed → metrics per step → compare → pick.",
+   "whyItWorks": "Making parameters write-once means a run id always refers to one configuration, so the metrics under it can be trusted to belong to it. Metrics keyed by step keep curves comparable across runs. The standard error $s/\\sqrt{n}$ shrinks with the number of seeds, so a gap larger than about twice $\\mathrm{SE}_{\\Delta}$ is unlikely to be seed noise.",
+   "approach": [
+    "Create a run with an id and status — every attempt becomes a record",
+    "Log parameters once and refuse a changed value — inputs stay immutable, so the run can be reproduced",
+    "Log metrics with a step — a curve per metric, kept ordered by step",
+    "End the run with a status — failed runs must not win a comparison",
+    "Pick the best run by the final metric value, $\\max$ or $\\min$ — direction depends on the metric",
+    "Repeat over seeds and compare with $s/\\sqrt{n}$ — a gap inside the noise is not a win"
+   ],
+   "time": "O(1) per logged param, O(log h) per metric point in a history of length h, O(r) to pick the best of r runs",
+   "space": "O(p + h) per run for params and metric history, plus artifact files on disk",
+   "solution": "import bisect\nimport statistics as st\n\nclass Run:\n    def __init__(self, run_id):\n        self.id = run_id\n        self.params, self.metrics = {}, {}\n        self.status = \"RUNNING\"\n\n    def log_param(self, key, value):\n        old = self.params.setdefault(key, value)\n        if old != value:\n            raise ValueError(f\"param {key!r} is already {old!r}\")\n\n    def log_metric(self, key, value, step):\n        hist = self.metrics.setdefault(key, [])\n        bisect.insort(hist, (step, value))\n\n    def end(self, status=\"FINISHED\"):\n        self.status = status\n\ndef best_run(runs, metric, mode=\"max\"):\n    assert mode in (\"max\", \"min\")\n    ok = [r for r in runs\n          if r.status == \"FINISHED\" and metric in r.metrics]\n    pick = max if mode == \"max\" else min\n    return pick(ok, key=lambda r: r.metrics[metric][-1][1])\n\ndef sem(xs):\n    return st.stdev(xs) / len(xs) ** 0.5",
+   "keyLines": [
+    11,
+    12,
+    17
+   ],
+   "dryRun": [
+    "$\\mathrm{SE} = \\frac{s}{\\sqrt{n}}$",
+    "$\\mathrm{SE}_{\\Delta} = \\sqrt{\\frac{s_A^2}{n_A} + \\frac{s_B^2}{n_B}}$",
+    "Credible gap $\\Delta = \\bar{x}_A - \\bar{x}_B$ if $|\\Delta| > 2\\,\\mathrm{SE}_{\\Delta}$",
+    "Seeds per arm $n \\geq 2\\left(\\frac{1.96\\,s}{\\delta}\\right)^2$"
+   ],
+   "description": "Any experiment you may want to compare, repeat or audit later: hyperparameter searches, ablations, fine-tuning attempts and evaluation reruns, especially when several people share results.",
+   "examples": [
+    {
+     "input": "What do you need to reproduce a training result?",
+     "output": "The code version, the data version, all parameters and the random seed, plus the environment. A tracked run records these so the same number can be regenerated.",
+     "explanation": ""
+    },
+    {
+     "input": "Why are parameters immutable but metrics are appended?",
+     "output": "Parameters define what the run is, so changing one would make the record lie. Metrics describe how training progressed, so they grow as a time series over steps.",
+     "explanation": ""
+    },
+    {
+     "input": "Run A beats run B by 0.3 points. Is A better?",
+     "output": "Not necessarily. Repeat each configuration over several seeds and compare the gap with its standard error; if the gap is within about two standard errors it may be seed noise.",
+     "explanation": ""
+    },
+    {
+     "input": "Should the best run be chosen by the best step or the final step?",
+     "output": "Decide before looking. Best-step on a validation metric is fine if that checkpoint is what you ship, but selecting on test data leaks; report the test metric once.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Random seed (and number of seeds per configuration)",
+    "Metric to optimise and its direction (higher or lower is better)",
+    "Logging frequency in steps",
+    "Which run status counts as comparable (finished only)"
+   ],
+   "edgeCases": [
+    "Logging params after the fact or overwriting them silently, so the record no longer matches the run",
+    "Choosing the best run from one seed per configuration and mistaking noise for a win",
+    "Comparing runs trained on different data versions or code commits as if they were equal",
+    "Selecting a run on the test metric, which leaks the test set into model selection"
+   ],
+   "related": [
+    "hyperparameter-search",
+    "cross-validation",
+    "prompt-versioning"
    ],
    "diagram": []
   },
@@ -6960,6 +7358,81 @@
     "gnn-message-passing",
     "self-attention",
     "multi-head-attention"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "griffin-lim-waveform-reconstruction",
+   "title": "Griffin-Lim Waveform Reconstruction",
+   "platform": "Deep Learning",
+   "url": "https://docs.pytorch.org/audio/stable/generated/torchaudio.transforms.GriffinLim.html",
+   "difficulty": "Medium",
+   "topics": [
+    "Audio",
+    "Speech",
+    "Signal Processing"
+   ],
+   "patterns": [],
+   "summary": "Recover a waveform from a magnitude-only spectrogram by starting with random phase and alternating inverse STFT and STFT, resetting the magnitude to the known one after every round.",
+   "bruteForce": "When audio quality matters. The output is smeared and metallic because the phase is only consistent, not true, and neural vocoders sound better. Also unnecessary when the complex STFT is available.",
+   "intuition": "The magnitude tells how much energy each time-frequency cell has but not the phase that makes neighbouring overlapping frames agree. Not every complex spectrogram is a valid STFT of some signal, so the loop bounces between two sets: spectrograms with the target magnitude, and spectrograms that a real waveform could produce. Each projection can only move closer to the other set, so the magnitude error never grows, though it may settle in a local minimum. Flow: magnitude + random phase → ISTFT → STFT → reset magnitude → repeat.",
+   "whyItWorks": "The ISTFT with window-square normalisation is the orthogonal projection onto valid spectrograms, and replacing the magnitude is the projection onto the known-magnitude set. Alternating projections between a closed set and a subspace never increase the distance between them, so the spectral convergence error is non-increasing. The problem is non-convex, so the limit depends on the initial phase.",
+   "approach": [
+    "Write the STFT with a Hann window and the ISTFT as overlap-add — the pair must invert each other",
+    "Divide the overlap-added signal by the summed squared window — makes ISTFT the least-squares inverse",
+    "Start from the target magnitude $S$ with uniformly random phase — phase is unknown, so any guess is as good",
+    "Go to the time domain with ISTFT and back with STFT — projects onto spectrograms a real signal can have",
+    "Keep the phase of the result, replace its magnitude with $S$ — projects onto the known magnitude",
+    "Track $\\|\\,|\\mathrm{STFT}(x)| - S\\| / \\|S\\|$ each round — it should never increase"
+   ],
+   "time": "O(n_iter · F · n_fft log n_fft) for F frames",
+   "space": "O(F · n_fft) for the spectrogram and the framed signal",
+   "solution": "import numpy as np\n\ndef hann(n):\n    return 0.5 - 0.5 * np.cos(2 * np.pi * np.arange(n) / n)\n\ndef stft(x, n_fft, hop):\n    n = 1 + (len(x) - n_fft) // hop\n    idx = np.arange(n_fft)[None] + hop * np.arange(n)[:, None]\n    return np.fft.rfft(x[idx] * hann(n_fft), axis=1)\n\ndef istft(X, n_fft, hop):\n    n, w = X.shape[0], hann(n_fft)\n    out = np.zeros(n_fft + hop * (n - 1))\n    den = np.zeros_like(out)\n    for t, f in enumerate(np.fft.irfft(X, n_fft, axis=1)):\n        out[t * hop:t * hop + n_fft] += f * w\n        den[t * hop:t * hop + n_fft] += w * w\n    return out / np.maximum(den, 1e-8)\n\ndef griffin_lim(S, n_iter, n_fft, hop, rng):\n    phase = np.exp(2j * np.pi * rng.random(S.shape))\n    X = S * phase\n    errs = []\n    for _ in range(n_iter):\n        x = istft(X, n_fft, hop)\n        Y = stft(x, n_fft, hop)\n        err = np.linalg.norm(np.abs(Y) - S)\n        errs.append(err / np.linalg.norm(S))\n        X = S * Y / np.maximum(np.abs(Y), 1e-12)\n    return istft(X, n_fft, hop), errs",
+   "keyLines": [
+    16,
+    25,
+    29
+   ],
+   "dryRun": [
+    "Frames: $1 + \\lfloor (N - n_{fft}) / \\mathrm{hop} \\rfloor$",
+    "STFT: $X_t[k] = \\sum_{n} x[tH+n]\\,w[n]\\,e^{-2\\pi i kn/n_{fft}}$",
+    "ISTFT: $x[n] = \\frac{\\sum_t w[n-tH]\\,\\tilde{x}_t[n-tH]}{\\sum_t w[n-tH]^2}$",
+    "Update: $X_{i+1} = S \\cdot \\frac{Y_i}{|Y_i|}$",
+    "where $Y_i = \\mathrm{STFT}(\\mathrm{ISTFT}(X_i))$",
+    "Error: $\\frac{\\|\\,|\\mathrm{STFT}(x)| - S\\,\\|}{\\|S\\|}$"
+   ],
+   "description": "Turning a magnitude or linear spectrogram back into audio without training a model, as the classic vocoder step after a text-to-speech network predicts a mel spectrogram and it is mapped to a linear one.",
+   "examples": [
+    {
+     "input": "Why is phase missing and why does it matter?",
+     "output": "Mel and magnitude spectrograms discard phase. Overlapping frames must agree on phase to form a coherent waveform, otherwise the result has audible artefacts.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is the reconstructed waveform not equal to the original?",
+     "output": "Many signals share one STFT magnitude, for example a global sign flip, so the phase is ambiguous. Only the magnitude is matched, not the waveform.",
+     "explanation": ""
+    },
+    {
+     "input": "Why do neural vocoders beat Griffin-Lim?",
+     "output": "They learn to generate natural phase and fine waveform structure from data, while Griffin-Lim only finds a self-consistent phase, which sounds smeared and metallic.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of iterations $n_{iter}$ (error falls with diminishing returns)",
+    "Window length $n_{fft}$ and hop (more overlap constrains phase better)",
+    "Phase initialisation (random or zero) and random seed",
+    "Optional momentum on the projection, as in fast variants"
+   ],
+   "edgeCases": [
+    "The dtype and scaling of the STFT must match the one used to make $S$, or the target magnitude is wrong",
+    "Samples at the signal edges are covered by few or no windows, so they are poorly determined",
+    "The result depends on the random phase init; a different seed gives a different waveform with similar spectral error"
+   ],
+   "related": [
+    "convolution-2d",
+    "rnn-cell"
    ],
    "diagram": []
   },
@@ -9058,6 +9531,89 @@
    "diagram": []
   },
   {
+   "slug": "llm-cost-latency-optimisation",
+   "title": "LLM Cost and Latency Optimisation",
+   "platform": "MLOps",
+   "url": "https://arxiv.org/abs/2305.05176",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Cost",
+    "Latency",
+    "Caching",
+    "Routing"
+   ],
+   "patterns": [],
+   "summary": "Treat an LLM request as arithmetic: cost is tokens times price, and latency is time to first token plus output length times inter-token time. Optimise by caching shared prefixes, cascading cheap models, and shortening outputs.",
+   "bruteForce": "Do not optimise cost blindly when quality is the bottleneck: a cascade that escalates too rarely or a truncated answer can lose more value than the tokens saved. Prices and latencies here are illustrative parameters, so measure your own.",
+   "intuition": "Both bills scale with tokens, but not equally: output tokens are priced higher and are generated one at a time, so $n_{out}$ dominates latency while a long shared prompt dominates input cost. That tells you where to push: reuse the part of the prompt that repeats, send easy requests to a small model and escalate only the hard ones, and cut output length first. Streaming does not shorten the total time, it only moves the first visible token earlier. Flow: request → cache or cheap model first → escalate if needed → stream tokens.",
+   "whyItWorks": "Cost is linear in token counts, so any lever that removes billed tokens or replaces a price with a lower one helps in proportion to its share of the bill. The cascade is an expectation: every request pays $c_1$, and a fraction $e$ also pays $c_2$, so it beats always calling the big model exactly when $c_1 + e\\,c_2 < c_2$.",
+   "approach": [
+    "Price one request as $n_{in}p_{in} + n_{out}p_{out}$ — the baseline every lever is compared with",
+    "Model latency as $t_{ttft} + n_{out}t_{itl}$ — shows that output length is the main latency term",
+    "Bill a cached prefix at fraction $d$ on hit rate $h$ — only the repeated part of the prompt gets cheaper",
+    "Cascade with escalation rate $e$, expected cost $c_1 + e\\,c_2$ — pays the big model only on hard requests",
+    "Check $c_1 < (1-e)\\,c_2$ before adopting the cascade — a bad router costs more than it saves"
+   ],
+   "time": "O(1) arithmetic per request; the savings come from fewer billed tokens, not faster code",
+   "space": "O(1) for the formulas; a prefix cache stores the prefix state on the provider side",
+   "solution": "def request_cost(n_in, n_out, p_in, p_out):\n    return n_in * p_in + n_out * p_out\n\ndef request_latency(ttft, itl, n_out):\n    decode = n_out * itl\n    return ttft + decode\n\ndef prefix_cache_cost(n_prefix, n_new, n_out,\n                      p_in, p_out, discount, hit_rate):\n    rate = hit_rate * discount + (1 - hit_rate)\n    prefix = n_prefix * p_in * rate\n    return prefix + n_new * p_in + n_out * p_out\n\ndef cascade_expected_cost(c1, c2, e):\n    escalated = e * c2\n    return c1 + escalated\n\ndef cascade_is_cheaper(c1, c2, e):\n    headroom = (1 - e) * c2\n    return c1 < headroom",
+   "keyLines": [
+    5,
+    10,
+    19
+   ],
+   "dryRun": [
+    "Cost: $C = n_{in}p_{in} + n_{out}p_{out}$",
+    "Latency: $L = t_{ttft} + n_{out}\\,t_{itl}$",
+    "Prefix: $C = n_p p_{in}(hd + 1 - h)$",
+    "Saved: $h(1-d)\\,n_p\\,p_{in}$",
+    "Cascade: $\\mathbb{E}[C] = c_1 + e\\,c_2$",
+    "Cheaper iff $c_1 < (1-e)\\,c_2$",
+    "Equivalently $e < 1 - \\frac{c_1}{c_2}$"
+   ],
+   "description": "Sizing and budgeting an LLM feature, or deciding which lever (prefix caching, a model cascade, shorter outputs, streaming, offline batching) is worth building before you build it.",
+   "examples": [
+    {
+     "input": "Why does output length dominate latency?",
+     "output": "Tokens are generated one at a time, so total decode time is $n_{out}$ times the inter-token time, while the prompt is processed in one parallel pass that only sets the time to first token.",
+     "explanation": ""
+    },
+    {
+     "input": "When does a model cascade save money?",
+     "output": "When the cheap model's cost $c_1$ is below $(1-e)\\,c_2$, where $e$ is the fraction escalated to the big model. A high escalation rate or an expensive first stage removes the saving.",
+     "explanation": ""
+    },
+    {
+     "input": "Does streaming make a response faster?",
+     "output": "Total latency is unchanged. Streaming only shows the first token after the time to first token, so the perceived wait shrinks.",
+     "explanation": ""
+    },
+    {
+     "input": "What does prefix caching help with?",
+     "output": "Prompts that start with the same long system text or documents. Only the repeated prefix is billed at the discount, so the gain scales with the prefix share and the hit rate.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Cached-token billing fraction $d$ and expected hit rate $h$",
+    "Escalation probability $e$ of the router",
+    "Output length cap $n_{out}$",
+    "Time to first token and inter-token time of each model"
+   ],
+   "edgeCases": [
+    "Counting the cascade saving without including the cost of calling the router or judging the first answer",
+    "Assuming a prefix cache hits on text that changes early; the cached part must be an identical leading prefix",
+    "Optimising average cost while ignoring tail latency and the extra delay when a request escalates"
+   ],
+   "related": [
+    "context-engineering",
+    "gpu-memory-estimation",
+    "continuous-batching"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "local-outlier-factor",
    "title": "Local Outlier Factor",
    "platform": "Classical ML",
@@ -9537,6 +10093,88 @@
     "int8-quantization",
     "knowledge-distillation",
     "lora-low-rank-adaptation"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "managed-vs-self-host-breakeven",
+   "title": "Managed API vs Self-Hosting Break-Even",
+   "platform": "MLOps",
+   "url": "https://www.databricks.com/blog/llm-inference-performance-engineering-best-practices",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Cost",
+    "Serving",
+    "Capacity Planning"
+   ],
+   "patterns": [],
+   "summary": "A managed API costs linearly with tokens, while self-hosting costs a whole number of GPUs plus operations, a step function of volume. The break-even volume is where the two curves cross.",
+   "bruteForce": "Spiky or uncertain traffic, where idle GPUs make utilisation low, or when non-cost factors decide it: data privacy, control over the model, latency, and whether the team can run the system. Numbers here are illustrative parameters, not real prices.",
+   "intuition": "Self-hosting is a fixed bill you pay whether the GPUs are busy or not, so it only wins when volume is high enough to keep them utilised. Because you buy GPUs in whole units, the cost jumps each time volume passes the capacity of the current fleet, so the curves can cross, separate and cross again. Utilisation is the lever that matters: the same fleet serves more tokens, so each costs less. Flow: monthly tokens → GPUs needed (ceiling) → self-host cost vs API cost → cheaper option.",
+   "whyItWorks": "Within one fleet size the self-host cost is a constant while the API cost rises linearly, so they cross at $t = (kG + O)/p$ if that falls inside the segment. Scanning segments in order finds the first such crossing exactly. As volume grows, the per-token self-host cost approaches $G/(u\\,\\mathrm{cap})$, so it wins in the long run only if that is below $p$.",
+   "approach": [
+    "Price the API as $t\\,p$ for $t$ tokens — a straight line through the origin",
+    "Compute GPUs as $\\lceil t/(u\\,\\mathrm{cap}) \\rceil$ — you cannot rent a fraction of a GPU",
+    "Add fixed operations $O$ to $k\\,G$ — self-hosting has a non-zero floor even at tiny volume",
+    "Scan fleet sizes $k$ and find the first $t$ where cost drops to the API line — inside segment $((k-1)u\\,\\mathrm{cap},\\, k\\,u\\,\\mathrm{cap}]$",
+    "Divide cost by $t$ for cost per token — compare setups of different size on one scale"
+   ],
+   "time": "O(t_max / (u·cap)) to scan fleet sizes; each cost evaluation is O(1)",
+   "space": "O(1)",
+   "solution": "import math\n\ndef api_cost(t, p):\n    return t * p\n\ndef selfhost_cost(t, gpu_month, ops, cap, util):\n    gpus = math.ceil(t / (util * cap))\n    return gpus * gpu_month + ops\n\ndef cost_per_token(cost, t):\n    return cost / t\n\ndef breakeven_tokens(p, gpu_month, ops, cap, util, t_max):\n    seg = util * cap\n    k = 1\n    while (k - 1) * seg < t_max:\n        fixed = k * gpu_month + ops\n        t = max(fixed / p, (k - 1) * seg)\n        if t <= k * seg and t <= t_max:\n            return t\n        k += 1\n    return None",
+   "keyLines": [
+    8,
+    17,
+    18
+   ],
+   "dryRun": [
+    "API: $C_{api} = t\\,p$",
+    "Fleet: $k = \\lceil \\frac{t}{u\\,\\mathrm{cap}} \\rceil$",
+    "Self-host: $C_{self} = kG + O$",
+    "Per token: $\\frac{C(t)}{t}$",
+    "Break-even in segment: $t = \\frac{kG + O}{p}$",
+    "Valid if $(k-1)u\\,\\mathrm{cap} < t \\leq k\\,u\\,\\mathrm{cap}$",
+    "Long run: $\\frac{G}{u\\,\\mathrm{cap}}$ per token"
+   ],
+   "description": "Deciding whether a steady, high-volume workload justifies running your own models, or sizing the volume at which a pilot on a managed API should be re-evaluated.",
+   "examples": [
+    {
+     "input": "Why is the self-host cost a step function?",
+     "output": "GPUs are rented in whole units, so cost is flat until volume exceeds $u\\,\\mathrm{cap}$ per GPU and then jumps by one GPU's monthly price.",
+     "explanation": ""
+    },
+    {
+     "input": "How does utilisation change the decision?",
+     "output": "Higher utilisation lets each GPU serve more tokens, so fewer GPUs are needed and cost per token falls. Low utilisation can make self-hosting more expensive than the API at any volume.",
+     "explanation": ""
+    },
+    {
+     "input": "Roughly where is the break-even at low volume?",
+     "output": "Near $(G + O)/p$ tokens a month, when one GPU plus operations costs the same as the API bill, provided one GPU can serve that volume.",
+     "explanation": ""
+    },
+    {
+     "input": "What can outweigh the cost comparison?",
+     "output": "Data privacy and residency, control over model versions, latency needs, and whether the team has the skills to run and monitor the serving stack.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "API price per token $p$",
+    "GPU monthly price $G$ and operations cost $O$",
+    "Per-GPU capacity $\\mathrm{cap}$ in tokens per month",
+    "Utilisation $u$ you can sustain"
+   ],
+   "edgeCases": [
+    "Using peak throughput as capacity; sustained utilisation is lower, and traffic peaks need headroom",
+    "Forgetting operations cost $O$ and on-call effort, which makes self-hosting look cheaper than it is",
+    "Reading one crossing as final: after the next step up the API can be cheaper again"
+   ],
+   "related": [
+    "gpu-memory-estimation",
+    "int8-quantization",
+    "continuous-batching"
    ],
    "diagram": []
   },
@@ -10438,6 +11076,87 @@
    "diagram": []
   },
   {
+   "slug": "model-serving-api-contract",
+   "title": "Model Serving API Contract and Dynamic Batching",
+   "platform": "MLOps",
+   "url": "https://fastapi.tiangolo.com/tutorial/handling-errors/",
+   "difficulty": "Medium",
+   "topics": [
+    "MLOps",
+    "Serving",
+    "API Design",
+    "Batching"
+   ],
+   "patterns": [],
+   "summary": "A model behind an HTTP API needs typed schemas, validation errors with field paths, versioned routes, separate liveness and readiness probes, and a server-side batcher that trades a bounded wait for throughput.",
+   "bruteForce": "Skip dynamic batching when traffic is so low that batches never fill (you only add latency) or when a strict latency target leaves no room for $W$. Offline scoring needs no HTTP contract; run it as a batch job.",
+   "intuition": "The API is a contract: callers depend on the shape of requests and responses, so schemas are enforced at the edge and breaking changes go under a new route prefix. Liveness asks whether the process is up, readiness asks whether it can serve, and they differ while the model is still loading. Batching is a deliberate delay: waiting at most $W$ for company lets one forward pass serve many requests, raising throughput at the price of up to $W$ extra latency. Flow: request → validate → batch (size or wait) → forward pass → response.",
+   "whyItWorks": "A forward pass has a fixed cost plus a per-item cost, $S(b) = a + cb$, so throughput $b/S(b)$ rises with $b$ toward $1/c$ as the fixed cost is amortised. A request waits at most $W$ because the batch closes then, so worst-case latency is $W + S(B)$. Larger batches therefore raise throughput and also the tail latency.",
+   "approach": [
+    "Define typed request and response models — bad input is rejected with a 422 and the field path before reaching the model",
+    "Mount the prediction route under /v1 — a breaking change ships as /v2 while old callers keep working",
+    "Expose /healthz for liveness and /readyz for readiness — orchestrators restart dead processes but only route to ready ones",
+    "Return 503 from readiness until the model object is loaded — no traffic during warm-up",
+    "Open a batch at the first arrival — the wait clock starts there",
+    "Close the batch at max_batch requests or after $W$ — bounds both batch size and added latency"
+   ],
+   "time": "O(n) to form all batches from n sorted arrivals; one forward pass per batch",
+   "space": "O(max_batch) requests held in the open batch",
+   "solution": "from pydantic import BaseModel, Field\nfrom fastapi import FastAPI, HTTPException, Response\n\nclass PredictRequest(BaseModel):\n    features: list[float] = Field(min_length=1, max_length=8)\n    request_id: str | None = None\n\nclass PredictResponse(BaseModel):\n    score: float\n    model_version: str\n    request_id: str | None = None\n\ndef make_app(state):\n    app = FastAPI()\n\n    @app.get(\"/healthz\")\n    def healthz():\n        return {\"status\": \"ok\"}\n\n    @app.get(\"/readyz\")\n    def readyz(resp: Response):\n        ready = state[\"model\"] is not None\n        resp.status_code = 200 if ready else 503\n        return {\"ready\": ready}\n\n    @app.post(\"/v1/predict\", response_model=PredictResponse)\n    def predict(req: PredictRequest):\n        if state[\"model\"] is None:\n            raise HTTPException(503, \"model not loaded\")\n        score = state[\"model\"](req.features)\n        return PredictResponse(score=score, model_version=\"v1\",\n                               request_id=req.request_id)\n\n    return app\n\ndef dynamic_batches(arrivals, max_batch, max_wait):\n    out, i, n = [], 0, len(arrivals)\n    while i < n:\n        t0, j = arrivals[i], i\n        while (j < n and j - i < max_batch\n               and arrivals[j] <= t0 + max_wait):\n            j += 1\n        full = j - i == max_batch\n        t = arrivals[j - 1] if full else t0 + max_wait\n        out.append((t, list(range(i, j))))\n        i = j\n    return out",
+   "keyLines": [
+    28,
+    29,
+    44
+   ],
+   "dryRun": [
+    "Worst case $L_{\\max} = W + S(B)$",
+    "$S(b) = a + c\\,b$ (fixed + per item)",
+    "$\\mathrm{thr}(b) = \\frac{b}{a + c\\,b} \\rightarrow \\frac{1}{c}$",
+    "Batch size $b \\approx \\min(B,\\; 1 + \\lambda W)$"
+   ],
+   "description": "Any model exposed to other services: schemas and versioned routes keep callers stable, probes let an orchestrator manage the process, and dynamic batching suits accelerators where one batched pass costs far less than many single ones.",
+   "examples": [
+    {
+     "input": "What is the difference between liveness and readiness?",
+     "output": "Liveness says the process is running and should not be restarted. Readiness says the model is loaded and the service can take traffic, so it is false during warm-up or when a dependency is down.",
+     "explanation": ""
+    },
+    {
+     "input": "Why return 422 with the field path?",
+     "output": "The caller learns exactly which field broke the contract, for example body then features, without the request ever touching the model. The status says the request was well formed but semantically invalid.",
+     "explanation": ""
+    },
+    {
+     "input": "How does dynamic batching affect latency and throughput?",
+     "output": "It raises throughput because the fixed cost of a forward pass is shared, but a request can wait up to the max wait, so tail latency grows with both the wait and the batch size.",
+     "explanation": ""
+    },
+    {
+     "input": "How do timeouts and retries interact with a prediction API?",
+     "output": "Clients set a timeout and retry with backoff. To make retries safe the request carries an id so the server can return the earlier result instead of doing the work twice.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "max_batch, the largest batch sent to the model",
+    "max_wait, the longest a request may be held for batching",
+    "Request timeout and number of retries at the client",
+    "Schema limits such as maximum feature count"
+   ],
+   "edgeCases": [
+    "Reporting ready before the model is loaded, so the first real requests fail",
+    "Using one health endpoint for both liveness and readiness, so a slow model load causes restart loops",
+    "Setting the wait too high for the latency target; $W$ is added to every request that arrives to a quiet queue",
+    "Retrying a non-idempotent call without a request id, which can run the work twice"
+   ],
+   "related": [
+    "continuous-batching",
+    "structured-outputs-json-schema",
+    "tracing-and-logging"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "momentum-sgd",
    "title": "SGD with Momentum",
    "platform": "Deep Learning",
@@ -10754,6 +11473,86 @@
     "precision-recall-f1",
     "class-imbalance",
     "roc-auc"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "multimodal-rag-fusion",
+   "title": "Multimodal RAG Retrieval and Fusion",
+   "platform": "Vision",
+   "url": "https://arxiv.org/abs/2103.00020",
+   "difficulty": "Medium",
+   "topics": [
+    "Multimodal Retrieval",
+    "Rank Fusion",
+    "Score Normalisation"
+   ],
+   "patterns": [],
+   "summary": "Retrieve over text and images either through one shared embedding space or through separate indexes whose results are fused by rank or by normalised, weighted scores.",
+   "bruteForce": "When the images carry no information beyond their captions, so text retrieval on captions is simpler. Also when one modality's scores are already calibrated to the other's, so fusion adds nothing.",
+   "intuition": "If text and images are embedded so that matching pairs sit close, a text query can fetch images with the same nearest-neighbour search used for text. With separate per-modality indexes the lists must be merged, and raw scores from different encoders live on unrelated scales, so a plain sum is decided by whichever scorer has the larger numbers. Normalising scores, or using only ranks, makes each list's vote comparable. Flow: query → per-modality search → normalise or rank → fused top-k → LLM context.",
+   "whyItWorks": "A contrastive objective pulls matching text and image embeddings together, so cosine similarity across modalities is meaningful. For fusion, min-max and z-score are affine maps that remove each scorer's offset and scale, so weights then express real preference. RRF depends only on positions, so it is unchanged by any monotone rescaling of a scorer.",
+   "approach": [
+    "Embed the query and the items and score by cosine similarity — in a shared space this finds images from text directly",
+    "Rescale each list's scores with min-max or z-score — puts different encoders on one scale",
+    "Add the rescaled scores with weights $w_m$ — lets you trust one modality more",
+    "Or ignore scores and give each item $\\frac{1}{k + \\mathrm{rank}}$ per list (RRF) — immune to any monotone rescaling",
+    "Sort by the fused score and take the top-k — the context passed to the generator"
+   ],
+   "time": "O(M·d) to score M items, O(M log M) to rank, O(L·M) to fuse L lists",
+   "space": "O(M·d) for the item embeddings, O(M) for scores",
+   "solution": "import numpy as np\n\ndef unit(x):\n    return x / np.linalg.norm(x, axis=-1, keepdims=True)\n\ndef cross_modal_retrieve(q_vec, item_vecs, k):\n    s = unit(item_vecs) @ unit(q_vec)\n    top = np.argsort(-s, kind=\"stable\")[:k]\n    return top, s[top]\n\ndef minmax(s):\n    r = s.max() - s.min()\n    return (s - s.min()) / r if r > 0 else np.zeros_like(s)\n\ndef zscore(s):\n    sd = s.std()\n    return (s - s.mean()) / sd if sd > 0 else np.zeros_like(s)\n\ndef late_fusion(score_lists, weights, norm=None):\n    f = {\"minmax\": minmax, \"zscore\": zscore, None: lambda s: s}[norm]\n    return sum(w * f(np.asarray(s, float))\n               for w, s in zip(weights, score_lists))\n\ndef rrf(rank_lists, k=60):\n    score = {}\n    for ranks in rank_lists:\n        for r, d in enumerate(ranks, start=1):\n            score[d] = score.get(d, 0) + 1 / (k + r)\n    return sorted(score.items(), key=lambda x: (-x[1], x[0]))",
+   "keyLines": [
+    7,
+    20,
+    28
+   ],
+   "dryRun": [
+    "Cosine: $\\cos(q, x_i) = \\frac{q \\cdot x_i}{\\|q\\| \\|x_i\\|}$",
+    "Min-max: $\\frac{s - \\min s}{\\max s - \\min s} \\in [0, 1]$",
+    "Z-score: $\\frac{s - \\bar{s}}{\\mathrm{std}(s)}$",
+    "Fusion: $\\sum_{m} w_m \\cdot \\mathrm{norm}(s_m)(i)$",
+    "RRF: $\\sum_{m} \\frac{1}{k + \\mathrm{rank}_m(i)}$, $k \\approx 60$",
+    "Raw sum: larger-scale list sets the order"
+   ],
+   "description": "RAG over documents that mix text and images, where the corpus has a text index and an image index, or where a shared space lets a text query retrieve pictures.",
+   "examples": [
+    {
+     "input": "Why can a text query retrieve images with a shared embedding space?",
+     "output": "Training pulls matching text and image pairs close in one space, so the same cosine search compares a text vector with image vectors.",
+     "explanation": ""
+    },
+    {
+     "input": "Why normalise scores before fusing lists?",
+     "output": "Different encoders produce scores on different ranges, so an unnormalised sum is dominated by the larger-scale list. Min-max or z-score puts them on a common scale first.",
+     "explanation": ""
+    },
+    {
+     "input": "When would you prefer RRF to weighted score fusion?",
+     "output": "When scores are not comparable or not available, or you want a robust default. RRF uses only ranks, but it discards how confident each score was.",
+     "explanation": ""
+    },
+    {
+     "input": "What does a modality weight do?",
+     "output": "It scales the normalised scores of one list, so a weight of 1 for one list and 0 for the other reproduces that list's ranking.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Fusion method (RRF, min-max, z-score)",
+    "Modality weights $w_m$",
+    "RRF constant $k$ (often about 60)",
+    "Number of candidates $k$ taken from each index"
+   ],
+   "edgeCases": [
+    "Min-max is sensitive to outliers because one extreme score squeezes everything else; z-score is steadier",
+    "Normalising over only the top-k candidates changes the scale per query, so keep the candidate pool size consistent",
+    "Cross-modal similarity in a shared space is often lower than same-modality similarity, so comparing raw scores across the two is misleading"
+   ],
+   "related": [
+    "clip-contrastive-loss",
+    "hybrid-search-rrf",
+    "cosine-similarity-embeddings"
    ],
    "diagram": []
   },
@@ -13508,6 +14307,91 @@
    "diagram": []
   },
   {
+   "slug": "reliability-circuit-breaker-slo",
+   "title": "SLO Error Budgets, Circuit Breakers and Retry Load",
+   "platform": "MLOps",
+   "url": "https://sre.google/workbook/alerting-on-slos/",
+   "difficulty": "Medium",
+   "topics": [
+    "Reliability",
+    "SLO",
+    "Serving"
+   ],
+   "patterns": [],
+   "summary": "An SLO such as 99.9% success over 30 days leaves an error budget of $0.001$ of requests; a circuit breaker fails fast on a broken dependency, and retries must be bounded because they multiply load.",
+   "bruteForce": "Do not add a breaker around a call that must succeed or block, such as a write that cannot be dropped, and do not set an SLO tighter than the dependencies underneath can support. With very low traffic a failure count over a few calls is noise.",
+   "intuition": "An SLO below 100% is a spendable allowance. The budget is $1-\\mathrm{SLO}$, and the burn rate $\\frac{e}{1-\\mathrm{SLO}}$ for error rate $e$ says how fast you spend it: 1 empties it exactly at the end of the window, 5 empties it in a fifth of the window. A circuit breaker protects the budget and the caller by refusing calls to a dependency that is already failing, so threads are not tied up waiting and the dependency gets room to recover. Retries do the opposite: each failure triggers extra calls, which is exactly when the dependency can least afford them. Flow: failures counted → threshold crossed → fail fast → probe → recover.",
+   "whyItWorks": "The budget is plain arithmetic: allowed bad events are the fraction $1-\\mathrm{SLO}$ of all events, so a burn rate of 1 consumes it in exactly one window. The breaker turns a slow, expensive failure into an instant one, which keeps queues short. With failure probability $p$ and up to $r$ retries, attempts form a truncated geometric series, so even $p = 0.5$ with 3 retries multiplies load by $1.875$ just when the dependency is struggling.",
+   "approach": [
+    "Pick the SLO and window — they fix the budget $1-\\mathrm{SLO}$ of bad requests",
+    "Convert the budget to time — $0.001 \\cdot 43200 = 43.2$ minutes of full outage per 30 days",
+    "Alert on burn rate — a rate well above 1 means the budget runs out before the window ends",
+    "Count consecutive failures per dependency — closed state, normal calls",
+    "Open after the threshold — calls fail immediately and cost nothing downstream",
+    "After the cool-down allow one probe — half-open tests recovery with minimal load",
+    "Close on probe success, re-open on failure — the breaker heals itself",
+    "Cap retries and add backoff — expected attempts are $\\sum_{k=0}^{r} p^k$"
+   ],
+   "time": "O(1) per request for the breaker and the budget arithmetic",
+   "space": "O(1) state per dependency (a counter, a timestamp, a flag)",
+   "solution": "def error_budget(slo, window_minutes):\n    allowed = 1 - slo\n    return allowed, allowed * window_minutes\n\ndef burn_rate(error_rate, slo):\n    return error_rate / (1 - slo)\n\nclass CircuitBreaker:\n    def __init__(self, failure_threshold, cooldown, clock):\n        self.n, self.cooldown, self.clock = (\n            failure_threshold, cooldown, clock)\n        self.state, self.fails, self.opened = \"closed\", 0, 0.0\n        self.probing = False\n\n    def allow(self):\n        if self.state == \"open\":\n            if self.clock() - self.opened < self.cooldown:\n                return False\n            self.state, self.probing = \"half_open\", False\n        if self.state == \"half_open\":\n            if self.probing:\n                return False\n            self.probing = True\n        return True\n\n    def record(self, ok):\n        if self.state == \"half_open\":\n            self.probing = False\n            self.state = \"closed\" if ok else \"open\"\n            self.opened, self.fails = self.clock(), 0\n        elif ok:\n            self.fails = 0\n        else:\n            self.fails += 1\n            if self.fails >= self.n:\n                self.state, self.opened = \"open\", self.clock()\n\ndef retry_load_multiplier(p, r):\n    return sum(p ** k for k in range(r + 1))",
+   "keyLines": [
+    17,
+    23,
+    29
+   ],
+   "dryRun": [
+    "Budget $= 1 - \\mathrm{SLO}$",
+    "Outage minutes $= (1 - \\mathrm{SLO}) \\cdot T$",
+    "Burn rate $= \\frac{\\mathrm{error\\ rate}}{1 - \\mathrm{SLO}}$",
+    "Time to empty $= \\frac{T}{\\mathrm{burn\\ rate}}$",
+    "Attempts $= \\sum_{k=0}^{r} p^{k}$",
+    "Closed form $= \\frac{1 - p^{r+1}}{1 - p}$"
+   ],
+   "description": "Any model service with an availability target, and any call to a dependency (feature store, vector index, model backend) that can fail or slow down: set an SLO, track burn rate, and wrap the dependency in a breaker with a bounded retry policy.",
+   "examples": [
+    {
+     "input": "What is an error budget and what is burn rate?",
+     "output": "The budget is the fraction of requests allowed to fail, $1-\\mathrm{SLO}$. Burn rate is the observed error rate divided by that budget; 1 spends it exactly over the window and higher values run out early.",
+     "explanation": ""
+    },
+    {
+     "input": "Describe the circuit breaker states.",
+     "output": "Closed passes calls and counts failures. After a threshold it opens and fails fast. After a cool-down it goes half-open and lets one probe through, closing on success and re-opening on failure.",
+     "explanation": ""
+    },
+    {
+     "input": "Why can retries make an outage worse?",
+     "output": "Each failed request triggers up to $r$ more calls, so load grows by $\\sum_{k=0}^{r} p^k$ exactly when the dependency is failing. Use backoff with jitter and a retry budget.",
+     "explanation": ""
+    },
+    {
+     "input": "Why alert on burn rate instead of raw error rate?",
+     "output": "Burn rate is relative to the SLO, so one threshold means the same thing for any target and tells you how soon the budget will be gone.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "SLO target and window length",
+    "Failure threshold before opening",
+    "Cool-down time before the half-open probe",
+    "Maximum retries and backoff schedule",
+    "Burn-rate alert thresholds"
+   ],
+   "edgeCases": [
+    "Letting several callers probe in half-open; allow exactly one so a recovering dependency is not flooded",
+    "Retrying at every layer of a call chain multiplies attempts, $(r+1)^{\\mathrm{depth}}$ in the worst case",
+    "Counting only hard errors; slow responses should count as failures too",
+    "Treating the budget as a target to spend rather than a limit that gates risky releases"
+   ],
+   "related": [
+    "llm-api-retries-rate-limits",
+    "provider-fallback-router",
+    "tracing-and-logging"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "reranking-mmr",
    "title": "Reranking and MMR Diversity",
    "platform": "LLM",
@@ -14779,6 +15663,89 @@
    "diagram": [
     "self-attention"
    ]
+  },
+  {
+   "slug": "semantic-cache",
+   "title": "Semantic Cache for LLM Answers",
+   "platform": "MLOps",
+   "url": "https://arxiv.org/abs/2411.05276",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM",
+    "Caching",
+    "Embeddings",
+    "Cost"
+   ],
+   "patterns": [],
+   "summary": "Cache LLM answers by meaning: embed the query, find the nearest cached query and reuse its answer when cosine similarity reaches a threshold $\\tau$, with expiry and per-tenant isolation.",
+   "bruteForce": "Personalised, time-sensitive or high-stakes answers, where a near-duplicate question can need a different answer. Also when the hit rate is too low to cover the lookup cost.",
+   "intuition": "An exact-match cache misses \"reset my password\" versus \"how do I change my password\", but their embeddings are close. The threshold $\\tau$ is the whole trade: lower it and the hit rate rises, but more hits are wrong answers served confidently. Pick it from labelled pairs so the precision of hits meets a target, then check that the hit rate times the model cost still beats the price of the lookup. Flow: query → embed → nearest cached query → hit if above τ, else call model → store answer.",
+   "whyItWorks": "Embeddings place paraphrases close together, so cosine similarity above a threshold is a cheap proxy for \"same question\". Precision as a function of the threshold can be measured on labelled pairs, so $\\tau$ becomes a controlled risk instead of a guess, and the savings formula says whether the hit rate justifies the lookup.",
+   "approach": [
+    "Keep entries per tenant as (unit vector, answer, time) — one customer must never see another's answer",
+    "Drop entries older than the TTL on lookup — answers go stale",
+    "Take the maximum dot product with live entries — for unit vectors this is the cosine similarity",
+    "Return the answer only if the best score is at least $\\tau$ — otherwise it is a miss and the model is called",
+    "Tune $\\tau$ as the smallest score threshold with precision at least the target — most hits at an acceptable error rate",
+    "Compare $h\\,c_{llm} - c_{lookup}$ with zero — a cache that rarely hits loses money"
+   ],
+   "time": "O(n·d) per lookup over n live entries of dimension d; an ANN index makes it sublinear",
+   "space": "O(n·d) for stored vectors plus the cached answers",
+   "solution": "import numpy as np\n\nclass SemanticCache:\n    def __init__(self, threshold, ttl, clock):\n        self.tau, self.ttl, self.clock = threshold, ttl, clock\n        self.store = {}\n\n    def put(self, tenant, q_vec, answer):\n        entry = (np.asarray(q_vec, float), answer, self.clock())\n        self.store.setdefault(tenant, []).append(entry)\n\n    def get(self, tenant, q_vec):\n        now = self.clock()\n        live = [e for e in self.store.get(tenant, [])\n                if now - e[2] < self.ttl]\n        self.store[tenant] = live\n        if not live:\n            return None\n        sims = np.array([e[0] @ q_vec for e in live])\n        best = int(sims.argmax())\n        if sims[best] >= self.tau:\n            return live[best][1]\n        return None\n\ndef tune_threshold(scores, labels, min_precision):\n    scores, labels = np.asarray(scores, float), np.asarray(labels)\n    for t in np.unique(scores):\n        hit = scores >= t\n        if labels[hit].mean() >= min_precision:\n            return float(t)\n    return None\n\ndef expected_savings(h, c_llm, c_lookup):\n    return h * c_llm - c_lookup",
+   "keyLines": [
+    19,
+    21,
+    29
+   ],
+   "dryRun": [
+    "Cosine: $\\cos(q,c) = \\frac{q \\cdot c}{\\|q\\|\\,\\|c\\|}$",
+    "Hit iff $\\max_i \\cos(q, c_i) \\geq \\tau$",
+    "Precision: $\\frac{TP(\\tau)}{TP(\\tau) + FP(\\tau)}$",
+    "Pick $\\tau^{*} = \\min\\{\\tau : \\mathrm{prec}(\\tau) \\geq \\mathrm{target}\\}$",
+    "Savings: $h\\,c_{llm} - c_{lookup}$",
+    "Break-even: $h^{*} = \\frac{c_{lookup}}{c_{llm}}$",
+    "Live iff $\\mathrm{now} - t_{put} < \\mathrm{TTL}$"
+   ],
+   "description": "Workloads with many paraphrased repeats of the same questions, such as support bots or FAQ-style assistants, where an answer stays valid for a while and is safe to share.",
+   "examples": [
+    {
+     "input": "How do you choose the similarity threshold?",
+     "output": "Score labelled pairs of same-meaning and different-meaning queries, then take the lowest threshold whose hit precision meets the target. A lower threshold gives more hits but more wrong answers.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the risk of a semantic cache?",
+     "output": "A false hit returns a confident but wrong answer for a question that only looked similar, so thresholds, TTL and tenant isolation are correctness controls, not just tuning.",
+     "explanation": ""
+    },
+    {
+     "input": "When does the cache pay for itself?",
+     "output": "When the hit rate $h$ exceeds $c_{lookup}/c_{llm}$. Every request pays the lookup, and only hits avoid the model call.",
+     "explanation": ""
+    },
+    {
+     "input": "Why key the cache by tenant?",
+     "output": "Without it, one customer's question can match another customer's cached answer and leak private data.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Similarity threshold $\\tau$",
+    "TTL for expiring stale answers",
+    "Embedding model and its dimension",
+    "Tenant or scope key used to isolate entries"
+   ],
+   "edgeCases": [
+    "Comparing non-normalised vectors with a dot product, so the score is no longer a cosine in $[-1, 1]$",
+    "Tuning $\\tau$ on pairs that do not look like production traffic, so real precision is lower than measured",
+    "Caching answers that depend on user, time or tool output, which are wrong for the next asker"
+   ],
+   "related": [
+    "cosine-similarity-embeddings",
+    "probability-calibration",
+    "ann-vector-index"
+   ],
+   "diagram": []
   },
   {
    "slug": "sentencepiece-unigram",
@@ -16922,6 +17889,87 @@
    "diagram": []
   },
   {
+   "slug": "video-frame-sampling-temporal-pooling",
+   "title": "Video Frame Sampling and Temporal Pooling",
+   "platform": "Vision",
+   "url": "https://arxiv.org/abs/1608.00859",
+   "difficulty": "Medium",
+   "topics": [
+    "Video",
+    "Frame Sampling",
+    "Token Budget"
+   ],
+   "patterns": [],
+   "summary": "A video has far too many frames for a model, so sample $T$ frames, fit them in the token budget, pool features over time, and optionally keep frames where the content changes.",
+   "bruteForce": "Tasks that need precise motion or fine timing, such as action boundaries, where sparse sampling can miss the event and a model with dense temporal processing is better.",
+   "intuition": "Consecutive frames are nearly identical, so most of a video's pixels repeat information, while the cost of a frame in tokens is real and the context window is fixed. Taking the centre of $T$ equal segments spreads samples over the whole clip so no part is missed, and the budget decides how large $T$ can be. Averaging features over groups of frames or keeping only frames where features jump trades temporal resolution for cost. Flow: video → sampled frames → features → temporal pooling → LLM tokens.",
+   "whyItWorks": "Segment-centre sampling places one sample in every equal-length part of the clip, so the gap between samples is $n/T$ up to rounding and nothing is skipped over a long stretch. Mean pooling over $k$ frames keeps the average content while dividing the token count by $k$. Feature change between neighbours is small within a shot and large at a cut, so a threshold separates the two.",
+   "approach": [
+    "Pick the centre of each of $T$ equal segments, $\\lfloor (i+0.5)n/T \\rfloor$ — even coverage with no clustering at the ends",
+    "Compute the frame budget $\\lfloor (C - R)/m \\rfloor$ — frames times tokens per frame must fit after reserving room for text and answer",
+    "Average features over groups of $k$ frames — cuts the frame count to $\\lceil T/k \\rceil$ and smooths noise",
+    "Optionally mark frames whose feature change $\\|f_t - f_{t-1}\\|$ exceeds a threshold — keyframes at scene cuts",
+    "Choose $T$ as the smaller of what you want and what the budget allows — temporal detail against cost"
+   ],
+   "time": "O(T·d) for pooling and keyframe scan; the downstream model pays for T·m tokens",
+   "space": "O(T·d) features, O(T·m) tokens passed to the language model",
+   "solution": "import numpy as np\n\ndef uniform_indices(n, T):\n    i = np.arange(T)\n    return ((2 * i + 1) * n) // (2 * T)\n\ndef budget_frames(context, tokens_per_frame, reserve):\n    return max(0, (context - reserve) // tokens_per_frame)\n\ndef temporal_mean_pool(feats, k):\n    T = len(feats)\n    return np.stack([feats[i:i + k].mean(axis=0)\n                     for i in range(0, T, k)])\n\ndef keyframes_by_change(feats, thr):\n    step = np.linalg.norm(np.diff(feats, axis=0), axis=1)\n    return [0] + [t + 1 for t in np.flatnonzero(step > thr)]",
+   "keyLines": [
+    5,
+    13,
+    16
+   ],
+   "dryRun": [
+    "$t_i = \\lfloor (i + 0.5) n / T \\rfloor$, $i = 0 \\ldots T-1$",
+    "Gap $\\approx n / T$ (varies by at most 1)",
+    "Budget: $T_{\\max} = \\lfloor (C - R) / m \\rfloor$",
+    "Tokens: $T \\cdot m \\leq C - R$",
+    "After pooling: $T^{\\prime} = \\lceil T / k \\rceil$",
+    "Pooled: $z_j = \\frac{1}{k} \\sum_{t \\in G_j} f_t$",
+    "Keyframe if $\\|f_t - f_{t-1}\\| > \\tau$"
+   ],
+   "description": "Feeding video to a vision-language model under a fixed context size, where you must choose how many frames to take and how to reduce the tokens each frame costs.",
+   "examples": [
+    {
+     "input": "Why sample the centre of each segment rather than the first frame?",
+     "output": "The centre of equal segments spreads samples evenly across the clip and avoids bias toward the start of each segment, so coverage is uniform.",
+     "explanation": ""
+    },
+    {
+     "input": "How many frames can you afford?",
+     "output": "Subtract the tokens reserved for the text prompt and the answer from the context, then divide by the tokens per frame and round down.",
+     "explanation": ""
+    },
+    {
+     "input": "What does temporal pooling cost you?",
+     "output": "Averaging over $k$ frames reduces tokens by $k$ but blurs fast changes inside a group, so very short events can vanish.",
+     "explanation": ""
+    },
+    {
+     "input": "When are keyframes better than uniform sampling?",
+     "output": "When the video has distinct shots and long static stretches, since keyframes spend tokens on changes. Uniform sampling is better when change is gradual.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of sampled frames $T$",
+    "Tokens per frame $m$ (depends on resolution and pooling)",
+    "Temporal pooling group size $k$",
+    "Keyframe threshold $\\tau$ on feature change"
+   ],
+   "edgeCases": [
+    "Uniform indices only work for $T \\leq n$; for short clips repeat or take all frames instead",
+    "A fixed threshold on feature change depends on the encoder's scale, so tune it per model",
+    "Forgetting the reserve for text and answer overflows the context after the video tokens"
+   ],
+   "related": [
+    "vision-transformer-patch-embed",
+    "context-window-limits",
+    "clip-contrastive-loss"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "vision-transformer-patch-embed",
    "title": "ViT Patch Embedding and CLS Token",
    "platform": "Vision",
@@ -17000,6 +18048,89 @@
     "self-attention",
     "positional-encoding",
     "convolution-2d"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "vlm-projector-image-tokens",
+   "title": "VLM Projector and Image Tokens",
+   "platform": "Vision",
+   "url": "https://arxiv.org/abs/2310.03744",
+   "difficulty": "Medium",
+   "topics": [
+    "Vision-Language Models",
+    "Projector",
+    "Token Budget"
+   ],
+   "patterns": [],
+   "summary": "A vision-language model splits the image into patches, encodes each patch, maps the features to the language model's embedding size with a projector, and feeds the result as image tokens before the text.",
+   "bruteForce": "Models that use cross-attention to read image features instead of inserting them into the token sequence, or tasks where one global image embedding is enough, as in retrieval or classification.",
+   "intuition": "A language model only understands vectors of size $d_l$, so the image must be turned into a sequence of such vectors. The vision encoder already gives one feature per patch, and a small projector (a linear layer or two-layer MLP) is the only adapter that translates its $d_v$-dimensional space into the language model's embedding space. After that the image tokens are ordinary tokens, so their count directly sets the cost: attention is quadratic in length and the KV cache linear, which is why neighbouring patches are pooled. Flow: image → patches → encoder features → projector → LLM tokens.",
+   "whyItWorks": "The language model's layers only need inputs in its own embedding space; training the projector (and optionally the model) teaches it to place image features where text-like meaning lives. A nonlinearity between two layers lets the map be more than a rotation or scaling. Averaging a $k \\times k$ group keeps the local mean feature while cutting the sequence $k^2$ times, and sequence length is what cost depends on.",
+   "approach": [
+    "Cut the image into $P \\times P$ patches — gives $N = (H/P)(W/P)$ patches, one feature vector each after the encoder",
+    "Project each feature with $\\mathrm{GELU}(fW_1 + b_1)W_2 + b_2$ — maps $d_v$ to the language model size $d_l$",
+    "Average each $k \\times k$ group of neighbouring tokens — divides the token count by $k^2$ at little loss of detail",
+    "Concatenate image tokens before the text embeddings — the language model sees one sequence of $d_l$-vectors",
+    "Count tokens as $N/k^2 + L$ before serving — this length sets attention cost and KV cache size"
+   ],
+   "time": "O(N·d_v·d_h) for the projector; the language model then pays O((N/k² + L)²·d)",
+   "space": "O((N/k² + L)·d_l) for the input and the per-layer KV cache",
+   "solution": "import numpy as np\nfrom scipy.special import erf\n\ndef patchify(img, P):\n    H, W, C = img.shape\n    g = img.reshape(H // P, P, W // P, P, C)\n    g = g.transpose(0, 2, 1, 3, 4)\n    return g.reshape(-1, P * P * C)\n\ndef gelu(x):\n    return 0.5 * x * (1 + erf(x / np.sqrt(2)))\n\ndef project(feats, W1, b1, W2, b2):\n    return gelu(feats @ W1 + b1) @ W2 + b2\n\ndef pool_tokens(grid, k):\n    gh, gw, d = grid.shape\n    g = grid.reshape(gh // k, k, gw // k, k, d)\n    return g.mean(axis=(1, 3)).reshape(-1, d)\n\ndef build_inputs(image_tokens, text_embeds):\n    return np.concatenate([image_tokens, text_embeds], axis=0)\n\ndef token_count(H, W, P, k=1):\n    return (H // P // k) * (W // P // k)",
+   "keyLines": [
+    6,
+    7,
+    18
+   ],
+   "dryRun": [
+    "Patches: $N = \\frac{H}{P} \\cdot \\frac{W}{P}$",
+    "Shapes: $F \\in \\mathbb{R}^{N \\times d_v}$, $W_1 \\in \\mathbb{R}^{d_v \\times d_h}$",
+    "and $W_2 \\in \\mathbb{R}^{d_h \\times d_l}$",
+    "Projector: $Z = \\mathrm{GELU}(F W_1 + b_1) W_2 + b_2$",
+    "Pooled token: $\\bar{z} = \\frac{1}{k^2} \\sum_{(i,j)} z_{ij}$",
+    "Pooled count: $N^{\\prime} = N / k^2$",
+    "Input: $X = [Z^{\\prime} ; E_{text}] \\in \\mathbb{R}^{(N^{\\prime}+L) \\times d_l}$",
+    "Cost: attention $\\propto (N^{\\prime}+L)^2 d_l$",
+    "Example: $N = 24^2 = 576$, so $N^{\\prime} = 144$ at $k = 2$"
+   ],
+   "description": "Connecting a pretrained vision encoder to a pretrained language model, and budgeting how many tokens an image costs before choosing the patch size and the pooling factor.",
+   "examples": [
+    {
+     "input": "Why does a VLM need a projector at all?",
+     "output": "The vision encoder and the language model have different feature sizes and different meaning spaces. The projector is the small trainable bridge that maps one into the other.",
+     "explanation": ""
+    },
+    {
+     "input": "How does the image affect inference cost?",
+     "output": "Each image adds N image tokens to the sequence, so attention grows quadratically with the total length and the KV cache grows linearly. Reducing tokens reduces both.",
+     "explanation": ""
+    },
+    {
+     "input": "How do you cut image tokens without a new encoder?",
+     "output": "Pool neighbouring patch features, for example averaging k by k groups, or use a larger patch size. Both trade spatial detail for fewer tokens.",
+     "explanation": ""
+    },
+    {
+     "input": "Where do image tokens go relative to the text?",
+     "output": "Typically they are placed in the same sequence as the text embeddings, often before the question, and the language model attends over all of them with ordinary self-attention.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Patch size $P$ and image resolution, which set $N$",
+    "Pooling factor $k$, which divides tokens by $k^2$",
+    "Projector type (linear or MLP) and hidden width $d_h$",
+    "Whether the encoder and language model are frozen or fine-tuned"
+   ],
+   "edgeCases": [
+    "The grid sizes must be divisible by $k$ (and the image by $P$); real systems pad or resize first",
+    "Pooling features that came from different positions loses exact layout, so fine text in images may suffer",
+    "Counting only image tokens forgets the text and the answer, which also need room in the context"
+   ],
+   "related": [
+    "vision-transformer-patch-embed",
+    "clip-contrastive-loss",
+    "kv-cache"
    ],
    "diagram": []
   },
@@ -18124,104 +19255,184 @@
      "order": 135
     },
     {
+     "slug": "clip-contrastive-loss",
+     "section": "15. Multimodal LLMs",
+     "order": 136
+    },
+    {
+     "slug": "vision-transformer-patch-embed",
+     "section": "15. Multimodal LLMs",
+     "order": 137
+    },
+    {
+     "slug": "vlm-projector-image-tokens",
+     "section": "15. Multimodal LLMs",
+     "order": 138
+    },
+    {
+     "slug": "video-frame-sampling-temporal-pooling",
+     "section": "15. Multimodal LLMs",
+     "order": 139
+    },
+    {
+     "slug": "audio-log-mel-spectrogram",
+     "section": "15. Multimodal LLMs",
+     "order": 140
+    },
+    {
+     "slug": "ctc-greedy-decoding",
+     "section": "15. Multimodal LLMs",
+     "order": 141
+    },
+    {
+     "slug": "griffin-lim-waveform-reconstruction",
+     "section": "15. Multimodal LLMs",
+     "order": 142
+    },
+    {
+     "slug": "multimodal-rag-fusion",
+     "section": "15. Multimodal LLMs",
+     "order": 143
+    },
+    {
      "slug": "bleu-score",
      "section": "16. Evaluation and observability",
-     "order": 136
+     "order": 144
     },
     {
      "slug": "rouge-score",
      "section": "16. Evaluation and observability",
-     "order": 137
+     "order": 145
     },
     {
      "slug": "llm-as-judge",
      "section": "16. Evaluation and observability",
-     "order": 138
+     "order": 146
     },
     {
      "slug": "elo-pairwise-ranking",
      "section": "16. Evaluation and observability",
-     "order": 139
+     "order": 147
     },
     {
      "slug": "benchmark-contamination",
      "section": "16. Evaluation and observability",
-     "order": 140
+     "order": 148
     },
     {
      "slug": "tracing-and-logging",
      "section": "16. Evaluation and observability",
-     "order": 141
+     "order": 149
     },
     {
      "slug": "prompt-versioning",
      "section": "16. Evaluation and observability",
-     "order": 142
+     "order": 150
     },
     {
      "slug": "concept-drift",
      "section": "16. Evaluation and observability",
-     "order": 143
+     "order": 151
     },
     {
      "slug": "magnitude-pruning",
      "section": "17. Inference and optimisation",
-     "order": 144
+     "order": 152
     },
     {
      "slug": "gpu-memory-estimation",
      "section": "17. Inference and optimisation",
-     "order": 145
+     "order": 153
     },
     {
      "slug": "continuous-batching",
      "section": "17. Inference and optimisation",
-     "order": 146
+     "order": 154
     },
     {
      "slug": "speculative-decoding",
      "section": "17. Inference and optimisation",
-     "order": 147
+     "order": 155
     },
     {
      "slug": "flash-attention-online-softmax",
      "section": "17. Inference and optimisation",
-     "order": 148
+     "order": 156
     },
     {
      "slug": "tensor-parallel-matmul",
      "section": "17. Inference and optimisation",
-     "order": 149
+     "order": 157
     },
     {
      "slug": "pipeline-parallel-schedule",
      "section": "17. Inference and optimisation",
-     "order": 150
+     "order": 158
     },
     {
      "slug": "jailbreak-and-red-teaming",
      "section": "18. Security and responsible AI",
-     "order": 151
+     "order": 159
     },
     {
      "slug": "pii-redaction",
      "section": "18. Security and responsible AI",
-     "order": 152
+     "order": 160
     },
     {
      "slug": "output-validation-guardrails",
      "section": "18. Security and responsible AI",
-     "order": 153
+     "order": 161
     },
     {
      "slug": "content-safety-classifiers",
      "section": "18. Security and responsible AI",
-     "order": 154
+     "order": 162
     },
     {
      "slug": "fairness-metrics",
      "section": "18. Security and responsible AI",
-     "order": 155
+     "order": 163
+    },
+    {
+     "slug": "llm-cost-latency-optimisation",
+     "section": "19. LLMOps and production deployment",
+     "order": 164
+    },
+    {
+     "slug": "semantic-cache",
+     "section": "19. LLMOps and production deployment",
+     "order": 165
+    },
+    {
+     "slug": "reliability-circuit-breaker-slo",
+     "section": "19. LLMOps and production deployment",
+     "order": 166
+    },
+    {
+     "slug": "autoscaling-littles-law",
+     "section": "19. LLMOps and production deployment",
+     "order": 167
+    },
+    {
+     "slug": "container-binpacking-scheduling",
+     "section": "19. LLMOps and production deployment",
+     "order": 168
+    },
+    {
+     "slug": "experiment-tracking-runs",
+     "section": "19. LLMOps and production deployment",
+     "order": 169
+    },
+    {
+     "slug": "model-serving-api-contract",
+     "section": "19. LLMOps and production deployment",
+     "order": 170
+    },
+    {
+     "slug": "managed-vs-self-host-breakeven",
+     "section": "19. LLMOps and production deployment",
+     "order": 171
     }
    ]
   },

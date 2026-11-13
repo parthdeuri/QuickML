@@ -32,5 +32,6 @@ problems:
 - focal-loss
 - label-smoothing
 - clip-contrastive-loss
+- next-token-prediction-loss
 aliases:
 - Information-theoretic losses

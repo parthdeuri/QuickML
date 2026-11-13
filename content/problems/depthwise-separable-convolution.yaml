@@ -77,9 +77,9 @@ interview_qa:
   - q: "What does the pointwise step do?"
     a: "A 1×1 convolution that linearly combines channels at every position, producing the output channels."
 related: [convolution-2d, receptive-field, residual-connections]
-patterns: ["Convolution and vision"]
 math_tex:
 - $m[n,c,i,j] = \sum_{u,v} d[c,u,v]\cdot x[n,c,si+u,sj+v]$
 - 'Pointwise: $\mathrm{out}[n,f,i,j] = \sum_c p[f,c]\cdot m[n,c,i,j]$'
 - 'Params: standard $F C k^2$;  separable $C k^2 + F C$'
 - 'Cost ratio (params): $\frac{1}{F} + \frac{1}{k^2}$'
+patterns: ["Convolution and vision"]

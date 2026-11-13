@@ -73,9 +73,9 @@ interview_qa:
     a: "Use nested cross-validation: an inner loop picks hyperparameters and an outer loop scores the whole selection procedure."
 related: [bias-variance-tradeoff, data-leakage]
 diagram: cross-validation
-patterns: ["Validation hygiene"]
 math_tex:
 - folds $F_1 \ldots F_k$ partition $\{1 \ldots n\}$, sizes differ $\leq 1$
 - $\hat{w}_{-i} = \mathrm{fit}(\mathrm{data\ outside\ } F_i)$
 - $\mathrm{CV} = \frac{1}{k}\sum_i \mathrm{score}(\hat{w}_{-i}, F_i)$
 - spread = std of the $k$ fold scores
+patterns: ["Validation hygiene"]

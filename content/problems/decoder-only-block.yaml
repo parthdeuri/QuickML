@@ -1,0 +1,102 @@
+slug: decoder-only-block
+title: Decoder-Only (GPT-Style) Transformer Block
+url: https://arxiv.org/abs/2005.14165
+difficulty: Hard
+area: LLM
+topics: [LLM, Transformers, Causal Attention]
+summary: |
+  A GPT-style layer with pre-LayerNorm: normalise, causal self-attention,
+  add back, normalise, feed-forward, add back; stacked, it is the whole
+  body of a decoder-only language model.
+intuition: |
+  A decoder-only model has no encoder and no cross-attention; one
+  stack of identical blocks reads the prefix and predicts the next
+  token. Each block only adds corrections to a residual stream, and the
+  causal mask guarantees that position $t$ never sees later tokens, so
+  one parallel pass trains the prediction at every position at once.
+  Flow: tokens → LayerNorm → causal attention → add → LayerNorm → FFN → add.
+approach:
+  - "Normalise each position with LayerNorm — a stable input scale for attention"
+  - "Project to $Q$, $K$, $V$ and split into heads — each head attends in its own subspace"
+  - "Mask scores above the diagonal with $-\\infty$ — a token cannot see the future"
+  - "Softmax, mix values, merge heads, project with $W_o$ and add to $x$ — first residual update"
+  - "Normalise, apply the feed-forward network and add — second residual update; shape stays $(T, d)$"
+code: |
+  import numpy as np
+
+  def layer_norm(x, g, b, eps=1e-5):
+      mu = x.mean(-1, keepdims=True)
+      var = x.var(-1, keepdims=True)
+      return g * (x - mu) / np.sqrt(var + eps) + b
+
+  def causal_attn(x, Wq, Wk, Wv, Wo, h):
+      T, d = x.shape
+      q, k, v = (x @ W for W in (Wq, Wk, Wv))
+      q, k, v = (m.reshape(T, h, d // h).transpose(1, 0, 2)
+                 for m in (q, k, v))
+      s = q @ k.transpose(0, 2, 1) / np.sqrt(d // h)
+      s = np.where(np.triu(np.ones((T, T), bool), 1), -np.inf, s)
+      e = np.exp(s - s.max(-1, keepdims=True))
+      a = (e / e.sum(-1, keepdims=True)) @ v
+      return a.transpose(1, 0, 2).reshape(T, d) @ Wo
+
+  def ffn(x, W1, W2):
+      t = x @ W1
+      c = np.sqrt(2 / np.pi)
+      g = 0.5 * t * (1 + np.tanh(c * (t + 0.044715 * t**3)))
+      return g @ W2
+
+  def block(x, P, h):
+      y = layer_norm(x, P["g1"], P["b1"])
+      x = x + causal_attn(y, P["Wq"], P["Wk"], P["Wv"], P["Wo"], h)
+      y = layer_norm(x, P["g2"], P["b2"])
+      return x + ffn(y, P["W1"], P["W2"])
+key_lines: [14, 27, 29]
+time: "O(T²·d + T·d²) per block"
+space: "O(h·T²) attention scores plus O(T·d) activations"
+when_to_use: |
+  Building or reading any GPT-style language model: embeddings, $N$
+  stacked blocks, a final LayerNorm and a projection to vocabulary
+  logits.
+when_not_to_use: |
+  Tasks that need bidirectional context over a fixed input, where an
+  encoder is a better fit, or very long contexts where quadratic
+  attention cost dominates.
+why_it_works: |
+  The causal mask makes the output at position $t$ a function of tokens
+  up to $t$ only, which makes next-token training parallel and lets
+  generation reuse cached keys and values. The pre-norm residual form
+  $x + f(\mathrm{LN}(x))$ keeps an identity path through all layers,
+  which keeps gradients healthy in deep stacks.
+math:
+  - "x′ = x + Attn(LN(x))"
+  - "y = x′ + FFN(LN(x′))"
+  - "Mᵢⱼ = −∞ for j > i,  else 0"
+  - "Attn = softmax(QKᵀ/√dₕ + M) V"
+  - "LN(x) = γ (x − μ) / √(σ² + ε) + β"
+  - "Causality: ∂yᵢ/∂xⱼ = 0 for j > i"
+interview_qa:
+  - q: "What makes a block decoder-only?"
+    a: "It uses causal self-attention only, with no cross-attention to an encoder, so each position sees just the tokens before it and itself."
+  - q: "Why pre-LayerNorm instead of post-LayerNorm?"
+    a: "Normalising inside the residual branch leaves the skip path as a pure identity, so deep stacks train stably and need less learning-rate warmup."
+  - q: "How would you test that the mask works?"
+    a: "Change a later token's input and check that all earlier output positions are unchanged."
+hyperparameters:
+  - "Model width $d$ and number of heads $h$ (with $d$ divisible by $h$)"
+  - "FFN hidden size (about $4d$, or $\\frac{8}{3}d$ when gated)"
+  - "Number of stacked blocks"
+  - "LayerNorm epsilon and the activation"
+pitfalls:
+  - "Applying the mask after softmax instead of before it leaks the future and breaks the row sums"
+  - "Forgetting the final LayerNorm after the last block when using pre-norm"
+  - "Adding the residual to the normalised tensor instead of the raw stream destroys the identity path"
+related: [transformer-block, causal-masking, kv-cache]
+math_tex:
+- 'Attention: $x^{\prime} = x + \mathrm{Attn}(\mathrm{LN}(x))$'
+- 'FFN: $y = x^{\prime} + \mathrm{FFN}(\mathrm{LN}(x^{\prime}))$'
+- 'Mask: $M_{ij} = -\infty$ for $j > i$'
+- 'Attn: $\mathrm{softmax}\left(\frac{QK^{\top}}{\sqrt{d_h}} + M\right)V$'
+- 'LN: $\gamma\,\frac{x - \mu}{\sqrt{\sigma^2 + \epsilon}} + \beta$'
+- 'Causal: $\frac{\partial y_i}{\partial x_j} = 0$ for $j > i$'
+patterns: ["Attention and sequences"]

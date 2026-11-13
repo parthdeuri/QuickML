@@ -86,7 +86,6 @@ interview_qa:
     a: "It corrupts the input with noise and trains to reconstruct the clean version, which prevents the identity solution and learns robust features."
 related: [pca, backpropagation, vae-reparameterization]
 diagram: autoencoder
-patterns: ["Dimensionality reduction", "Generative models"]
 math_tex:
 - 'Encode: $h = f(XW_1 + b_1)$'
 - 'Decode: $\hat{X} = hW_2 + b_2$'
@@ -96,3 +95,4 @@ math_tex:
 - $\frac{\partial L}{\partial h} = (E W_2^{\top}) \odot f'(\cdot)$
 - $\frac{\partial L}{\partial W_1} = X^{\top}\,\frac{\partial L}{\partial h}$
 - 'Linear $f$: min error = dropped PCA variances'
+patterns: ["Dimensionality reduction", "Generative models"]

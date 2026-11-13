@@ -97,7 +97,6 @@ interview_qa:
   - q: "Why is agglomerative clustering expensive?"
     a: "It stores all pairwise distances, which is quadratic in memory, and a naive search for the closest pair at each of n − 1 merges makes the time cubic."
 related: [k-means, dbscan, pca]
-patterns: ["Distance and clustering"]
 math_tex:
 - 'Single: $d(A,B) = \min_{a \in A,\, b \in B}\|a - b\|$'
 - 'Average: $d(A,B) = \frac{1}{|A||B|}\sum_a \sum_b \|a - b\|$'
@@ -107,3 +106,4 @@ math_tex:
 - 'Average: $\alpha_i = \frac{n_i}{n_i + n_j},\ \beta = \gamma = 0$'
 - 'Ward (squared d): $\alpha_i = \frac{n_k + n_i}{N},\ \beta = -\frac{n_k}{N}$'
 - $\ \ $with $N = n_k + n_i + n_j$
+patterns: ["Distance and clustering"]

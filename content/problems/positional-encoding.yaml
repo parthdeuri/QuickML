@@ -68,10 +68,10 @@ pitfalls:
   - "Interleaved sin and cos columns versus concatenated halves are both used; the choice must match the rest of the model"
   - "Adding to embeddings without matching scale can drown the content signal"
 related: [self-attention, multi-head-attention, layer-normalization]
-patterns: ["Attention and sequences"]
 math_tex:
 - $PE(pos, 2i) = \sin\left(\frac{pos}{10000^{2i/d}}\right)$
 - $PE(pos, 2i+1) = \cos\left(\frac{pos}{10000^{2i/d}}\right)$
 - $\omega_i = \frac{1}{10000^{2i/d}}$
 - $[\sin\omega(p+k),\ \cos\omega(p+k)] = R(\omega k)\,[\sin\omega p,\ \cos\omega p]$
 - $R(\theta) = [[\cos\theta,\ \sin\theta],\ [-\sin\theta,\ \cos\theta]]$
+patterns: ["Attention and sequences"]

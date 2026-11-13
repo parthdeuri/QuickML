@@ -31,5 +31,11 @@ problems:
 - perplexity
 - cosine-similarity-embeddings
 - bert-masked-lm
+- text-preprocessing-stemming
+- bag-of-words-ngram-lm
+- glove-embeddings
+- wordpiece
+- sentencepiece-unigram
+- contextual-embeddings
 aliases:
 - Text processing

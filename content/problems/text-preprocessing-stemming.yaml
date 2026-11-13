@@ -1,0 +1,107 @@
+slug: text-preprocessing-stemming
+title: Text Preprocessing, Stemming and Lemmatisation
+url: https://tartarus.org/martin/PorterStemmer/
+difficulty: Easy
+area: NLP
+topics: [Preprocessing, Tokenisation, Stemming, Lemmatisation]
+summary: |
+  Turn raw text into clean tokens: lowercase, strip punctuation, split,
+  drop stop words, then collapse word variants with a suffix-stripping
+  stemmer or a dictionary lemmatiser.
+intuition: |
+  A model that counts words sees "run", "runs" and "running" as three
+  unrelated symbols, which splits the evidence for one idea. A stemmer
+  merges them cheaply by chopping suffixes with rules, so its output
+  may not be a real word ("ponies" becomes "poni"). A lemmatiser looks
+  each word up in a dictionary and returns the true base form, so it
+  maps "ran" to "run" and "mice" to "mouse", at the cost of needing
+  a lexicon.
+  Flow: raw text → lowercase → tokens → stop words out → stems.
+approach:
+  - "Lowercase and keep only letters and digits — removes case and punctuation variants"
+  - "Split into tokens — gives the units that will be counted"
+  - "Drop stop words — removes very frequent words that carry little topic signal"
+  - "Apply plural rules ($\\mathrm{sses}\\rightarrow\\mathrm{ss}$, $\\mathrm{ies}\\rightarrow\\mathrm{i}$, drop a final s) — merges singular and plural"
+  - "Strip ing or ed only if a vowel remains, then tidy the ending — avoids turning sing into s"
+  - "Optionally map irregular words with a dictionary lemmatiser — fixes forms no suffix rule can reach"
+code: |
+  import re
+
+  STOP = {"the", "a", "an", "is", "are", "and", "of", "to", "over"}
+  LEMMA = {"ran": "run", "mice": "mouse", "better": "good"}
+
+  def normalise(text):
+      return re.findall(r"[a-z0-9]+", text.lower())
+
+  def has_vowel(s):
+      return re.search(r"[aeiou]", s) is not None
+
+  def stem(w):
+      for suf, rep in [("sses", "ss"), ("ies", "i"), ("ss", "ss"),
+                       ("s", "")]:
+          if w.endswith(suf):
+              w = w[:-len(suf)] + rep
+              break
+      for suf in ("ing", "ed"):
+          if w.endswith(suf) and has_vowel(w[:-len(suf)]):
+              w = w[:-len(suf)]
+              if w.endswith(("at", "bl", "iz")):
+                  w += "e"
+              elif len(w) > 1 and w[-1] == w[-2] and w[-1] not in "lsz":
+                  w = w[:-1]
+              break
+      if w.endswith("y") and has_vowel(w[:-1]):
+          w = w[:-1] + "i"
+      return w
+
+  def lemmatise(w):
+      return LEMMA.get(w, w)
+
+  def pipeline(text, use_stem=True):
+      toks = [t for t in normalise(text) if t not in STOP]
+      return [stem(t) if use_stem else lemmatise(t) for t in toks]
+key_lines: [16, 19, 35]
+time: "O(n·L) for n tokens of length L; each token is a few suffix checks"
+space: "O(n) for the token list, plus the stop-word set and lemma dictionary"
+when_to_use: |
+  Bag-of-words, TF-IDF and search pipelines where vocabulary size and
+  sparsity matter, and classical models that cannot share statistics
+  between word forms on their own.
+when_not_to_use: |
+  Pretrained subword or transformer models, which expect raw text and
+  its own tokenizer. Stripping stop words or suffixes also destroys
+  negation and tense ("not good", "was") that some tasks need.
+why_it_works: |
+  English inflection is mostly regular, so a short ordered list of
+  suffix rules maps most variants to one key without any dictionary.
+  Merging variants raises each key's count, which reduces sparsity and
+  vocabulary size. A stem only has to be consistent, not a real word,
+  because it is used as a lookup key and never shown to a reader.
+math:
+  - "tokens = split(lowercase(text) with non-alphanumerics removed)"
+  - "ies → i,  sses → ss,  s → ∅   (plural rules)"
+  - "ing, ed → ∅  if the remaining stem contains a vowel"
+  - "Vocabulary size after stemming |V_stem| ≤ |V_raw|"
+math_tex:
+- 'Tokens: lowercase, keep letter and digit runs'
+- 'Plurals: $\mathrm{ies}\rightarrow\mathrm{i}$, $\mathrm{sses}\rightarrow\mathrm{ss}$'
+- 'Drop ing or ed if a vowel is left'
+- 'Merging forms gives $|V_{stem}| \leq |V_{raw}|$'
+interview_qa:
+  - q: "What is the difference between stemming and lemmatisation?"
+    a: "A stemmer chops suffixes with rules and may output a non-word such as poni. A lemmatiser uses a dictionary and part of speech to return a real base form, so it handles ran to run and mice to mouse but is slower."
+  - q: "Why remove stop words, and when is it harmful?"
+    a: "They are very frequent and add little topic signal to counts. They matter for negation, phrases and language models, so removing them hurts sentiment and generation tasks."
+  - q: "What is over-stemming and under-stemming?"
+    a: "Over-stemming merges unrelated words into one stem; under-stemming leaves related words apart, such as ran and running. Aggressive rules trade one error for the other."
+hyperparameters:
+  - "Stop-word list (language and domain specific)"
+  - "Stemmer or lemmatiser choice, and how aggressive its rules are"
+  - "Whether to lowercase and how to treat digits and hyphens"
+  - "Minimum token length"
+pitfalls:
+  - "Apply the same preprocessing at training and inference time, or the vocabulary will not match"
+  - "This simplified stemmer covers only a few rules; words like branches or hoped need later Porter steps and come out differently"
+  - "Stemming ignores meaning, so unrelated words can collide and irregular forms such as ran stay apart"
+related: [tf-idf, bpe-tokenization, word2vec-skipgram]
+patterns: ["Text processing"]

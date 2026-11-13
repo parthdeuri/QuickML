@@ -79,10 +79,10 @@ interview_qa:
   - q: "How do you fix a miscalibrated model?"
     a: "Fit a monotone post-hoc map such as Platt scaling, isotonic regression or temperature scaling on held-out data; ranking and AUC stay the same."
 related: [roc-auc, logistic-regression, class-imbalance]
-patterns: ["Classification metrics"]
 math_tex:
 - 'Calibrated: $P(y=1 \,|\, \hat{p}=p) = p$'
 - 'Bin $b$: $\mathrm{acc}_b = \mathrm{mean}(y\ \mathrm{in}\ b),\;\; \mathrm{conf}_b = \mathrm{mean}(\hat{p}\ \mathrm{in}\ b)$'
 - $\mathrm{ECE} = \sum_b \frac{n_b}{n}\,|\mathrm{acc}_b - \mathrm{conf}_b|$
 - $\mathrm{Brier} = \frac{1}{n}\sum_i (\hat{p}_i - y_i)^2$
 - 'Bins: equal-width on $[0, 1]$, empty skipped'
+patterns: ["Classification metrics"]

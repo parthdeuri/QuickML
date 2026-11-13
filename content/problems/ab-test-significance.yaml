@@ -84,7 +84,6 @@ interview_qa:
   - q: "How does sample size scale with effect size?"
     a: "Inversely with the square of the minimum detectable effect, so detecting half the effect needs about four times as many users."
 related: [bayes-theorem, cross-validation, concept-drift]
-patterns: ["Validation hygiene"]
 math_tex:
 - $\hat{p}_1 = \frac{x_1}{n_1},\;\; \hat{p}_2 = \frac{x_2}{n_2},\;\; \hat{p} = \frac{x_1+x_2}{n_1+n_2}$
 - 'Null SE: $\sqrt{\hat{p}(1-\hat{p})\left(\frac{1}{n_1} + \frac{1}{n_2}\right)}$'
@@ -93,3 +92,4 @@ math_tex:
 - 'CI: $(\hat{p}_2-\hat{p}_1) \pm z_{\alpha/2}\sqrt{\frac{\hat{p}_1(1-\hat{p}_1)}{n_1} + \frac{\hat{p}_2(1-\hat{p}_2)}{n_2}}$'
 - $n = \frac{(z_{\alpha/2}+z_\beta)^2\,[p_1(1-p_1)+p_2(1-p_2)]}{\delta^2}$ per arm
 - $\delta = p_2 - p_1$ is the minimum detectable effect
+patterns: ["Validation hygiene"]

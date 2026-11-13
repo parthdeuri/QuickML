@@ -77,10 +77,10 @@ pitfalls:
   - "Stacking many layers over-smooths"
   - "No bias, dropout or edge weights in this sketch"
 related: [mlp-forward-pass, activation-functions, self-attention]
-patterns: ["Graph neural networks"]
 math_tex:
 - $\hat{A} = A + I,\;\; \tilde{D}_{ii} = \sum_j \hat{A}_{ij}$
 - $H' = \sigma(\tilde{D}^{-1/2}\,\hat{A}\,\tilde{D}^{-1/2}\,H\,W)$
 - 'Per node: $h_i'' = \sigma\left(\sum_{j \in N(i) \cup \{i\}} \frac{1}{\sqrt{\tilde{d}_i \tilde{d}_j}}\,W h_j\right)$'
 - $H \in \mathbb{R}^{N \times F},\; W \in \mathbb{R}^{F \times F'},\; A \in \{0,1\}^{N \times N}$ symmetric
 - $k$ layers aggregate $k$-hop neighbourhoods
+patterns: ["Graph neural networks"]

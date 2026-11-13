@@ -72,10 +72,10 @@ pitfalls:
   - "No peephole connections or projections are included"
 related: [rnn-cell, activation-functions, backpropagation]
 diagram: lstm-cell
-patterns: ["Attention and sequences"]
 math_tex:
 - $[i,f,g,o] = \mathrm{split}(W_x x_t + W_h h_{t-1} + b)$
 - $i_t = \sigma(i),\;\; f_t = \sigma(f),\;\; o_t = \sigma(o),\;\; g_t = \tanh(g)$
 - $c_t = f_t \odot c_{t-1} + i_t \odot g_t$
 - $h_t = o_t \odot \tanh(c_t)$
 - $\frac{\partial c_t}{\partial c_{t-1}} = f_t$ (direct path only)
+patterns: ["Attention and sequences"]

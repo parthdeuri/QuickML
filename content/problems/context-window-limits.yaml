@@ -1,0 +1,94 @@
+slug: context-window-limits
+title: Why Context Length Is Limited
+url: https://arxiv.org/abs/2306.15595
+difficulty: Medium
+area: LLM
+topics: [Transformers, Long Context, Attention Cost]
+summary: |
+  Attention builds a $T \times T$ score matrix, so compute and score
+  memory grow as $T^2$ while the KV cache grows linearly in $T$;
+  sliding windows and RoPE position interpolation stretch the limit.
+intuition: |
+  Every token attends to every earlier token, so doubling the context
+  quadruples the pairs to score. Separately, generation must keep keys
+  and values for the whole context, which costs memory linearly. A
+  model also only saw positions up to its training length, so longer
+  inputs hit angles it never learned; squeezing positions back into
+  the trained range is cheaper than retraining.
+  Flow: longer context → more pairs → bigger scores and cache → limit.
+approach:
+  - "Model attention cost as $4 T^2 d_{head}$ FLOPs per head — $QK^\\top$ and the weighted sum each cost $2T^2 d_{head}$"
+  - "Score matrix holds $T^2$ values per head — memory grows quadratically unless fused or tiled"
+  - "KV cache is $2 \\cdot L \\cdot h_{kv} \\cdot T \\cdot d_{head}$ values — linear in $T$ but large at long context"
+  - "A sliding window of width $w$ keeps $T w$ scores — cost becomes linear in $T$"
+  - "Position interpolation scales positions by $L_{train}/L_{new}$ — the angles stay inside the trained range"
+code: |
+  import numpy as np
+
+  def attn_cost(T, d_head, bytes_per=4):
+      flops = 4 * T * T * d_head        # QK^T and A V, 2*T*T*d each
+      score_bytes = T * T * bytes_per   # the T x T score matrix
+      return flops, score_bytes
+
+  def window_score_bytes(T, w, bytes_per=4):
+      return T * min(T, w) * bytes_per  # sliding window: linear in T
+
+  def kv_bytes(T, layers, kv_heads, d_head, bytes_per=2):
+      return 2 * layers * kv_heads * T * d_head * bytes_per
+
+  def rope_angles(positions, d_head, L_train=None, L_new=None,
+                  base=10000.0):
+      s = 1.0 if L_new is None else L_train / L_new
+      pos = np.asarray(positions, dtype=float) * s
+      inv = base ** (-np.arange(0, d_head, 2) / d_head)
+      return np.outer(pos, inv)         # angle = position * frequency
+key_lines: [5, 12, 16]
+time: "O(T²·d) per head for full attention; O(T·w·d) with a window of width w"
+space: "O(T²) for materialised scores per head; O(T) for the KV cache per layer"
+when_to_use: |
+  Estimating whether a target context length fits in memory and time,
+  and choosing between windowed attention, a bigger cache budget, or
+  position interpolation to extend a pretrained model.
+when_not_to_use: |
+  Treating the quadratic score matrix as always materialised. Fused
+  kernels avoid storing it, so the $T^2$ memory term then disappears
+  even though the $T^2$ compute remains.
+why_it_works: |
+  Scores are one dot product per query-key pair, so there are $T^2$ of
+  them. Linear interpolation works because RoPE angles are smooth in
+  position: mapping position $p$ to $p \cdot L_{train}/L_{new}$ keeps
+  every angle within the range seen in training, at the cost of
+  packing nearby tokens closer together, so a short fine-tune helps.
+math:
+  - "Scores: S = Q Kᵀ / √d, shape T × T"
+  - "Attention FLOPs ≈ 4·T²·d_head per head"
+  - "Score bytes = T² · bytes per value"
+  - "KV bytes = 2·layers·kv_heads·T·d_head·bytes"
+  - "Window w: scores = T·min(T, w)"
+  - "RoPE angle = p' · θᵢ, with p' = p · L_train / L_new"
+interview_qa:
+  - q: "Why does doubling the context quadruple attention cost?"
+    a: "Each of the $T$ queries scores all $T$ keys, so there are $T^2$ scores. Doubling $T$ gives four times as many."
+  - q: "Does the KV cache also grow quadratically?"
+    a: "No. It stores one key and one value per token per layer and head, so it grows linearly in $T$, but it can still dominate memory in long-context serving."
+  - q: "What does RoPE position interpolation do?"
+    a: "It multiplies positions by $L_{train}/L_{new}$ so a longer input maps into the position range seen in training, then usually fine-tunes briefly."
+  - q: "How does a sliding window help?"
+    a: "Each token attends only to the last $w$ tokens, so scores and compute are linear in $T$, though information beyond the window must flow through the layers."
+hyperparameters:
+  - "Context length $T$ (training and serving)"
+  - "Window size $w$ for sliding-window attention"
+  - "Interpolation factor $L_{train}/L_{new}$"
+  - "Number of KV heads and cache precision"
+pitfalls:
+  - "Fused attention kernels avoid storing the score matrix, so the quadratic memory figure is for the naive implementation; quadratic compute remains"
+  - "A model accepting a long input does not mean it uses it well; quality over long contexts must be measured, not assumed"
+  - "Interpolating positions without any fine-tuning degrades short-range resolution, since neighbouring tokens get closer angles"
+related: [self-attention, rotary-position-embedding, kv-cache]
+math_tex:
+- 'Scores: $S = Q K^\top / \sqrt{d}$, size $T \times T$'
+- 'Attention FLOPs $\approx 4 T^2 d_{head}$ per head'
+- 'Score bytes $= T^2 \cdot \mathrm{bytes}$'
+- 'KV bytes $= 2 L h_{kv} T d_{head} \cdot \mathrm{bytes}$'
+- 'Window $w$: scores $= T \cdot \min(T, w)$'
+- 'RoPE angle $= p'' \theta_i$, $p'' = p L_{train} / L_{new}$'

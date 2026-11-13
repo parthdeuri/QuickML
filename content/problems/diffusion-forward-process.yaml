@@ -75,7 +75,6 @@ pitfalls:
   - "The equivalence with iterating holds in distribution, not sample by sample for the same $\\epsilon$"
 related: [vae-reparameterization, autoencoder, entropy-kl-divergence]
 diagram: diffusion-forward-process
-patterns: ["Generative models"]
 math_tex:
 - $q(x_t\,|\,x_{t-1}) = \mathcal{N}(\sqrt{1-\beta_t}\,x_{t-1},\ \beta_t I)$
 - $\alpha_t = 1 - \beta_t,\;\; \bar{\alpha}_t = \prod_{s \leq t} \alpha_s$
@@ -84,3 +83,4 @@ math_tex:
 - 'Recursions: $m_t = \sqrt{\alpha_t}\,m_{t-1},\;\; v_t = \alpha_t v_{t-1} + \beta_t$'
 - $x_0 = \frac{x_t - \sqrt{1-\bar{\alpha}_t}\,\varepsilon}{\sqrt{\bar{\alpha}_t}}$
 - $\mathrm{SNR}(t) = \frac{\bar{\alpha}_t}{1-\bar{\alpha}_t}$
+patterns: ["Generative models"]

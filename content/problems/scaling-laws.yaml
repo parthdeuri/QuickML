@@ -1,0 +1,101 @@
+slug: scaling-laws
+title: Neural Scaling Laws (Chinchilla)
+url: https://arxiv.org/abs/2203.15556
+difficulty: Hard
+area: LLM
+topics: [Scaling, Compute Budget, Pretraining]
+summary: |
+  Model loss falls as a power law in parameters $N$ and tokens $D$ down
+  to an irreducible floor. Given a fixed compute budget $C \approx 6ND$,
+  there is a best split between model size and data.
+intuition: |
+  Loss has three parts: an irreducible floor, a term that shrinks as
+  the model grows, and a term that shrinks as it sees more data. Each
+  term has diminishing returns, so spending the whole budget on a huge
+  model with little data, or the reverse, wastes compute. At a fixed
+  budget the best point balances the marginal gain of one more
+  parameter against that of more tokens.
+  Flow: budget C → constraint 6ND = C → minimise L(N,D) → N*, D*.
+approach:
+  - "Model the loss as $E + A/N^{\\alpha} + B/D^{\\beta}$ — floor plus model and data terms"
+  - "Fix the budget with $C = 6ND$ — so $D = C/(6N)$ and one variable remains"
+  - "Set the derivative of $L$ with respect to $N$ to zero — gives the closed-form $N^*$"
+  - "Recover $D^* = C/(6N^*)$ — the budget constraint holds exactly"
+  - "Fit $E, A, B, \\alpha, \\beta$ from runs — for fixed exponents the rest is linear least squares"
+code: |
+  import numpy as np
+  from scipy.optimize import minimize
+
+  def loss(N, D, E=1.69, A=406.4, B=410.7, a=0.34, b=0.28):
+      return E + A / N**a + B / D**b
+
+  def optimal_ND(C, A=406.4, B=410.7, a=0.34, b=0.28):
+      G = C / 6.0
+      N = (a * A / (b * B)) ** (1 / (a + b)) * G ** (b / (a + b))
+      return N, G / N
+
+  def fit(N, D, L):
+      def inner(p):
+          a, b = p
+          X = np.c_[np.ones_like(L), N**-a, D**-b]
+          c = np.linalg.lstsq(X, L, rcond=None)[0]
+          return c, ((X @ c - L) ** 2).sum()
+      r = minimize(lambda p: inner(p)[1], [0.5, 0.5],
+                   method="Nelder-Mead",
+                   options={"xatol": 1e-12, "fatol": 1e-30,
+                            "maxiter": 5000})
+      (E, A, B), a, b = inner(r.x)[0], *r.x
+      return E, A, B, a, b
+key_lines: [5, 9, 10]
+time: "Closed-form optimum is O(1); fitting is a small 2-D search with a 3-parameter least squares inside"
+space: "O(n) for n observed runs"
+when_to_use: |
+  Planning a pretraining run: choose model size and token count for a
+  given FLOP budget, or predict the loss of a larger run from small
+  ones before paying for it.
+when_not_to_use: |
+  As an exact law. The fitted constants depend on the data, the
+  architecture and the fitting method, and the form ignores inference
+  cost, data quality and repeated epochs. Training a smaller model on
+  more data than compute-optimal can be right when it will be served a
+  lot.
+why_it_works: |
+  Substituting $D = G/N$ with $G = C/6$ gives
+  $L(N) = E + A N^{-\alpha} + B G^{-\beta} N^{\beta}$. Setting
+  $dL/dN = 0$ gives $N^{\alpha+\beta} = \frac{\alpha A}{\beta B} G^{\beta}$,
+  so $N^* \propto C^{\beta/(\alpha+\beta)}$ and $D^* \propto C^{\alpha/(\alpha+\beta)}$.
+  The paper reports that model size and tokens should grow in about
+  equal proportion with compute, with a rule of thumb near 20 tokens
+  per parameter. That is the paper's finding, not a universal constant.
+math:
+  - "L(N, D) = E + A / N^α + B / D^β"
+  - "C ≈ 6 N D FLOPs"
+  - "Minimise L subject to 6ND = C, with G = C/6 and D = G/N"
+  - "N* = (αA / βB)^(1/(α+β)) · G^(β/(α+β))"
+  - "D* = G / N*"
+interview_qa:
+  - q: "What is the main message of the Chinchilla paper?"
+    a: "For a fixed compute budget, many large models were undertrained. Model size and number of training tokens should be scaled up together, roughly in equal proportion."
+  - q: "Where does $C \\approx 6ND$ come from?"
+    a: "A forward pass costs about $2N$ FLOPs per token and the backward pass about twice that, giving roughly $6N$ per token and $6ND$ for $D$ tokens."
+  - q: "What is the roughly 20 tokens per parameter figure?"
+    a: "A rule of thumb from the paper's compute-optimal results. Different fits give different ratios, and it ignores inference cost, so treat it as a guide, not a law."
+  - q: "Why train beyond compute-optimal in practice?"
+    a: "A smaller model trained on more tokens costs less to serve, so total cost including inference can favour it even though training is less efficient."
+hyperparameters:
+  - "Compute budget $C$ in FLOPs"
+  - "Fitted exponents $\\alpha$ and $\\beta$"
+  - "Fitted constants $E$, $A$ and $B$"
+  - "Range of $N$ and $D$ in the fitting runs"
+pitfalls:
+  - "Constants fitted on one setup do not transfer to another dataset or architecture"
+  - "Extrapolating far beyond the fitted range of $N$ and $D$ is unreliable"
+  - "$6ND$ is an approximation that ignores attention cost at long context"
+  - "Fitting $\\alpha$ and $\\beta$ jointly is ill-conditioned with noisy data; the optimum $N^*$ is sensitive to them"
+related: [perplexity, learning-rate-schedules, transfer-learning-fine-tuning]
+math_tex:
+- '$L(N,D) = E + \frac{A}{N^{\alpha}} + \frac{B}{D^{\beta}}$'
+- 'Compute: $C \approx 6ND$'
+- 'Set $G = C/6$, so $D = G/N$'
+- '$N^{*} = \left(\frac{\alpha A}{\beta B}\right)^{\frac{1}{\alpha+\beta}} G^{\frac{\beta}{\alpha+\beta}}$'
+- 'Then $D^{*} = G / N^{*}$'

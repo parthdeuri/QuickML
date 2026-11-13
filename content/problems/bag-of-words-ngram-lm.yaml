@@ -1,0 +1,107 @@
+slug: bag-of-words-ngram-lm
+title: Bag of Words and the N-gram Language Model
+url: https://web.stanford.edu/~jurafsky/slp3/3.pdf
+difficulty: Easy
+area: NLP
+topics: [Bag of Words, N-gram, Language Modeling, Smoothing]
+summary: |
+  Bag of words counts each word per document and ignores order. A
+  bigram language model counts adjacent word pairs and turns them into
+  smoothed next-word probabilities.
+intuition: |
+  Bag of words keeps what words appear and throws away where, which is
+  enough for topic-like tasks. A language model needs order, and the
+  Markov trick makes it tractable: assume the next word depends only
+  on the previous one, so a table of pair counts is the whole model.
+  Unseen pairs would get probability zero and wreck any sentence that
+  contains one, so add-$k$ smoothing moves a little mass to every pair.
+  Flow: tokens → counts → smoothed probabilities → sentence log-prob.
+approach:
+  - "Build a vocabulary from the corpus — fixes a column for every word"
+  - "Bag of words: count each word per document — gives one count vector per text"
+  - "Pad sentences with start and end markers — lets the model score the first and last word"
+  - "Count adjacent pairs $c(w_{t-1}, w_t)$ — these are the sufficient statistics"
+  - "Divide by the smoothed context total, $\\frac{c+k}{c(\\mathrm{prev})+kV}$ — each row becomes a distribution"
+  - "Sum $\\log P$ over the pairs of a sentence — avoids underflow from multiplying small numbers"
+code: |
+  import numpy as np
+
+  def vocab_of(docs, extra=()):
+      return sorted({w for d in docs for w in d.split()} | set(extra))
+
+  def bow(docs, vocab):
+      idx = {w: i for i, w in enumerate(vocab)}
+      X = np.zeros((len(docs), len(vocab)))
+      for r, d in enumerate(docs):
+          for w in d.split():
+              X[r, idx[w]] += 1
+      return X
+
+  def pad(s):
+      return ["<s>"] + s.split() + ["</s>"]
+
+  def bigram_counts(sents, vocab):
+      idx = {w: i for i, w in enumerate(vocab)}
+      C = np.zeros((len(vocab), len(vocab)))
+      for s in sents:
+          t = pad(s)
+          for a, b in zip(t[:-1], t[1:]):
+              C[idx[a], idx[b]] += 1
+      return C
+
+  def bigram_prob(C, k=1.0):
+      V = C.shape[0]
+      return (C + k) / (C.sum(axis=1, keepdims=True) + k * V)
+
+  def sentence_logprob(sent, P, vocab):
+      idx = {w: i for i, w in enumerate(vocab)}
+      t = pad(sent)
+      return sum(np.log(P[idx[a], idx[b]])
+                 for a, b in zip(t[:-1], t[1:]))
+key_lines: [28, 33]
+time: "O(N) to count N tokens; O(V²) to build the table; O(T) to score T tokens"
+space: "O(V²) for the dense bigram table (sparse in practice)"
+when_to_use: |
+  Strong, cheap baselines: bag of words for classification and
+  retrieval features, and n-gram models for quick language scoring,
+  spelling correction and as a comparison for neural models.
+when_not_to_use: |
+  Tasks that depend on word order, long-range context or meaning,
+  where one-hot counts treat "good" and "great" as unrelated. Large
+  $n$ makes the count table huge and mostly empty.
+why_it_works: |
+  The chain rule writes $P(w_1,\ldots,w_T)$ as a product of conditional
+  probabilities, and the bigram assumption cuts each condition down to
+  the previous word. The smoothed ratio is a proper distribution
+  because the numerators over all $V$ next words sum to
+  $c(\mathrm{prev})+kV$, exactly the denominator.
+math:
+  - "BoW: X[d, w] = number of times word w occurs in document d"
+  - "P(w | prev) = (c(prev, w) + k) / (c(prev) + k·V)"
+  - "Σ_w P(w | prev) = (c(prev) + k·V) / (c(prev) + k·V) = 1"
+  - "log P(w₁…w_T) = Σₜ log P(wₜ | wₜ₋₁)"
+math_tex:
+- 'BoW: $X_{d,w}$ = count of word $w$ in doc $d$'
+- '$P(w \mid \mathrm{prev}) = \frac{c(\mathrm{prev}, w) + k}{c(\mathrm{prev}) + kV}$'
+- 'Rows sum to one: $\sum_{w} P(w \mid \mathrm{prev}) = 1$'
+- '$\log P(w_{1:T}) = \sum_{t} \log P(w_t \mid w_{t-1})$'
+interview_qa:
+  - q: "Why do n-gram models need smoothing?"
+    a: "A pair never seen in training gets probability zero, which makes any sentence containing it impossible and perplexity infinite. Smoothing reserves some mass for unseen events."
+  - q: "What is the downside of add-one smoothing?"
+    a: "With a large vocabulary it takes too much mass from seen events. Using a small $k$, or better methods such as backoff and Kneser-Ney, works better in practice."
+  - q: "Why use log probabilities for sentences?"
+    a: "Multiplying many small probabilities underflows, while adding their logs is stable and gives the quantity used to compute perplexity."
+  - q: "What does bag of words lose?"
+    a: "Word order and context, so \"dog bites man\" and \"man bites dog\" get the same vector."
+hyperparameters:
+  - "Smoothing constant $k$ (1 is add-one; smaller is usually better)"
+  - "N-gram order $n$"
+  - "Vocabulary size and handling of unknown words"
+  - "Whether to count words or use binary presence"
+pitfalls:
+  - "The row for the end marker has no observed successors, so smoothing makes it uniform; it is never used as a context when scoring"
+  - "Words not in the vocabulary raise a KeyError here; real systems map them to an unknown token"
+  - "Log-probabilities of sentences of different length are not comparable without normalising by length"
+related: [perplexity, tf-idf, word2vec-skipgram]
+patterns: ["Text processing"]

@@ -39,5 +39,8 @@ problems:
 - cross-attention-encoder-decoder
 - gru-cell
 - bidirectional-rnn
+- decoder-only-block
+- contextual-embeddings
+- autoregressive-decoding
 aliases:
 - Attention and sequences

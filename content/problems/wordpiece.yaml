@@ -1,0 +1,127 @@
+slug: wordpiece
+title: WordPiece Subword Tokenisation
+url: https://huggingface.co/learn/llm-course/chapter6/6
+difficulty: Medium
+area: NLP
+topics: [Tokenisation, Subwords, BERT]
+summary: |
+  Split a word greedily into the longest vocabulary pieces, marking every
+  non-initial piece with $\#\#$. Training merges the pair with the highest
+  $\mathrm{freq}(ab)/(\mathrm{freq}(a)\,\mathrm{freq}(b))$, not the most frequent pair.
+intuition: |
+  BPE merges whatever pair is most common, which favours pairs made of
+  very frequent pieces that would often appear together anyway. WordPiece
+  divides by the frequencies of the two parts, so it prefers pairs that
+  occur together far more often than chance, which is close to the
+  likelihood gain of adding the merged token. At inference only the final
+  vocabulary is kept and the word is cut by longest match, with $\#\#$
+  marking a piece that continues a word.
+  Flow: characters → pair scores → best merge → vocabulary → longest match.
+approach:
+  - "Start from single characters, with $\\#\\#$ on every non-initial one — the base alphabet can spell any known word"
+  - "Count each token and each adjacent pair, weighted by word frequency — the score needs both"
+  - "Score each pair as $\\mathrm{freq}(ab)/(\\mathrm{freq}(a)\\,\\mathrm{freq}(b))$ — rewards association, not raw popularity"
+  - "Merge the best pair into one token in every word — the merged token joins the vocabulary"
+  - "Repeat until the vocabulary reaches the target size — only the vocabulary is kept"
+  - "Tokenise by taking the longest matching prefix, then continuing with $\\#\\#$ — if no piece matches, the whole word is [UNK]"
+code: |
+  from collections import Counter
+
+  def wordpiece_tokenize(word, vocab):
+      out, start = [], 0
+      while start < len(word):
+          end = len(word)
+          while end > start:
+              s = word[start:end]
+              if start > 0:
+                  s = "##" + s
+              if s in vocab:
+                  break
+              end -= 1
+          if end == start:
+              return ["[UNK]"]
+          out.append(s)
+          start = end
+      return out
+
+  def split_word(w):
+      return [w[0]] + ["##" + c for c in w[1:]]
+
+  def pair_stats(splits, freqs):
+      one, two = Counter(), Counter()
+      for w, toks in splits.items():
+          for t in toks:
+              one[t] += freqs[w]
+          for p in zip(toks, toks[1:]):
+              two[p] += freqs[w]
+      return one, two
+
+  def best_pair(splits, freqs, use_score=True):
+      one, two = pair_stats(splits, freqs)
+      if not use_score:
+          return max(two, key=two.get)
+      return max(two, key=lambda p:
+                 two[p] / (one[p[0]] * one[p[1]]))
+
+  def merge(splits, pair):
+      a, b = pair
+      new = a + (b[2:] if b.startswith("##") else b)
+      out = {}
+      for w, toks in splits.items():
+          r, i = [], 0
+          while i < len(toks):
+              if tuple(toks[i:i + 2]) == pair:
+                  r.append(new)
+                  i += 2
+              else:
+                  r.append(toks[i])
+                  i += 1
+          out[w] = r
+      return out
+key_lines: [7, 11, 37]
+time: "O(L²) substring lookups per word of length L at inference; O(pairs) per merge in training"
+space: "O(V) for the vocabulary, plus the split corpus during training"
+when_to_use: |
+  Building a subword vocabulary for BERT-style encoders, where an open
+  vocabulary with a small table is needed and rare words should break into
+  known pieces instead of one unknown token.
+when_not_to_use: |
+  When you need byte-level coverage with no unknown tokens at all, where
+  byte-level BPE is the usual choice. WordPiece also replaces a whole word
+  by [UNK] if any part cannot be matched.
+why_it_works: |
+  Choosing the pair with the highest $\mathrm{freq}(ab)/(\mathrm{freq}(a)\,\mathrm{freq}(b))$
+  approximates the merge that most increases the training-corpus
+  likelihood under a unigram model, because it measures how much more
+  often $a$ and $b$ co-occur than independence predicts. Longest-match
+  inference is a cheap greedy cut using only the final vocabulary.
+math:
+  - "score(a, b) = freq(ab) / (freq(a) · freq(b))"
+  - "BPE picks the pair maximising freq(ab) alone"
+  - "token(w) = longest prefix in V; rest gets the ## prefix"
+  - "if no prefix of the rest is in V: whole word → [UNK]"
+interview_qa:
+  - q: "How does WordPiece differ from BPE?"
+    a: "BPE merges the most frequent pair. WordPiece merges the pair with the highest $\\mathrm{freq}(ab)/(\\mathrm{freq}(a)\\,\\mathrm{freq}(b))$, so pieces that are individually common are not merged just because they are common. At inference WordPiece uses longest match, not the learned merge order."
+  - q: "What does the $\\#\\#$ prefix mean?"
+    a: "It marks a piece that continues the previous one inside a word, so the original words can be rebuilt by joining pieces and stripping $\\#\\#$."
+  - q: "What happens to a word that cannot be segmented?"
+    a: "If at some position no prefix of the remainder is in the vocabulary, the whole word becomes [UNK], not just the unmatched part."
+  - q: "Is greedy longest match always the best segmentation?"
+    a: "No. It is fast and deterministic but can choose a worse split than a search over all segmentations, as a unigram model with Viterbi would."
+hyperparameters:
+  - "Target vocabulary size"
+  - "Base alphabet and normalisation (lower-casing, accent stripping)"
+  - "Continuation prefix (## in BERT)"
+  - "Maximum characters per word before falling back to [UNK]"
+pitfalls:
+  - "Training needs the splits to start as characters with $\\#\\#$; plain characters give a different vocabulary"
+  - "The merged token drops the $\\#\\#$ of its second part, and keeps the $\\#\\#$ of its first part"
+  - "Inference ignores merge order, so it can differ from how the vocabulary was built"
+related: [bpe-tokenization, bert-masked-lm, word2vec-skipgram]
+math_tex:
+- 'score $(a,b) = \frac{\mathrm{freq}(ab)}{\mathrm{freq}(a)\,\mathrm{freq}(b)}$'
+- 'BPE picks the pair maximising $\mathrm{freq}(ab)$'
+- 'Token = longest prefix in $V$; rest gets $\#\#$'
+- 'No prefix of the rest in $V$: word $\rightarrow$ [UNK]'
+patterns: ["Text processing"]

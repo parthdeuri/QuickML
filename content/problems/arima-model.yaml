@@ -87,7 +87,6 @@ interview_qa:
   - q: "Why do ARIMA forecasts get flat at long horizons?"
     a: "Future values are fed back as inputs, so shocks average out and the forecast converges to the mean of the differenced series, which becomes a straight drift line once integrated."
 related: [autocorrelation-acf-pacf, exponential-smoothing, linear-regression]
-patterns: ["Time series"]
 math_tex:
 - 'Difference: $\nabla y_t = y_t - y_{t-1}$, apply $d$ times to get $z_t$'
 - 'AR($p$): $z_t = c + \phi_1 z_{t-1} + \ldots + \phi_p z_{t-p} + \varepsilon_t$'
@@ -95,3 +94,4 @@ math_tex:
 - 'Forecast: $\hat{z}_{t+1} = c + \sum_i \phi_i\,\hat{z}_{t+1-i}$ (reuse forecasts)'
 - 'Integrate ($d=1$): $\hat{y}_{t+h} = y_t + \sum_j \hat{z}_{t+j}$'
 - 'Add MA terms: $z_t = \ldots + \theta_1 \varepsilon_{t-1} + \ldots + \theta_q \varepsilon_{t-q}$'
+patterns: ["Time series"]

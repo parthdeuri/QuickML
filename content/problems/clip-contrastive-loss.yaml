@@ -77,10 +77,10 @@ pitfalls:
   - "Here $\\tau$ is a constant; CLIP learns it and clamps it to a maximum scale"
   - "Distributed training needs gathered embeddings from all devices to get the full negative set"
 related: [cosine-similarity-embeddings, softmax-cross-entropy, multi-head-attention]
-patterns: ["Information-theoretic losses"]
 math_tex:
 - $I, T \in \mathbb{R}^{N \times D}$ rows unit-normalised;  $S = I\,T^{\top}/\tau$
 - $L_{i \to t} = -\frac{1}{N}\sum_i \log \mathrm{softmax}(S_{i,:})_i$ (rows)
 - $L_{t \to i} = -\frac{1}{N}\sum_j \log \mathrm{softmax}(S_{:,j})_j$ (columns)
 - $L = (L_{i \to t} + L_{t \to i})\,/\,2$
 - CLIP learns $\tau = \exp(-\mathrm{logit\_scale})$, a scalar
+patterns: ["Information-theoretic losses"]

@@ -71,10 +71,10 @@ pitfalls:
   - "A cosine score is not calibrated; thresholds depend on the embedding model"
   - "Full argsort is O(n log n); real systems use partial selection or an approximate index"
 related: [word2vec-skipgram, knn, pca]
-patterns: ["Text processing"]
 math_tex:
 - $\cos(a, b) = \frac{a \cdot b}{\|a\|\,\|b\|}$
 - 'Normalise: $\hat{a} = \frac{a}{\max(\|a\|, \epsilon)}$'
 - $S = \hat{A}\hat{B}^{\top}$ (all pairwise cosines)
 - 'For unit vectors: $\|\hat{a} - \hat{b}\|^2 = 2 - 2\cos(a, b)$'
 - Cosine distance $= 1 - \cos(a, b)$
+patterns: ["Text processing"]

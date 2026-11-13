@@ -513,6 +513,17 @@ EXTRA2 = {
 for _k, _v in EXTRA2.items():
     MEMBERS[_k] = MEMBERS[_k] + [x for x in _v if x not in MEMBERS[_k]]
 
+EXTRA3 = {
+ "text-processing": ["text-preprocessing-stemming", "bag-of-words-ngram-lm", "glove-embeddings",
+                     "wordpiece", "sentencepiece-unigram", "contextual-embeddings"],
+ "attention-and-sequences": ["decoder-only-block", "contextual-embeddings", "autoregressive-decoding"],
+ "network-building-blocks": ["feed-forward-gelu-swiglu"],
+ "information-theoretic-losses": ["next-token-prediction-loss"],
+ "text-evaluation-retrieval": ["hallucination-detection"],
+}
+for _k, _v in EXTRA3.items():
+    MEMBERS[_k] = MEMBERS[_k] + [x for x in _v if x not in MEMBERS[_k]]
+
 KEYS = ["id", "name", "order", "summary", "when_to_use", "key_idea",
         "template", "complexity", "pitfalls", "problems", "aliases"]
 

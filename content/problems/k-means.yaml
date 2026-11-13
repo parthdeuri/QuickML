@@ -71,9 +71,9 @@ interview_qa:
     a: "It spreads initial centres apart, which gives better and more stable results than purely random starts."
 related: [gradient-descent]
 diagram: k-means
-patterns: ["Distance and clustering"]
 math_tex:
 - 'Objective: $J = \sum_i \|x_i - \mu_{c(i)}\|^2$'
 - 'Assign: $c(i) = \arg\min_j \|x_i - \mu_j\|^2$'
 - 'Update: $\mu_j = \mathrm{mean}$ of $\{x_i : c(i) = j\}$'
 - '$J$ never increases: reaches a local minimum'
+patterns: ["Distance and clustering"]

@@ -1,0 +1,88 @@
+slug: hallucination-detection
+title: Hallucination Detection by Sampling Consistency
+url: https://arxiv.org/abs/2303.08896
+difficulty: Medium
+area: LLM
+topics: [LLM Evaluation, Reliability, Uncertainty]
+summary: |
+  Sample several answers at temperature above zero and measure how much
+  they agree: majority-vote confidence, answer entropy, and token
+  overlap between a claim and the samples flag unreliable generations.
+intuition: |
+  A model that actually knows a fact tends to produce it again and
+  again, while an invented detail changes from sample to sample. So
+  disagreement among samples is a signal of uncertainty that needs no
+  ground truth, no labels and no access to the model's probabilities.
+  Flow: question → several samples → agreement score → trust or check.
+approach:
+  - "Sample $k$ answers at temperature $> 0$ — a deterministic decode would always agree with itself"
+  - "Normalise the answers (case, whitespace) — equal answers must compare equal"
+  - "Majority confidence is the top answer's share, $\\max_a n_a / k$ — one number in $[0, 1]$"
+  - "Answer entropy $H = -\\sum_a p_a \\log p_a$ — 0 when all agree, $\\log k$ when all differ"
+  - "For free text, score each claim by its token overlap with each sample — averaged support across samples"
+code: |
+  import numpy as np
+  from collections import Counter
+
+  def majority_confidence(answers):
+      top = Counter(answers).most_common(1)[0][1]
+      return top / len(answers)
+
+  def answer_entropy(answers):
+      counts = np.array(list(Counter(answers).values()))
+      p = counts / counts.sum()
+      return max(0.0, float(-(p * np.log(p)).sum()))
+
+  def overlap_score(claim, samples):
+      c = set(claim.lower().split())
+      hits = [len(c & set(s.lower().split())) / len(c)
+              for s in samples]
+      return float(np.mean(hits))
+key_lines: [5, 11, 15]
+time: "O(k) model calls per question plus O(k·n) to compare k answers of n tokens"
+space: "O(k·n) to hold the sampled answers"
+when_to_use: |
+  Black-box models where you have no ground truth and no token
+  probabilities, and a quick flag for answers that deserve a source
+  check or a human look.
+when_not_to_use: |
+  As the only safeguard. Samples can agree on a wrong answer, and
+  sampling multiplies inference cost by $k$. For factual claims, check
+  against retrieved sources (grounding) instead of or as well.
+why_it_works: |
+  Sampling draws from the model's own distribution. If that
+  distribution is sharply peaked on one answer, samples repeat it and
+  agreement is high; if the model is unsure or inventing, probability
+  spreads over many answers and agreement drops. Entropy of the sample
+  distribution estimates how spread out that distribution is.
+math:
+  - "confidence = max_a n_a / k"
+  - "H = −Σ_a p_a log p_a,  p_a = n_a / k"
+  - "H = 0 if all agree, H = log k if all differ"
+  - "overlap = mean over samples of |claim ∩ sample| / |claim|"
+interview_qa:
+  - q: "Why sample at temperature above zero?"
+    a: "At temperature zero the output is deterministic, so repeated runs agree trivially. Sampling exposes how much probability the model spreads over alternatives."
+  - q: "Does high agreement mean the answer is correct?"
+    a: "No. A model can be consistently wrong, for example from a common misconception in its training data. Agreement signals confidence, not truth."
+  - q: "What is the entropy of $k$ answers that all differ?"
+    a: "$\\log k$, the maximum, since each has probability $1/k$. If all agree the entropy is 0."
+  - q: "What is a grounding check?"
+    a: "Verifying each claim against a trusted source, such as retrieved documents, and flagging claims that no source supports. It catches errors that consistent sampling misses."
+hyperparameters:
+  - "Number of samples $k$"
+  - "Sampling temperature"
+  - "Answer normalisation (case, punctuation, canonical form)"
+  - "Agreement threshold for flagging an answer"
+pitfalls:
+  - "Consistent answers can still be wrong; this method detects uncertainty, not falsehood, so confident hallucinations pass"
+  - "Free-text answers rarely match exactly; exact-match counting then gives low confidence for paraphrases, so cluster or use a semantic or overlap score"
+  - "Token overlap ignores meaning, so it rewards shared words even when a negation or number changes the claim"
+  - "With small $k$ the estimates are noisy; entropy of 5 samples is a rough signal"
+related: [perplexity, top-k-top-p-sampling, entropy-kl-divergence]
+math_tex:
+- 'Confidence $= \max_a n_a / k$'
+- 'Entropy: $H = -\sum_a p_a \log p_a$'
+- 'With $p_a = n_a / k$: $H \leq \log k$'
+- 'Overlap: mean of $|C \cap S| / |C|$'
+patterns: ["Text evaluation and retrieval"]

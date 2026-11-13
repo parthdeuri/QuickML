@@ -91,10 +91,10 @@ pitfalls:
   - "A stride-2 first conv with an identity shortcut fails on shape; use the projection"
   - "Loops make this very slow; it is for understanding, not training"
 related: [residual-connections, batch-normalization, convolution-2d]
-patterns: ["Convolution and vision"]
 math_tex:
 - $F(x) = \mathrm{BN}(W_2 \ast \mathrm{ReLU}(\mathrm{BN}(W_1 \ast x)))$
 - $y = \mathrm{ReLU}(F(x) + x)$ when shapes match
 - '$y = \mathrm{ReLU}(F(x) + \mathrm{BN}(W_s \ast x))$, $W_s$: $1 \times 1$ conv'
 - $\mathrm{BN}(x) = \gamma\cdot\frac{x - \mu_B}{\sqrt{\sigma_B^2 + \epsilon}} + \beta$, stats over $(N, H, W)$
 - $\frac{\partial y}{\partial x} = I + \frac{\partial F}{\partial x}$ (before the ReLU gate)
+patterns: ["Convolution and vision"]

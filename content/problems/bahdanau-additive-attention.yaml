@@ -77,10 +77,10 @@ pitfalls:
   - "Costs more than dot-product attention since scoring has its own hidden layer"
   - "This sketch is one query and has no mask, bias or batching"
 related: [self-attention, rnn-cell, lstm-cell]
-patterns: ["Attention and sequences"]
 math_tex:
 - $e_t = v^{\top}\tanh(W_s s + W_h h_t)\;\; (t = 1 \ldots T)$
 - $\alpha_t = \frac{\exp(e_t)}{\sum_j \exp(e_j)}$
 - $c = \sum_t \alpha_t h_t$
 - $s \in \mathbb{R}^{d_s},\ h_t \in \mathbb{R}^{d_h},\ W_s \in \mathbb{R}^{d_s \times d_a},\ W_h \in \mathbb{R}^{d_h \times d_a}$
 - 'Decoder update: $s'' = \mathrm{RNN}(s, [y_{prev}\,;\,c])$'
+patterns: ["Attention and sequences"]

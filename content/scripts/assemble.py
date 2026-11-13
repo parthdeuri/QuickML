@@ -91,6 +91,22 @@ def _extend():
 _extend()
 
 
+SHEETS["llm-engineer"] = ("LLM Engineer", "The LLM engineer roadmap: language, transformers, how LLMs work and tokenisation.", [
+  ("5. Natural language processing", ["text-preprocessing-stemming", "bag-of-words-ngram-lm", "tf-idf",
+                                      "word2vec-skipgram", "glove-embeddings", "rnn-cell", "lstm-cell",
+                                      "gru-cell", "perplexity"]),
+  ("6. Transformer architecture", ["self-attention", "multi-head-attention", "positional-encoding",
+                                   "feed-forward-gelu-swiglu", "layer-normalization", "residual-connections",
+                                   "causal-masking", "transformer-block", "decoder-only-block",
+                                   "cross-attention-encoder-decoder"]),
+  ("7. Understanding large language models", ["next-token-prediction-loss", "autoregressive-decoding",
+                                              "temperature-sampling", "top-k-top-p-sampling", "kv-cache",
+                                              "scaling-laws", "parameter-count-flops",
+                                              "context-window-limits", "hallucination-detection"]),
+  ("8. Tokenisation and embeddings", ["bpe-tokenization", "wordpiece", "sentencepiece-unigram",
+                                      "cosine-similarity-embeddings", "contextual-embeddings"]),
+])
+
 def main():
     have = {p.stem for p in PROBLEMS.glob("*.yaml")}
     used = set()

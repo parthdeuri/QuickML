@@ -63,9 +63,9 @@ interview_qa:
   - q: "Why does it struggle in high dimensions?"
     a: "Distances between random points concentrate, so the nearest neighbour is barely closer than the farthest and the vote becomes uninformative."
 related: [k-means, logistic-regression]
-patterns: ["Distance and clustering"]
 math_tex:
 - $d(a,b)^2 = \|a\|^2 + \|b\|^2 - 2\,a^{\top}b$
 - $N_k(x)$ = indices of the $k$ smallest $d(x, x_i)$
 - $\hat{y}(x) = \arg\max_c \sum_{i \in N_k(x)} \mathbb{1}[y_i = c]$
 - 'Weighted vote: $w_i = \frac{1}{d(x, x_i)}$'
+patterns: ["Distance and clustering"]

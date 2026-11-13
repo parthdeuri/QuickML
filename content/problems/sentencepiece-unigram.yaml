@@ -1,0 +1,124 @@
+slug: sentencepiece-unigram
+title: SentencePiece Unigram Tokenisation
+url: https://huggingface.co/learn/llm-course/chapter6/7
+difficulty: Hard
+area: NLP
+topics: [Tokenisation, Subwords, Language Modeling]
+summary: |
+  Give every token a probability and segment a word with the split that
+  maximises the sum of token log-probabilities, found by Viterbi. Train by
+  starting from a large vocabulary, fitting probabilities with EM and
+  pruning the tokens whose removal costs the least likelihood.
+intuition: |
+  BPE and WordPiece build a vocabulary by adding merges. Unigram goes the
+  other way: it keeps a probabilistic model of the text and deletes the
+  tokens it does not need. Because every segmentation has a probability,
+  tokenisation is a best-path search, and the ambiguity can even be
+  sampled. SentencePiece also treats text as a raw character stream, with
+  the space turned into a visible marker such as "▁", so no language-specific
+  pre-tokeniser is needed.
+  Flow: big vocabulary → EM probabilities → prune weakest → Viterbi segment.
+approach:
+  - "Start with a large vocabulary of frequent substrings plus all single characters — characters guarantee every word can be segmented"
+  - "Give each token a probability $p(t)$ — a segmentation scores $\\sum \\log p(t)$"
+  - "E step: use forward and backward sums over the lattice to get the expected count of each token — all segmentations count, weighted by probability"
+  - "M step: set $p(t)$ proportional to its expected count — this never lowers the corpus likelihood"
+  - "Prune the tokens whose removal raises the loss least, never the characters — shrinks the vocabulary towards the target size"
+  - "Segment with Viterbi over positions: best score ending at each position — exact in $O(L^2)$ lookups"
+code: |
+  import numpy as np
+
+  def viterbi_segment(word, logp):
+      n = len(word)
+      best = [0.0] + [-np.inf] * n
+      back = [0] * (n + 1)
+      for j in range(1, n + 1):
+          for i in range(j):
+              s = word[i:j]
+              if s in logp and best[i] + logp[s] > best[j]:
+                  best[j] = best[i] + logp[s]
+                  back[j] = i
+      if best[n] == -np.inf:
+          return None, best[n]
+      out, j = [], n
+      while j > 0:
+          out.append(word[back[j]:j])
+          j = back[j]
+      return out[::-1], best[n]
+
+  def lattice(word, p):
+      n = len(word)
+      a = [1.0] + [0.0] * n
+      b = [0.0] * n + [1.0]
+      for j in range(1, n + 1):
+          for i in range(j):
+              a[j] += a[i] * p.get(word[i:j], 0.0)
+      for i in range(n - 1, -1, -1):
+          for j in range(i + 1, n + 1):
+              b[i] += p.get(word[i:j], 0.0) * b[j]
+      return a, b
+
+  def em_step(freqs, p):
+      cnt = dict.fromkeys(p, 0.0)
+      ll = 0.0
+      for w, f in freqs.items():
+          a, b = lattice(w, p)
+          ll += f * np.log(a[-1])
+          for i in range(len(w)):
+              for j in range(i + 1, len(w) + 1):
+                  s = w[i:j]
+                  if s in p:
+                      cnt[s] += f * a[i] * p[s] * b[j] / a[-1]
+      tot = sum(cnt.values())
+      return {s: c / tot for s, c in cnt.items()}, ll
+key_lines: [10, 11, 43]
+time: "O(L²) per word for Viterbi and for each lattice pass; one EM step is O(L²) per word in the corpus"
+space: "O(V) probabilities plus O(L) lattice arrays per word"
+when_to_use: |
+  Languages without spaces or with rich morphology, multilingual models,
+  and settings where sampling several segmentations (subword
+  regularisation) helps robustness.
+when_not_to_use: |
+  When a simple deterministic vocabulary is enough and training speed
+  matters most, since Unigram training with EM and pruning is slower than
+  counting merges in BPE.
+why_it_works: |
+  Under a unigram model the probability of a word is the sum over its
+  segmentations of the product of token probabilities, so the best
+  segmentation maximises $\sum \log p(t)$, which dynamic programming solves
+  exactly because the score is additive along the path. EM then raises
+  the corpus likelihood at every step, and the loss increase from
+  deleting a token measures how much the model relies on it.
+math:
+  - "P(x) = Σ over segmentations s of x:  Π p(tᵢ)"
+  - "best(j) = max over i<j of  best(i) + log p(x[i:j])"
+  - "E-step: count(t) = Σ over words f · P(t used | word)"
+  - "M-step: p(t) = count(t) / Σ over t' of count(t')"
+  - "loss = − Σ over words f · log P(word)"
+interview_qa:
+  - q: "How does Unigram tokenisation differ from BPE?"
+    a: "BPE greedily adds merges and applies them in order. Unigram holds a probabilistic model over a large vocabulary, prunes it down, and segments with the highest-probability path, so it can also sample alternative segmentations."
+  - q: "How is the best segmentation found?"
+    a: "By Viterbi dynamic programming over end positions: the best score ending at $j$ is the best over previous cut points $i$ of the score at $i$ plus $\\log p$ of the piece."
+  - q: "How are tokens pruned?"
+    a: "For each token compute how much the corpus loss would rise if it were removed and refit; drop the lowest-impact fraction each round, always keeping single characters."
+  - q: "What does SentencePiece do with spaces?"
+    a: "It treats the text as a raw character sequence and replaces the space by a marker such as \"▁\", so detokenising is lossless and no pre-tokeniser is needed."
+hyperparameters:
+  - "Target vocabulary size"
+  - "Initial vocabulary size (candidate substrings)"
+  - "Fraction pruned per round"
+  - "Sampling temperature $\\alpha$ for subword regularisation"
+pitfalls:
+  - "Single characters must never be pruned, or some words become unsegmentable"
+  - "Viterbi favours fewer, longer tokens because every extra token multiplies in another probability below 1"
+  - "Probabilities must be renormalised after pruning so they sum to 1"
+  - "A hard Viterbi count is only an approximation of the EM expected counts"
+related: [bpe-tokenization, wordpiece, perplexity]
+math_tex:
+- '$P(x) = \sum_{s}\prod_{i} p(t_i)$ over segmentations'
+- 'Viterbi: $b_j = \max_{i<j}\,(b_i + \log p(x_{i:j}))$'
+- 'E-step: $c(t) = \sum_{w} f_w\, P(t \in w)$'
+- 'M-step: $p(t) = c(t) / \sum_{t^\prime} c(t^\prime)$'
+- 'Loss $= -\sum_{w} f_w \log P(w)$'
+patterns: ["Text processing"]

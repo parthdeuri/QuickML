@@ -74,7 +74,6 @@ interview_qa:
   - q: "Does NMF find the global optimum?"
     a: "No. The problem is non-convex in W and H jointly, so the updates reach a stationary point that depends on initialisation."
 related: [svd, pca, matrix-factorization-recommender]
-patterns: ["Dimensionality reduction"]
 math_tex:
 - $\min_{W, H \geq 0}\ \frac{1}{2}\|X - WH\|_F^2$
 - $W \leftarrow W \odot \frac{X H^{\top}}{W H H^{\top}}$
@@ -82,3 +81,4 @@ math_tex:
 - $\odot$ and the fraction are elementwise
 - $\nabla_W = W H H^{\top} - X H^{\top}$ (positive $-$ negative part)
 - Loss is non-increasing under the updates
+patterns: ["Dimensionality reduction"]

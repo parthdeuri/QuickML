@@ -76,10 +76,10 @@ interview_qa:
   - q: "How does scaling relate to data leakage?"
     a: "The scaler's statistics are learned parameters, so fit them on training data only; fitting on everything lets test rows shape the transform."
 related: [data-leakage, pca, knn]
-patterns: ["Normalisation"]
 math_tex:
 - 'Standard: $z = \frac{x - \mu}{\sigma}$'
 - 'Min-max: $z = \frac{x - \min}{\max - \min}$'
 - 'Robust: $z = \frac{x - \mathrm{median}}{Q_3 - Q_1}$'
 - Fit statistics on train only, then apply to val/test
 - 'Constant column: scale $0 \to 1$, so $z = 0$'
+patterns: ["Normalisation"]

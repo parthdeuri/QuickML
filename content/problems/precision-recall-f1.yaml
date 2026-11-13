@@ -75,10 +75,10 @@ interview_qa:
   - q: "Why is accuracy misleading on imbalanced data?"
     a: "A classifier that always predicts the majority class scores high accuracy while finding no positives."
 related: [roc-auc, logistic-regression]
-patterns: ["Classification metrics"]
 math_tex:
 - $\mathrm{precision} = \frac{TP}{TP + FP}$
 - $\mathrm{recall} = \frac{TP}{TP + FN}$
 - $F_1 = \frac{2 \cdot P \cdot R}{P + R}$
 - $F_1 = \frac{2 \cdot TP}{2 \cdot TP + FP + FN}$
 - $F_\beta = \frac{(1 + \beta^2)\cdot P \cdot R}{\beta^2 \cdot P + R}$
+patterns: ["Classification metrics"]

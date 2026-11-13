@@ -82,7 +82,6 @@ interview_qa:
   - q: "How does IoU relate to detection metrics?"
     a: "A predicted box counts as a true positive when its IoU with a ground-truth box exceeds a threshold, which then feeds precision, recall and mean average precision."
 related: [precision-recall-f1, convolution-2d]
-patterns: ["Convolution and vision"]
 math_tex:
 - Boxes as $(x_1, y_1, x_2, y_2)$, with $x_2 > x_1$ and $y_2 > y_1$
 - $\mathrm{inter} = \max(0, \min x_2 - \max x_1)\cdot\max(0, \min y_2 - \max y_1)$
@@ -90,3 +89,4 @@ math_tex:
 - $\mathrm{union} = \mathrm{area}(A) + \mathrm{area}(B) - \mathrm{inter}$
 - $\mathrm{IoU}(A, B) = \frac{\mathrm{inter}}{\mathrm{union}}$
 - 'NMS: keep best box $i$, drop $j$ with $\mathrm{IoU}(i,j) > \mathrm{thr}$'
+patterns: ["Convolution and vision"]

@@ -75,9 +75,9 @@ pitfalls:
   - "This is one head and one layer; a real model keeps a separate cache for each layer"
 related: [self-attention, multi-head-attention, beam-search]
 diagram: kv-cache
-patterns: ["Attention and sequences"]
 math_tex:
 - $q_t = x_t W_q,\;\; k_t = x_t W_k,\;\; v_t = x_t W_v$
 - $K_{1:t} = [K_{1:t-1} ;\, k_t],\;\; V_{1:t} = [V_{1:t-1} ;\, v_t]$
 - $o_t = \mathrm{softmax}\left(\frac{K_{1:t}\,q_t}{\sqrt{d}}\right)^{\top} V_{1:t}$
 - Cache size $= 2 \cdot \mathrm{layers} \cdot \mathrm{kv\_heads} \cdot t \cdot d_{head} \cdot \mathrm{bytes}$
+patterns: ["Attention and sequences"]

@@ -1,5 +1,5 @@
 {
- "contentVersion": 9,
+ "contentVersion": 10,
  "problems": [
   {
    "slug": "ab-test-significance",
@@ -563,6 +563,87 @@
    ]
   },
   {
+   "slug": "autoregressive-decoding",
+   "title": "Autoregressive Decoding Loop",
+   "platform": "LLM",
+   "url": "https://huggingface.co/docs/transformers/generation_strategies",
+   "difficulty": "Easy",
+   "topics": [
+    "Generation",
+    "Inference",
+    "Language Modeling"
+   ],
+   "patterns": [
+    "Attention and sequences"
+   ],
+   "summary": "Generate text one token at a time. Read the next-token logits at the last position, pick a token, append it, and repeat until an end token or the length limit.",
+   "bruteForce": "Greedy picking on long open-ended text, where it tends to repeat itself. Use sampling or beam search there. Training and scoring use teacher forcing with one parallel pass, not this loop.",
+   "intuition": "A language model only ever answers one question: given everything so far, what comes next? Generation is that question asked in a loop, with each answer fed back as input. Token $t+1$ needs token $t$, so the decode steps cannot run in parallel, unlike the prompt, which is processed in one pass (prefill). The loop is therefore latency-bound. Flow: prompt → logits → pick token → append → repeat until EOS.",
+   "whyItWorks": "The model factorises the sequence probability as $p(x_{1:T}) = \\prod_t p(x_t \\mid x_{<t})$, so sampling or picking one token at a time from each conditional is a valid way to generate a whole sequence. A causal model's logits at position $t$ do not depend on later positions, so a cached run gives the same logits as a full recompute.",
+   "approach": [
+    "Run the prompt through the model once (prefill) — gives logits at every position",
+    "Take the logits at the last position only — they define the next-token distribution",
+    "Pick a token, greedy argmax here — any sampling rule plugs in at this step",
+    "Append it to the sequence — the output becomes part of the next input",
+    "Stop at the EOS token or after $n_{\\max}$ new tokens — otherwise the loop may never end"
+   ],
+   "time": "O(T) sequential model calls for T new tokens; each call costs one forward pass (cheaper with a KV cache)",
+   "space": "O(T) for the token list, plus any cache the model keeps",
+   "solution": "import numpy as np\n\ndef generate(next_logits, prompt, max_new, eos):\n    tokens = list(prompt)\n    for _ in range(max_new):\n        z = next_logits(tokens)\n        t = int(np.argmax(z))\n        tokens.append(t)\n        if t == eos:\n            break\n    return tokens\n\ndef uncached(emb, W):\n    def f(tokens):\n        return emb[tokens].mean(axis=0) @ W\n    return f\n\ndef cached(emb, W):\n    st = {\"n\": 0, \"sum\": np.zeros(emb.shape[1])}\n    def f(tokens):\n        new = tokens[st[\"n\"]:]      # prefill: all, decode: one\n        st[\"sum\"] = st[\"sum\"] + emb[new].sum(axis=0)\n        st[\"n\"] = len(tokens)\n        return st[\"sum\"] / len(tokens) @ W\n    return f",
+   "keyLines": [
+    6,
+    7,
+    8
+   ],
+   "dryRun": [
+    "$p(x_{1:T}) = \\prod_{t} p(x_t \\mid x_{<t})$",
+    "Next token: $z_t = f(x_{1:t})_{\\mathrm{last}}$",
+    "$x_{t+1} = \\arg\\max_{v}\\, z_t[v]$",
+    "Stop at EOS or after $n_{\\max}$ new tokens"
+   ],
+   "description": "Any decoder-only language model producing text, from a chat reply to code completion. Swap the argmax for a sampling rule to get varied outputs.",
+   "examples": [
+    {
+     "input": "Why is generation sequential even though training is parallel?",
+     "output": "Training knows all the target tokens, so it can score every position at once with a causal mask. At inference the next token is not known until the previous one is chosen, so each step waits for the last.",
+     "explanation": ""
+    },
+    {
+     "input": "What are the prefill and decode phases?",
+     "output": "Prefill processes the whole prompt in one parallel pass and is compute-bound. Decode generates one token per step, reads the model weights and cache each time, and is usually memory-bandwidth-bound.",
+     "explanation": ""
+    },
+    {
+     "input": "How does the loop know when to stop?",
+     "output": "It stops when the model emits an end-of-sequence token or when a maximum number of new tokens is reached, whichever comes first.",
+     "explanation": ""
+    },
+    {
+     "input": "Why does a KV cache not change the output?",
+     "output": "It only stores values that a causal model would recompute identically, so the logits match up to floating-point rounding.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Maximum number of new tokens $n_{\\max}$",
+    "EOS token id (and any extra stop tokens)",
+    "Token selection rule (greedy, temperature, top-$k$, top-$p$)",
+    "Batch size when decoding many sequences together"
+   ],
+   "edgeCases": [
+    "Feeding the whole sequence again every step is correct but costs $O(T^2)$ forward work without a cache",
+    "Using logits from any position other than the last gives the wrong next token",
+    "Without a max length, a model that never emits EOS loops forever",
+    "Greedy decoding can fall into repeating loops, as the repeated token in the example shows"
+   ],
+   "related": [
+    "kv-cache",
+    "top-k-top-p-sampling",
+    "beam-search"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "backpropagation",
    "title": "Backpropagation",
    "platform": "Deep Learning",
@@ -641,6 +722,87 @@
    "diagram": [
     "backpropagation"
    ]
+  },
+  {
+   "slug": "bag-of-words-ngram-lm",
+   "title": "Bag of Words and the N-gram Language Model",
+   "platform": "NLP",
+   "url": "https://web.stanford.edu/~jurafsky/slp3/3.pdf",
+   "difficulty": "Easy",
+   "topics": [
+    "Bag of Words",
+    "N-gram",
+    "Language Modeling",
+    "Smoothing"
+   ],
+   "patterns": [
+    "Text processing"
+   ],
+   "summary": "Bag of words counts each word per document and ignores order. A bigram language model counts adjacent word pairs and turns them into smoothed next-word probabilities.",
+   "bruteForce": "Tasks that depend on word order, long-range context or meaning, where one-hot counts treat \"good\" and \"great\" as unrelated. Large $n$ makes the count table huge and mostly empty.",
+   "intuition": "Bag of words keeps what words appear and throws away where, which is enough for topic-like tasks. A language model needs order, and the Markov trick makes it tractable: assume the next word depends only on the previous one, so a table of pair counts is the whole model. Unseen pairs would get probability zero and wreck any sentence that contains one, so add-$k$ smoothing moves a little mass to every pair. Flow: tokens → counts → smoothed probabilities → sentence log-prob.",
+   "whyItWorks": "The chain rule writes $P(w_1,\\ldots,w_T)$ as a product of conditional probabilities, and the bigram assumption cuts each condition down to the previous word. The smoothed ratio is a proper distribution because the numerators over all $V$ next words sum to $c(\\mathrm{prev})+kV$, exactly the denominator.",
+   "approach": [
+    "Build a vocabulary from the corpus — fixes a column for every word",
+    "Bag of words: count each word per document — gives one count vector per text",
+    "Pad sentences with start and end markers — lets the model score the first and last word",
+    "Count adjacent pairs $c(w_{t-1}, w_t)$ — these are the sufficient statistics",
+    "Divide by the smoothed context total, $\\frac{c+k}{c(\\mathrm{prev})+kV}$ — each row becomes a distribution",
+    "Sum $\\log P$ over the pairs of a sentence — avoids underflow from multiplying small numbers"
+   ],
+   "time": "O(N) to count N tokens; O(V²) to build the table; O(T) to score T tokens",
+   "space": "O(V²) for the dense bigram table (sparse in practice)",
+   "solution": "import numpy as np\n\ndef vocab_of(docs, extra=()):\n    return sorted({w for d in docs for w in d.split()} | set(extra))\n\ndef bow(docs, vocab):\n    idx = {w: i for i, w in enumerate(vocab)}\n    X = np.zeros((len(docs), len(vocab)))\n    for r, d in enumerate(docs):\n        for w in d.split():\n            X[r, idx[w]] += 1\n    return X\n\ndef pad(s):\n    return [\"<s>\"] + s.split() + [\"</s>\"]\n\ndef bigram_counts(sents, vocab):\n    idx = {w: i for i, w in enumerate(vocab)}\n    C = np.zeros((len(vocab), len(vocab)))\n    for s in sents:\n        t = pad(s)\n        for a, b in zip(t[:-1], t[1:]):\n            C[idx[a], idx[b]] += 1\n    return C\n\ndef bigram_prob(C, k=1.0):\n    V = C.shape[0]\n    return (C + k) / (C.sum(axis=1, keepdims=True) + k * V)\n\ndef sentence_logprob(sent, P, vocab):\n    idx = {w: i for i, w in enumerate(vocab)}\n    t = pad(sent)\n    return sum(np.log(P[idx[a], idx[b]])\n               for a, b in zip(t[:-1], t[1:]))",
+   "keyLines": [
+    28,
+    33
+   ],
+   "dryRun": [
+    "BoW: $X_{d,w}$ = count of word $w$ in doc $d$",
+    "$P(w \\mid \\mathrm{prev}) = \\frac{c(\\mathrm{prev}, w) + k}{c(\\mathrm{prev}) + kV}$",
+    "Rows sum to one: $\\sum_{w} P(w \\mid \\mathrm{prev}) = 1$",
+    "$\\log P(w_{1:T}) = \\sum_{t} \\log P(w_t \\mid w_{t-1})$"
+   ],
+   "description": "Strong, cheap baselines: bag of words for classification and retrieval features, and n-gram models for quick language scoring, spelling correction and as a comparison for neural models.",
+   "examples": [
+    {
+     "input": "Why do n-gram models need smoothing?",
+     "output": "A pair never seen in training gets probability zero, which makes any sentence containing it impossible and perplexity infinite. Smoothing reserves some mass for unseen events.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the downside of add-one smoothing?",
+     "output": "With a large vocabulary it takes too much mass from seen events. Using a small $k$, or better methods such as backoff and Kneser-Ney, works better in practice.",
+     "explanation": ""
+    },
+    {
+     "input": "Why use log probabilities for sentences?",
+     "output": "Multiplying many small probabilities underflows, while adding their logs is stable and gives the quantity used to compute perplexity.",
+     "explanation": ""
+    },
+    {
+     "input": "What does bag of words lose?",
+     "output": "Word order and context, so \"dog bites man\" and \"man bites dog\" get the same vector.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Smoothing constant $k$ (1 is add-one; smaller is usually better)",
+    "N-gram order $n$",
+    "Vocabulary size and handling of unknown words",
+    "Whether to count words or use binary presence"
+   ],
+   "edgeCases": [
+    "The row for the end marker has no observed successors, so smoothing makes it uniform; it is never used as a context when scoring",
+    "Words not in the vocabulary raise a KeyError here; real systems map them to an unknown token",
+    "Log-probabilities of sentences of different length are not comparable without normalising by length"
+   ],
+   "related": [
+    "perplexity",
+    "tf-idf",
+    "word2vec-skipgram"
+   ],
+   "diagram": []
   },
   {
    "slug": "bahdanau-additive-attention",
@@ -1664,6 +1826,168 @@
    "diagram": []
   },
   {
+   "slug": "context-window-limits",
+   "title": "Why Context Length Is Limited",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2306.15595",
+   "difficulty": "Medium",
+   "topics": [
+    "Transformers",
+    "Long Context",
+    "Attention Cost"
+   ],
+   "patterns": [],
+   "summary": "Attention builds a $T \\times T$ score matrix, so compute and score memory grow as $T^2$ while the KV cache grows linearly in $T$; sliding windows and RoPE position interpolation stretch the limit.",
+   "bruteForce": "Treating the quadratic score matrix as always materialised. Fused kernels avoid storing it, so the $T^2$ memory term then disappears even though the $T^2$ compute remains.",
+   "intuition": "Every token attends to every earlier token, so doubling the context quadruples the pairs to score. Separately, generation must keep keys and values for the whole context, which costs memory linearly. A model also only saw positions up to its training length, so longer inputs hit angles it never learned; squeezing positions back into the trained range is cheaper than retraining. Flow: longer context → more pairs → bigger scores and cache → limit.",
+   "whyItWorks": "Scores are one dot product per query-key pair, so there are $T^2$ of them. Linear interpolation works because RoPE angles are smooth in position: mapping position $p$ to $p \\cdot L_{train}/L_{new}$ keeps every angle within the range seen in training, at the cost of packing nearby tokens closer together, so a short fine-tune helps.",
+   "approach": [
+    "Model attention cost as $4 T^2 d_{head}$ FLOPs per head — $QK^\\top$ and the weighted sum each cost $2T^2 d_{head}$",
+    "Score matrix holds $T^2$ values per head — memory grows quadratically unless fused or tiled",
+    "KV cache is $2 \\cdot L \\cdot h_{kv} \\cdot T \\cdot d_{head}$ values — linear in $T$ but large at long context",
+    "A sliding window of width $w$ keeps $T w$ scores — cost becomes linear in $T$",
+    "Position interpolation scales positions by $L_{train}/L_{new}$ — the angles stay inside the trained range"
+   ],
+   "time": "O(T²·d) per head for full attention; O(T·w·d) with a window of width w",
+   "space": "O(T²) for materialised scores per head; O(T) for the KV cache per layer",
+   "solution": "import numpy as np\n\ndef attn_cost(T, d_head, bytes_per=4):\n    flops = 4 * T * T * d_head        # QK^T and A V, 2*T*T*d each\n    score_bytes = T * T * bytes_per   # the T x T score matrix\n    return flops, score_bytes\n\ndef window_score_bytes(T, w, bytes_per=4):\n    return T * min(T, w) * bytes_per  # sliding window: linear in T\n\ndef kv_bytes(T, layers, kv_heads, d_head, bytes_per=2):\n    return 2 * layers * kv_heads * T * d_head * bytes_per\n\ndef rope_angles(positions, d_head, L_train=None, L_new=None,\n                base=10000.0):\n    s = 1.0 if L_new is None else L_train / L_new\n    pos = np.asarray(positions, dtype=float) * s\n    inv = base ** (-np.arange(0, d_head, 2) / d_head)\n    return np.outer(pos, inv)         # angle = position * frequency",
+   "keyLines": [
+    5,
+    12,
+    16
+   ],
+   "dryRun": [
+    "Scores: $S = Q K^\\top / \\sqrt{d}$, size $T \\times T$",
+    "Attention FLOPs $\\approx 4 T^2 d_{head}$ per head",
+    "Score bytes $= T^2 \\cdot \\mathrm{bytes}$",
+    "KV bytes $= 2 L h_{kv} T d_{head} \\cdot \\mathrm{bytes}$",
+    "Window $w$: scores $= T \\cdot \\min(T, w)$",
+    "RoPE angle $= p' \\theta_i$, $p' = p L_{train} / L_{new}$"
+   ],
+   "description": "Estimating whether a target context length fits in memory and time, and choosing between windowed attention, a bigger cache budget, or position interpolation to extend a pretrained model.",
+   "examples": [
+    {
+     "input": "Why does doubling the context quadruple attention cost?",
+     "output": "Each of the $T$ queries scores all $T$ keys, so there are $T^2$ scores. Doubling $T$ gives four times as many.",
+     "explanation": ""
+    },
+    {
+     "input": "Does the KV cache also grow quadratically?",
+     "output": "No. It stores one key and one value per token per layer and head, so it grows linearly in $T$, but it can still dominate memory in long-context serving.",
+     "explanation": ""
+    },
+    {
+     "input": "What does RoPE position interpolation do?",
+     "output": "It multiplies positions by $L_{train}/L_{new}$ so a longer input maps into the position range seen in training, then usually fine-tunes briefly.",
+     "explanation": ""
+    },
+    {
+     "input": "How does a sliding window help?",
+     "output": "Each token attends only to the last $w$ tokens, so scores and compute are linear in $T$, though information beyond the window must flow through the layers.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Context length $T$ (training and serving)",
+    "Window size $w$ for sliding-window attention",
+    "Interpolation factor $L_{train}/L_{new}$",
+    "Number of KV heads and cache precision"
+   ],
+   "edgeCases": [
+    "Fused attention kernels avoid storing the score matrix, so the quadratic memory figure is for the naive implementation; quadratic compute remains",
+    "A model accepting a long input does not mean it uses it well; quality over long contexts must be measured, not assumed",
+    "Interpolating positions without any fine-tuning degrades short-range resolution, since neighbouring tokens get closer angles"
+   ],
+   "related": [
+    "self-attention",
+    "rotary-position-embedding",
+    "kv-cache"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "contextual-embeddings",
+   "title": "Static vs Contextual Embeddings",
+   "platform": "NLP",
+   "url": "https://arxiv.org/abs/1802.05365",
+   "difficulty": "Medium",
+   "topics": [
+    "Embeddings",
+    "Self-Attention",
+    "Representation Learning"
+   ],
+   "patterns": [
+    "Attention and sequences",
+    "Text processing"
+   ],
+   "summary": "A static table gives each word one vector whatever the sentence. A contextual model feeds the same table through attention, so each output vector is a mix of the word and its neighbours and changes with them.",
+   "bruteForce": "When a cheap, fixed vector per word is enough, such as for fast retrieval baselines or low-resource devices, where a static table such as word2vec is smaller and faster.",
+   "intuition": "A lookup table cannot tell \"river bank\" from \"money bank\" because the row for \"bank\" is fixed. Attention fixes this without changing the table: each token's output is a weighted average of value vectors over the whole sentence, with weights from query-key similarity, so the neighbours decide what the \"bank\" output contains. Stack such layers and the output becomes a representation of the word in its context, not of the word alone. Flow: tokens → static lookup → attention weights → mixed vectors.",
+   "whyItWorks": "The output for token $i$ is $\\sum_j A_{ij} v_j$, a convex combination of value vectors. Since the weights $A_{ij}$ depend on the other tokens in the sentence, the output is a function of the whole input, so one word can map to different vectors. Without positional information the layer is permutation-equivariant: reordering the tokens just reorders the outputs.",
+   "approach": [
+    "Look up each token id in the embedding table $E$ — this is the static vector, identical in every sentence",
+    "Project the rows to queries, keys and values with $W_q, W_k, W_v$ — three roles for the same token",
+    "Score all pairs with $QK^{\\top}/\\sqrt{d}$ — how relevant each token is to each other",
+    "Softmax each row — turns scores into mixing weights that sum to 1",
+    "Output $A V$ — each token becomes a context-weighted average, so the same word gets different vectors"
+   ],
+   "time": "O(n²·d) for the attention scores over n tokens, O(n·d²) for the projections",
+   "space": "O(n²) for the attention matrix plus O(V·d) for the embedding table",
+   "solution": "import numpy as np\n\ndef softmax(s):\n    e = np.exp(s - s.max(axis=-1, keepdims=True))\n    return e / e.sum(axis=-1, keepdims=True)\n\ndef static_embed(ids, E):\n    return E[ids]\n\ndef self_attention(X, W):\n    Q, K, V = X @ W[\"q\"], X @ W[\"k\"], X @ W[\"v\"]\n    A = softmax(Q @ K.T / np.sqrt(K.shape[1]))\n    return A @ V, A",
+   "keyLines": [
+    11,
+    12,
+    13
+   ],
+   "dryRun": [
+    "Static: $e_i = E[\\mathrm{id}_i]$, same in every sentence",
+    "$Q = X W_q,\\;\\; K = X W_k,\\;\\; V = X W_v$",
+    "$A = \\mathrm{softmax}\\left(\\frac{Q K^{\\top}}{\\sqrt{d}}\\right)$",
+    "Contextual output $H = A V$",
+    "$H_i = \\sum_{j} A_{ij}\\, v_j$, with $\\sum_{j} A_{ij} = 1$"
+   ],
+   "description": "Whenever meaning depends on context: word sense, coreference, any task where a word's role is set by its neighbours. Contextual outputs of a pretrained encoder are the standard input to downstream classifiers.",
+   "examples": [
+    {
+     "input": "Why can a static embedding not handle polysemy?",
+     "output": "It stores one vector per word type, so every sense of \"bank\" shares the same vector, and the model downstream sees no difference between them.",
+     "explanation": ""
+    },
+    {
+     "input": "How do contextual embeddings get different vectors for the same word?",
+     "output": "The output at a position is a weighted mix of all tokens in the sentence, and the weights depend on those tokens, so a different sentence gives a different mix.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is attention without positions permutation-equivariant?",
+     "output": "Every token is treated with the same weights and the output depends on the set of other tokens, not their order, so permuting the inputs permutes the outputs. Positional encodings are added to break this.",
+     "explanation": ""
+    },
+    {
+     "input": "What do ELMo and BERT do differently from word2vec?",
+     "output": "word2vec learns a fixed table. ELMo uses the states of a bidirectional language model and BERT uses a transformer encoder, so their vectors depend on the sentence.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Embedding dimension $d$",
+    "Number of attention heads and layers",
+    "Projection (key) dimension $d_k$",
+    "Whether positional information is added"
+   ],
+   "edgeCases": [
+    "With no positional encoding the layer ignores word order; \"dog bites man\" and \"man bites dog\" give the same set of outputs",
+    "One attention layer on random weights only shows the mechanism; useful contextual vectors need trained weights and several layers",
+    "A word's contextual vector is not a single \"meaning\"; compare vectors in the same context, not across layers blindly"
+   ],
+   "related": [
+    "self-attention",
+    "word2vec-skipgram",
+    "positional-encoding"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "convolution-2d",
    "title": "2D Convolution",
    "platform": "Vision",
@@ -2273,6 +2597,83 @@
     "random-forest",
     "gradient-boosting",
     "logistic-regression"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "decoder-only-block",
+   "title": "Decoder-Only (GPT-Style) Transformer Block",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2005.14165",
+   "difficulty": "Hard",
+   "topics": [
+    "LLM",
+    "Transformers",
+    "Causal Attention"
+   ],
+   "patterns": [
+    "Attention and sequences"
+   ],
+   "summary": "A GPT-style layer with pre-LayerNorm: normalise, causal self-attention, add back, normalise, feed-forward, add back; stacked, it is the whole body of a decoder-only language model.",
+   "bruteForce": "Tasks that need bidirectional context over a fixed input, where an encoder is a better fit, or very long contexts where quadratic attention cost dominates.",
+   "intuition": "A decoder-only model has no encoder and no cross-attention; one stack of identical blocks reads the prefix and predicts the next token. Each block only adds corrections to a residual stream, and the causal mask guarantees that position $t$ never sees later tokens, so one parallel pass trains the prediction at every position at once. Flow: tokens → LayerNorm → causal attention → add → LayerNorm → FFN → add.",
+   "whyItWorks": "The causal mask makes the output at position $t$ a function of tokens up to $t$ only, which makes next-token training parallel and lets generation reuse cached keys and values. The pre-norm residual form $x + f(\\mathrm{LN}(x))$ keeps an identity path through all layers, which keeps gradients healthy in deep stacks.",
+   "approach": [
+    "Normalise each position with LayerNorm — a stable input scale for attention",
+    "Project to $Q$, $K$, $V$ and split into heads — each head attends in its own subspace",
+    "Mask scores above the diagonal with $-\\infty$ — a token cannot see the future",
+    "Softmax, mix values, merge heads, project with $W_o$ and add to $x$ — first residual update",
+    "Normalise, apply the feed-forward network and add — second residual update; shape stays $(T, d)$"
+   ],
+   "time": "O(T²·d + T·d²) per block",
+   "space": "O(h·T²) attention scores plus O(T·d) activations",
+   "solution": "import numpy as np\n\ndef layer_norm(x, g, b, eps=1e-5):\n    mu = x.mean(-1, keepdims=True)\n    var = x.var(-1, keepdims=True)\n    return g * (x - mu) / np.sqrt(var + eps) + b\n\ndef causal_attn(x, Wq, Wk, Wv, Wo, h):\n    T, d = x.shape\n    q, k, v = (x @ W for W in (Wq, Wk, Wv))\n    q, k, v = (m.reshape(T, h, d // h).transpose(1, 0, 2)\n               for m in (q, k, v))\n    s = q @ k.transpose(0, 2, 1) / np.sqrt(d // h)\n    s = np.where(np.triu(np.ones((T, T), bool), 1), -np.inf, s)\n    e = np.exp(s - s.max(-1, keepdims=True))\n    a = (e / e.sum(-1, keepdims=True)) @ v\n    return a.transpose(1, 0, 2).reshape(T, d) @ Wo\n\ndef ffn(x, W1, W2):\n    t = x @ W1\n    c = np.sqrt(2 / np.pi)\n    g = 0.5 * t * (1 + np.tanh(c * (t + 0.044715 * t**3)))\n    return g @ W2\n\ndef block(x, P, h):\n    y = layer_norm(x, P[\"g1\"], P[\"b1\"])\n    x = x + causal_attn(y, P[\"Wq\"], P[\"Wk\"], P[\"Wv\"], P[\"Wo\"], h)\n    y = layer_norm(x, P[\"g2\"], P[\"b2\"])\n    return x + ffn(y, P[\"W1\"], P[\"W2\"])",
+   "keyLines": [
+    14,
+    27,
+    29
+   ],
+   "dryRun": [
+    "Attention: $x^{\\prime} = x + \\mathrm{Attn}(\\mathrm{LN}(x))$",
+    "FFN: $y = x^{\\prime} + \\mathrm{FFN}(\\mathrm{LN}(x^{\\prime}))$",
+    "Mask: $M_{ij} = -\\infty$ for $j > i$",
+    "Attn: $\\mathrm{softmax}\\left(\\frac{QK^{\\top}}{\\sqrt{d_h}} + M\\right)V$",
+    "LN: $\\gamma\\,\\frac{x - \\mu}{\\sqrt{\\sigma^2 + \\epsilon}} + \\beta$",
+    "Causal: $\\frac{\\partial y_i}{\\partial x_j} = 0$ for $j > i$"
+   ],
+   "description": "Building or reading any GPT-style language model: embeddings, $N$ stacked blocks, a final LayerNorm and a projection to vocabulary logits.",
+   "examples": [
+    {
+     "input": "What makes a block decoder-only?",
+     "output": "It uses causal self-attention only, with no cross-attention to an encoder, so each position sees just the tokens before it and itself.",
+     "explanation": ""
+    },
+    {
+     "input": "Why pre-LayerNorm instead of post-LayerNorm?",
+     "output": "Normalising inside the residual branch leaves the skip path as a pure identity, so deep stacks train stably and need less learning-rate warmup.",
+     "explanation": ""
+    },
+    {
+     "input": "How would you test that the mask works?",
+     "output": "Change a later token's input and check that all earlier output positions are unchanged.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Model width $d$ and number of heads $h$ (with $d$ divisible by $h$)",
+    "FFN hidden size (about $4d$, or $\\frac{8}{3}d$ when gated)",
+    "Number of stacked blocks",
+    "LayerNorm epsilon and the activation"
+   ],
+   "edgeCases": [
+    "Applying the mask after softmax instead of before it leaks the future and breaks the row sums",
+    "Forgetting the final LayerNorm after the last block when using pre-norm",
+    "Adding the residual to the normalised tensor instead of the raw stream destroys the identity path"
+   ],
+   "related": [
+    "transformer-block",
+    "causal-masking",
+    "kv-cache"
    ],
    "diagram": []
   },
@@ -2975,6 +3376,82 @@
    "diagram": []
   },
   {
+   "slug": "feed-forward-gelu-swiglu",
+   "title": "Transformer Feed-Forward Network (GELU and SwiGLU)",
+   "platform": "NLP",
+   "url": "https://arxiv.org/abs/2002.05202",
+   "difficulty": "Medium",
+   "topics": [
+    "Transformers",
+    "Architecture",
+    "Activations"
+   ],
+   "patterns": [
+    "Network building blocks"
+   ],
+   "summary": "The position-wise feed-forward network expands each token from $d$ to a wider hidden size, applies a nonlinearity and projects back; the gated SwiGLU variant multiplies a SiLU branch by a linear branch.",
+   "bruteForce": "When the model has no token-wise MLP at all, or on tiny models where the extra weight matrix and the hidden-size bookkeeping buy little.",
+   "intuition": "Attention only mixes tokens linearly, so the feed-forward network is where each token gets its nonlinear processing, and most of a block's parameters live there. A gated unit lets one linear branch decide, per hidden unit, how much of the other branch passes, which is a richer nonlinearity for the same parameter budget once the hidden size is shrunk to about $\\frac{8}{3}d$. Flow: token vector → expand → gate or activate → project back.",
+   "whyItWorks": "GELU is a smooth version of ReLU, $x\\,\\Phi(x)$, so gradients do not die at zero. In the gated form, the product of two linear projections adds a multiplicative interaction between features, a second-order term a single activation cannot express, and the SiLU branch keeps it smooth. Shazeer found such gated variants improve quality over ReLU and GELU FFNs.",
+   "approach": [
+    "Expand $x$ to a hidden size $h$ with $W_1$ — a wide space where features can be separated",
+    "Apply GELU, or compute a SiLU branch $\\mathrm{silu}(xW_1)$ — the nonlinearity",
+    "For SwiGLU multiply elementwise by a linear branch $xW_3$ — a learned gate per hidden unit",
+    "Project back to $d$ with $W_2$ — so the output can join the residual stream",
+    "Set $h \\approx \\frac{8}{3}d$ for the gated form — keeps parameters equal to the $4d$ ungated FFN"
+   ],
+   "time": "O(T·d·h) per layer, with h = 4d or about 8d/3",
+   "space": "$2dh$ weights for the plain FFN, $3dh$ for the gated one",
+   "solution": "import numpy as np\nfrom math import erf\n\ndef gelu(x, approx=False):\n    if approx:\n        c = np.sqrt(2 / np.pi)\n        t = c * (x + 0.044715 * x**3)\n        return 0.5 * x * (1 + np.tanh(t))\n    return 0.5 * x * (1 + np.vectorize(erf)(x / np.sqrt(2)))\n\ndef silu(x):\n    return x / (1 + np.exp(-x))\n\ndef ffn_gelu(x, W1, b1, W2, b2):\n    return gelu(x @ W1 + b1) @ W2 + b2\n\ndef ffn_swiglu(x, W1, W3, W2):\n    return (silu(x @ W1) * (x @ W3)) @ W2",
+   "keyLines": [
+    9,
+    15,
+    18
+   ],
+   "dryRun": [
+    "FFN: $\\mathrm{FFN}(x) = \\mathrm{GELU}(xW_1 + b_1)\\,W_2 + b_2$",
+    "GELU: $x\\,\\Phi(x) = \\frac{1}{2}x\\left(1 + \\mathrm{erf}\\frac{x}{\\sqrt{2}}\\right)$",
+    "Tanh form: $\\approx \\frac{1}{2}x\\left(1 + \\tanh\\left(\\sqrt{\\frac{2}{\\pi}}(x + 0.044715x^3)\\right)\\right)$",
+    "SiLU: $\\mathrm{silu}(x) = x\\,\\sigma(x) = \\frac{x}{1 + e^{-x}}$",
+    "SwiGLU: $(\\mathrm{silu}(xW_1) \\odot xW_3)\\,W_2$",
+    "Params: $2 \\cdot d \\cdot 4d = 8d^2$ vs $3dh$, $h = \\frac{8}{3}d$"
+   ],
+   "description": "Inside every transformer block. Use GELU for the classic BERT or GPT-2 style FFN, and SwiGLU when following modern LLM designs that report better quality at matched parameters.",
+   "examples": [
+    {
+     "input": "Why is the gated hidden size about 8d/3 instead of 4d?",
+     "output": "The gated form has three weight matrices instead of two. Using $h = \\frac{8}{3}d$ gives $3dh = 8d^2$, the same count as the $4d$ ungated FFN.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the difference between exact GELU and the tanh approximation?",
+     "output": "Exact GELU uses the Gaussian CDF via erf; the tanh form is a cheap polynomial-inside-tanh fit that differs by about $10^{-3}$ at most.",
+     "explanation": ""
+    },
+    {
+     "input": "Why do gated FFNs help?",
+     "output": "The elementwise product of two projections gives each hidden unit a learned input-dependent gate, a multiplicative interaction that improves quality at matched parameters.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Hidden size $h$ ($4d$ plain, about $\\frac{8}{3}d$ gated, often rounded to a multiple of 64)",
+    "Activation (ReLU, GELU exact or tanh, SiLU gate)",
+    "Whether to use biases (many LLMs drop them)"
+   ],
+   "edgeCases": [
+    "Comparing a gated and an ungated FFN at the same $h$ gives the gated one 50% more parameters",
+    "The tanh and erf GELU variants differ slightly, so match the variant a checkpoint was trained with",
+    "SwiGLU needs three matrices; loading weights with only $W_1$ and $W_2$ silently breaks the layer"
+   ],
+   "related": [
+    "activation-functions",
+    "transformer-block",
+    "residual-connections"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "focal-loss",
    "title": "Focal Loss",
    "platform": "Deep Learning",
@@ -3373,6 +3850,83 @@
     "kernel-trick-rbf",
     "linear-regression",
     "ridge-lasso-regularization"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "glove-embeddings",
+   "title": "GloVe Embeddings",
+   "platform": "NLP",
+   "url": "https://aclanthology.org/D14-1162/",
+   "difficulty": "Medium",
+   "topics": [
+    "Word Embeddings",
+    "Co-occurrence",
+    "Matrix Factorization"
+   ],
+   "patterns": [
+    "Text processing"
+   ],
+   "summary": "Learn word vectors by fitting the dot product of two vectors plus biases to the log of the word-word co-occurrence count, using weighted least squares.",
+   "bruteForce": "Tasks needing context-dependent meaning, where contextual models give a different vector for each occurrence. Polysemy and unseen words are not handled by a single static vector per word.",
+   "intuition": "Word2vec learns from one context window at a time; GloVe first sums the whole corpus into a co-occurrence matrix and then factorises it. The target is the log count, so that differences of vectors encode ratios of co-occurrence probabilities, which is what separates \"ice\" from \"steam\". The weight $f(x)$ caps the influence of very frequent pairs and shrinks noisy rare ones. Flow: corpus → co-occurrence matrix → log counts → weighted fit → vectors.",
+   "whyItWorks": "If the vector difference $w_a - w_b$ should capture how much more word $a$ than word $b$ co-occurs with a probe word $k$, the ratio of co-occurrence probabilities must become a difference of dot products, which forces the model to fit a log of counts. Weighted least squares then fits this log-bilinear form, and $f$ stops frequent function words from dominating the loss.",
+   "approach": [
+    "Count co-occurrences $X_{ij}$ in a window — one pass summarises the corpus",
+    "Give each word a vector $w_i$, a context vector $\\tilde{w}_j$ and two biases — the model of $\\log X_{ij}$",
+    "Compute the residual $w_i \\cdot \\tilde{w}_j + b_i + \\tilde{b}_j - \\log X_{ij}$ — how far the fit is from the target",
+    "Weight each squared residual by $f(X_{ij})$ — damps rare noise and caps frequent pairs",
+    "Take gradients of the weighted loss and step downhill — updates vectors and biases",
+    "Use $w + \\tilde{w}$ as the final vector — the two sets are symmetric and averaging reduces noise"
+   ],
+   "time": "O(nnz·d) per epoch over the non-zero entries, after one pass to count",
+   "space": "O(V·d) for vectors plus the sparse co-occurrence matrix",
+   "solution": "import numpy as np\n\ndef weight(X, xmax=100.0, alpha=0.75):\n    return np.minimum(1.0, (X / xmax) ** alpha)\n\ndef residual(P, X):\n    W, Wt, b, bt = P\n    return W @ Wt.T + b[:, None] + bt[None, :] - np.log(X)\n\ndef loss(P, X):\n    return np.sum(weight(X) * residual(P, X) ** 2)\n\ndef grads(P, X):\n    W, Wt, b, bt = P\n    G = 2 * weight(X) * residual(P, X)\n    return [G @ Wt, G.T @ W, G.sum(axis=1), G.sum(axis=0)]\n\ndef step(P, X, lr=0.01):\n    return [p - lr * g for p, g in zip(P, grads(P, X))]",
+   "keyLines": [
+    4,
+    11,
+    15
+   ],
+   "dryRun": [
+    "$J = \\sum_{i,j} f(X_{ij})\\, r_{ij}^{2}$",
+    "Residual: $r_{ij} = w_i \\cdot \\tilde{w}_j + b_i + \\tilde{b}_j - \\log X_{ij}$",
+    "Weight: $f(x) = \\min\\left(1, (x / x_{max})^{\\alpha}\\right)$",
+    "$\\frac{\\partial J}{\\partial w_i} = \\sum_{j} 2 f(X_{ij})\\, r_{ij}\\, \\tilde{w}_j$",
+    "Step: $w \\leftarrow w - \\eta \\frac{\\partial J}{\\partial w}$"
+   ],
+   "description": "Static word vectors that use global corpus statistics, trained fast from a count matrix, as features for classical models or for initialising small neural NLP models.",
+   "examples": [
+    {
+     "input": "How does GloVe differ from word2vec skip-gram?",
+     "output": "Skip-gram trains on local windows with a predictive loss, while GloVe fits global co-occurrence counts with a weighted least-squares loss. Both give similar quality when tuned well.",
+     "explanation": ""
+    },
+    {
+     "input": "Why fit the log of the counts?",
+     "output": "Ratios of co-occurrence probabilities carry meaning, and a log turns a ratio into a difference, which a linear dot-product model can represent.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the weighting function do?",
+     "output": "It sets the weight to zero for unseen pairs, shrinks rare noisy counts, and caps frequent pairs at 1 so very common words do not dominate.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Embedding dimension $d$",
+    "Context window size used for counting",
+    "$x_{max}$ and $\\alpha$ of the weighting function (100 and 0.75 in the paper)",
+    "Learning rate and number of epochs"
+   ],
+   "edgeCases": [
+    "The loss uses $\\log X_{ij}$, so sum only over non-zero entries; a zero count gives minus infinity",
+    "Initialise vectors with small random values; identical vectors never separate",
+    "A fixed learning rate on raw counts can diverge; the paper uses AdaGrad"
+   ],
+   "related": [
+    "word2vec-skipgram",
+    "matrix-factorization-recommender",
+    "cosine-similarity-embeddings"
    ],
    "diagram": []
   },
@@ -3849,6 +4403,87 @@
     "lstm-cell",
     "rnn-cell",
     "gradient-clipping"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "hallucination-detection",
+   "title": "Hallucination Detection by Sampling Consistency",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2303.08896",
+   "difficulty": "Medium",
+   "topics": [
+    "LLM Evaluation",
+    "Reliability",
+    "Uncertainty"
+   ],
+   "patterns": [
+    "Text evaluation and retrieval"
+   ],
+   "summary": "Sample several answers at temperature above zero and measure how much they agree: majority-vote confidence, answer entropy, and token overlap between a claim and the samples flag unreliable generations.",
+   "bruteForce": "As the only safeguard. Samples can agree on a wrong answer, and sampling multiplies inference cost by $k$. For factual claims, check against retrieved sources (grounding) instead of or as well.",
+   "intuition": "A model that actually knows a fact tends to produce it again and again, while an invented detail changes from sample to sample. So disagreement among samples is a signal of uncertainty that needs no ground truth, no labels and no access to the model's probabilities. Flow: question → several samples → agreement score → trust or check.",
+   "whyItWorks": "Sampling draws from the model's own distribution. If that distribution is sharply peaked on one answer, samples repeat it and agreement is high; if the model is unsure or inventing, probability spreads over many answers and agreement drops. Entropy of the sample distribution estimates how spread out that distribution is.",
+   "approach": [
+    "Sample $k$ answers at temperature $> 0$ — a deterministic decode would always agree with itself",
+    "Normalise the answers (case, whitespace) — equal answers must compare equal",
+    "Majority confidence is the top answer's share, $\\max_a n_a / k$ — one number in $[0, 1]$",
+    "Answer entropy $H = -\\sum_a p_a \\log p_a$ — 0 when all agree, $\\log k$ when all differ",
+    "For free text, score each claim by its token overlap with each sample — averaged support across samples"
+   ],
+   "time": "O(k) model calls per question plus O(k·n) to compare k answers of n tokens",
+   "space": "O(k·n) to hold the sampled answers",
+   "solution": "import numpy as np\nfrom collections import Counter\n\ndef majority_confidence(answers):\n    top = Counter(answers).most_common(1)[0][1]\n    return top / len(answers)\n\ndef answer_entropy(answers):\n    counts = np.array(list(Counter(answers).values()))\n    p = counts / counts.sum()\n    return max(0.0, float(-(p * np.log(p)).sum()))\n\ndef overlap_score(claim, samples):\n    c = set(claim.lower().split())\n    hits = [len(c & set(s.lower().split())) / len(c)\n            for s in samples]\n    return float(np.mean(hits))",
+   "keyLines": [
+    5,
+    11,
+    15
+   ],
+   "dryRun": [
+    "Confidence $= \\max_a n_a / k$",
+    "Entropy: $H = -\\sum_a p_a \\log p_a$",
+    "With $p_a = n_a / k$: $H \\leq \\log k$",
+    "Overlap: mean of $|C \\cap S| / |C|$"
+   ],
+   "description": "Black-box models where you have no ground truth and no token probabilities, and a quick flag for answers that deserve a source check or a human look.",
+   "examples": [
+    {
+     "input": "Why sample at temperature above zero?",
+     "output": "At temperature zero the output is deterministic, so repeated runs agree trivially. Sampling exposes how much probability the model spreads over alternatives.",
+     "explanation": ""
+    },
+    {
+     "input": "Does high agreement mean the answer is correct?",
+     "output": "No. A model can be consistently wrong, for example from a common misconception in its training data. Agreement signals confidence, not truth.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the entropy of $k$ answers that all differ?",
+     "output": "$\\log k$, the maximum, since each has probability $1/k$. If all agree the entropy is 0.",
+     "explanation": ""
+    },
+    {
+     "input": "What is a grounding check?",
+     "output": "Verifying each claim against a trusted source, such as retrieved documents, and flagging claims that no source supports. It catches errors that consistent sampling misses.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of samples $k$",
+    "Sampling temperature",
+    "Answer normalisation (case, punctuation, canonical form)",
+    "Agreement threshold for flagging an answer"
+   ],
+   "edgeCases": [
+    "Consistent answers can still be wrong; this method detects uncertainty, not falsehood, so confident hallucinations pass",
+    "Free-text answers rarely match exactly; exact-match counting then gives low confidence for paraphrases, so cluster or use a semantic or overlap score",
+    "Token overlap ignores meaning, so it rewards shared words even when a negation or number changes the claim",
+    "With small $k$ the estimates are noisy; entropy of 5 samples is a rough signal"
+   ],
+   "related": [
+    "perplexity",
+    "top-k-top-p-sampling",
+    "entropy-kl-divergence"
    ],
    "diagram": []
   },
@@ -6128,6 +6763,86 @@
    "diagram": []
   },
   {
+   "slug": "next-token-prediction-loss",
+   "title": "Next-Token Prediction Loss and Perplexity",
+   "platform": "LLM",
+   "url": "https://d2l.ai/chapter_recurrent-neural-networks/language-model.html",
+   "difficulty": "Easy",
+   "topics": [
+    "LLM",
+    "Language Modeling",
+    "Loss Functions"
+   ],
+   "patterns": [
+    "Information-theoretic losses"
+   ],
+   "summary": "Shift the sequence by one so position $t$ predicts token $t+1$, average the cross-entropy over all unmasked positions, and report perplexity as the exponential of that loss.",
+   "bruteForce": "Comparing perplexity across models with different tokenizers, since the per-token loss is not on the same scale. Use bits per byte or character instead.",
+   "intuition": "A single sentence gives one training example per position: the input is the prefix and the label is simply the next token, so no human labels are needed. Perplexity turns the average loss into an effective branching factor, the number of equally likely tokens the model is choosing between, which is why uniform logits over $V$ tokens score exactly $V$. Flow: tokens → shift by one → log-probs → masked mean → exp.",
+   "whyItWorks": "Minimising the average negative log-likelihood of each next token maximises the likelihood of the sequence under the chain rule, $p(x) = \\prod_t p(x_t \\mid x_{<t})$. The causal mask lets one forward pass produce all $T-1$ predictions, and dividing by the count of unmasked tokens keeps the loss independent of padding.",
+   "approach": [
+    "Split tokens into inputs $x_{1:T-1}$ and targets $x_{2:T}$ — position $t$ must predict token $t+1$",
+    "Run the model to get logits of shape $(T-1, V)$ — one distribution per position",
+    "Take the log-softmax and pick the target's log-probability — the negative is the token loss",
+    "Mask positions equal to the ignore index — padding and prompt tokens carry no loss",
+    "Average over unmasked tokens, then $\\exp$ for perplexity — comparable across lengths"
+   ],
+   "time": "O(T·V) for the softmax over the vocabulary at every position",
+   "space": "O(T·V) for the logits, often the largest tensor in training",
+   "solution": "import numpy as np\n\ndef shift(tokens):\n    return tokens[:-1], tokens[1:]\n\ndef token_ce(logits, targets, ignore=-100):\n    z = logits - logits.max(-1, keepdims=True)\n    logp = z - np.log(np.exp(z).sum(-1, keepdims=True))\n    keep = targets != ignore\n    idx = np.where(keep, targets, 0)\n    nll = -np.take_along_axis(logp, idx[:, None], 1)[:, 0]\n    return (nll * keep).sum() / keep.sum()\n\ndef perplexity(loss):\n    return np.exp(loss)",
+   "keyLines": [
+    9,
+    12,
+    15
+   ],
+   "dryRun": [
+    "Loss: $L = -\\frac{1}{N}\\sum_{t}\\log p(x_{t+1} \\mid x_{1:t})$",
+    "Chain rule: $p(x) = \\prod_{t} p(x_t \\mid x_{<t})$",
+    "Perplexity: $\\exp(L)$",
+    "Bits per token: $\\frac{L}{\\ln 2}$",
+    "Uniform over $V$: $L = \\ln V$, perplexity $= V$"
+   ],
+   "description": "Pretraining and supervised fine-tuning of any autoregressive language model, and evaluating one on held-out text; use the ignore index to train only on response tokens.",
+   "examples": [
+    {
+     "input": "Why shift the targets by one?",
+     "output": "The model output at position $t$ is its prediction for the next token, so the label for position $t$ is token $t+1$; the last position has no label.",
+     "explanation": ""
+    },
+    {
+     "input": "Why mask prompt and padding tokens?",
+     "output": "Padding is not real text, and in fine-tuning the prompt is given rather than predicted. Masked positions are excluded from both the sum and the divisor.",
+     "explanation": ""
+    },
+    {
+     "input": "What does perplexity of 20 mean?",
+     "output": "The model is as uncertain as a uniform choice among 20 tokens at each step, on average in the geometric sense.",
+     "explanation": ""
+    },
+    {
+     "input": "Why is perplexity not comparable across tokenizers?",
+     "output": "A tokenizer with longer tokens makes each prediction harder and the sequence shorter, so per-token loss changes without a real quality difference.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Ignore index for padding and prompt tokens (commonly $-100$)",
+    "Reduction: mean over tokens versus mean over sequences",
+    "Label smoothing, if any"
+   ],
+   "edgeCases": [
+    "Dividing by the total number of positions instead of the unmasked count biases the loss low",
+    "Forgetting to shift makes the model copy its input, giving a near-zero loss that means nothing",
+    "Masked targets must still be a valid index when gathering, or the lookup fails"
+   ],
+   "related": [
+    "softmax-cross-entropy",
+    "perplexity",
+    "label-smoothing"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "nmf-multiplicative-updates",
    "title": "Non-negative Matrix Factorisation",
    "platform": "Classical ML",
@@ -6202,6 +6917,87 @@
     "svd",
     "pca",
     "matrix-factorization-recommender"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "parameter-count-flops",
+   "title": "Parameter Count, FLOPs and Memory of a Transformer",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2001.08361",
+   "difficulty": "Medium",
+   "topics": [
+    "Transformers",
+    "Scaling",
+    "Compute and Memory"
+   ],
+   "patterns": [],
+   "summary": "A decoder-only transformer has about $12 L d^2$ parameters plus $V d$ for embeddings, costs about $6 N D$ FLOPs to train and $2 N$ FLOPs per generated token, and needs bytes proportional to $N$.",
+   "bruteForce": "Precise accounting. The rules ignore attention over the context (matters for long sequences), activations, the KV cache, and sparse or mixture-of-experts models where only some parameters are active.",
+   "intuition": "Almost all parameters live in a few square-ish matrices per layer, so the count is set by depth and width: $4 d^2$ for attention and $8 d^2$ for a $4\\times$ FFN. Compute follows the same count, because each parameter is used in one multiply-add per token on the forward pass and about twice that on the backward pass. Memory is the count times bytes per value, plus gradients and optimizer state when training. Flow: layers and width → parameters → FLOPs per token → bytes.",
+   "whyItWorks": "Each weight matrix of shape $a \\times b$ applied to a token costs $a b$ multiply-adds, which is $2ab$ FLOPs, so forward compute per token is about twice the parameter count. The backward pass computes gradients with respect to both activations and weights, about two more forward passes, giving $6N$ per token in total.",
+   "approach": [
+    "Count one block: $4 d^2$ attention plus $2 d\\, d_{ff}$ FFN (biases and norms are lower order) — this is the per-layer cost",
+    "Multiply by $L$ and add the embedding $V d$ (once if tied, twice if not) — the table is shared or separate",
+    "Training FLOPs $\\approx 6 N D$ for $D$ tokens — $2N$ forward and $4N$ backward per token",
+    "Inference FLOPs $\\approx 2 N$ per token — forward pass only, ignoring attention over the context",
+    "Weights take $N \\cdot$ bytes per value; training adds gradients and Adam states, about $16 N$ bytes in mixed precision — a stated rule of thumb"
+   ],
+   "time": "O(1) arithmetic once the shape is known; training compute scales as $6ND$",
+   "space": "O(N) bytes for weights, about 16 bytes per parameter to train with Adam",
+   "solution": "import numpy as np\n\ndef count_params(L, d, d_ff, V, tied=True):\n    # Biases are counted; LayerNorm has gain and bias.\n    attn = 4 * (d * d + d)            # Wq, Wk, Wv, Wo\n    ffn = 2 * d * d_ff + d_ff + d     # up and down projections\n    norms = 2 * (2 * d)               # two LayerNorms per block\n    block = attn + ffn + norms\n    head = 0 if tied else V * d       # separate output matrix\n    return L * block + V * d + 2 * d + head\n\ndef train_flops(N, D):\n    return 6 * N * D                  # forward 2ND + backward 4ND\n\ndef infer_flops_per_token(N):\n    return 2 * N\n\ndef memory_bytes(N, bytes_per=2, training=False):\n    if not training:\n        return N * bytes_per          # weights only\n    # fp16 weights 2 + fp16 grads 2 + fp32 master 4 + Adam m, v 8\n    return N * 16\n\ndef rule_of_thumb(L, d, V):\n    return 12 * L * d * d + V * d",
+   "keyLines": [
+    5,
+    13,
+    21
+   ],
+   "dryRun": [
+    "Attention per layer: $4 d^2$ (Q, K, V, O)",
+    "FFN per layer: $2 d\\, d_{ff} = 8 d^2$",
+    "Total: $N \\approx 12 L d^2 + V d$",
+    "Training: $\\mathrm{FLOPs} \\approx 6 N D$",
+    "Inference: $\\approx 2 N$ FLOPs per token",
+    "Weight bytes $= N \\cdot \\mathrm{bytes}$",
+    "Training state $\\approx 16 N$ bytes"
+   ],
+   "description": "Budgeting a training run, sizing a GPU for serving, or checking that a quoted model size matches its architecture before running anything.",
+   "examples": [
+    {
+     "input": "Why is training about $6ND$ FLOPs?",
+     "output": "The forward pass is about $2N$ per token (a multiply-add per weight) and the backward pass is about twice that, so $6N$ per token and $6ND$ for $D$ tokens.",
+     "explanation": ""
+    },
+    {
+     "input": "How much memory does training need beyond the weights?",
+     "output": "Gradients and optimizer state. With mixed precision and Adam a common estimate is 16 bytes per parameter: 2 for fp16 weights, 2 for gradients, 4 for fp32 master weights, 8 for the two Adam moments. Activations come on top.",
+     "explanation": ""
+    },
+    {
+     "input": "Where are most parameters in a transformer?",
+     "output": "In the per-layer matrices, about $12 d^2$ each layer, so they grow with depth and the square of width. The embedding adds $V d$, which matters for small models with large vocabularies.",
+     "explanation": ""
+    },
+    {
+     "input": "Does weight tying change the count?",
+     "output": "Yes. Sharing the input embedding with the output projection saves $V d$ parameters.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Number of layers $L$ and model width $d$",
+    "FFN width $d_{ff}$ (often $4d$)",
+    "Vocabulary size $V$ and whether embeddings are tied",
+    "Precision (fp32, fp16/bf16, int8) and optimizer"
+   ],
+   "edgeCases": [
+    "The $6ND$ and $2N$ rules drop attention over the context, which adds real cost at long sequence lengths",
+    "The 16 bytes per parameter figure assumes mixed-precision Adam with fp32 master weights; other setups differ, and activations are extra",
+    "Biases are counted here; many modern models drop them, and gated FFNs use three matrices, so recount for the actual architecture"
+   ],
+   "related": [
+    "transformer-block",
+    "kv-cache",
+    "lora-low-rank-adaptation"
    ],
    "diagram": []
   },
@@ -7840,6 +8636,86 @@
    "diagram": []
   },
   {
+   "slug": "scaling-laws",
+   "title": "Neural Scaling Laws (Chinchilla)",
+   "platform": "LLM",
+   "url": "https://arxiv.org/abs/2203.15556",
+   "difficulty": "Hard",
+   "topics": [
+    "Scaling",
+    "Compute Budget",
+    "Pretraining"
+   ],
+   "patterns": [],
+   "summary": "Model loss falls as a power law in parameters $N$ and tokens $D$ down to an irreducible floor. Given a fixed compute budget $C \\approx 6ND$, there is a best split between model size and data.",
+   "bruteForce": "As an exact law. The fitted constants depend on the data, the architecture and the fitting method, and the form ignores inference cost, data quality and repeated epochs. Training a smaller model on more data than compute-optimal can be right when it will be served a lot.",
+   "intuition": "Loss has three parts: an irreducible floor, a term that shrinks as the model grows, and a term that shrinks as it sees more data. Each term has diminishing returns, so spending the whole budget on a huge model with little data, or the reverse, wastes compute. At a fixed budget the best point balances the marginal gain of one more parameter against that of more tokens. Flow: budget C → constraint 6ND = C → minimise L(N,D) → N*, D*.",
+   "whyItWorks": "Substituting $D = G/N$ with $G = C/6$ gives $L(N) = E + A N^{-\\alpha} + B G^{-\\beta} N^{\\beta}$. Setting $dL/dN = 0$ gives $N^{\\alpha+\\beta} = \\frac{\\alpha A}{\\beta B} G^{\\beta}$, so $N^* \\propto C^{\\beta/(\\alpha+\\beta)}$ and $D^* \\propto C^{\\alpha/(\\alpha+\\beta)}$. The paper reports that model size and tokens should grow in about equal proportion with compute, with a rule of thumb near 20 tokens per parameter. That is the paper's finding, not a universal constant.",
+   "approach": [
+    "Model the loss as $E + A/N^{\\alpha} + B/D^{\\beta}$ — floor plus model and data terms",
+    "Fix the budget with $C = 6ND$ — so $D = C/(6N)$ and one variable remains",
+    "Set the derivative of $L$ with respect to $N$ to zero — gives the closed-form $N^*$",
+    "Recover $D^* = C/(6N^*)$ — the budget constraint holds exactly",
+    "Fit $E, A, B, \\alpha, \\beta$ from runs — for fixed exponents the rest is linear least squares"
+   ],
+   "time": "Closed-form optimum is O(1); fitting is a small 2-D search with a 3-parameter least squares inside",
+   "space": "O(n) for n observed runs",
+   "solution": "import numpy as np\nfrom scipy.optimize import minimize\n\ndef loss(N, D, E=1.69, A=406.4, B=410.7, a=0.34, b=0.28):\n    return E + A / N**a + B / D**b\n\ndef optimal_ND(C, A=406.4, B=410.7, a=0.34, b=0.28):\n    G = C / 6.0\n    N = (a * A / (b * B)) ** (1 / (a + b)) * G ** (b / (a + b))\n    return N, G / N\n\ndef fit(N, D, L):\n    def inner(p):\n        a, b = p\n        X = np.c_[np.ones_like(L), N**-a, D**-b]\n        c = np.linalg.lstsq(X, L, rcond=None)[0]\n        return c, ((X @ c - L) ** 2).sum()\n    r = minimize(lambda p: inner(p)[1], [0.5, 0.5],\n                 method=\"Nelder-Mead\",\n                 options={\"xatol\": 1e-12, \"fatol\": 1e-30,\n                          \"maxiter\": 5000})\n    (E, A, B), a, b = inner(r.x)[0], *r.x\n    return E, A, B, a, b",
+   "keyLines": [
+    5,
+    9,
+    10
+   ],
+   "dryRun": [
+    "$L(N,D) = E + \\frac{A}{N^{\\alpha}} + \\frac{B}{D^{\\beta}}$",
+    "Compute: $C \\approx 6ND$",
+    "Set $G = C/6$, so $D = G/N$",
+    "$N^{*} = \\left(\\frac{\\alpha A}{\\beta B}\\right)^{\\frac{1}{\\alpha+\\beta}} G^{\\frac{\\beta}{\\alpha+\\beta}}$",
+    "Then $D^{*} = G / N^{*}$"
+   ],
+   "description": "Planning a pretraining run: choose model size and token count for a given FLOP budget, or predict the loss of a larger run from small ones before paying for it.",
+   "examples": [
+    {
+     "input": "What is the main message of the Chinchilla paper?",
+     "output": "For a fixed compute budget, many large models were undertrained. Model size and number of training tokens should be scaled up together, roughly in equal proportion.",
+     "explanation": ""
+    },
+    {
+     "input": "Where does $C \\approx 6ND$ come from?",
+     "output": "A forward pass costs about $2N$ FLOPs per token and the backward pass about twice that, giving roughly $6N$ per token and $6ND$ for $D$ tokens.",
+     "explanation": ""
+    },
+    {
+     "input": "What is the roughly 20 tokens per parameter figure?",
+     "output": "A rule of thumb from the paper's compute-optimal results. Different fits give different ratios, and it ignores inference cost, so treat it as a guide, not a law.",
+     "explanation": ""
+    },
+    {
+     "input": "Why train beyond compute-optimal in practice?",
+     "output": "A smaller model trained on more tokens costs less to serve, so total cost including inference can favour it even though training is less efficient.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Compute budget $C$ in FLOPs",
+    "Fitted exponents $\\alpha$ and $\\beta$",
+    "Fitted constants $E$, $A$ and $B$",
+    "Range of $N$ and $D$ in the fitting runs"
+   ],
+   "edgeCases": [
+    "Constants fitted on one setup do not transfer to another dataset or architecture",
+    "Extrapolating far beyond the fitted range of $N$ and $D$ is unreliable",
+    "$6ND$ is an approximation that ignores attention cost at long context",
+    "Fitting $\\alpha$ and $\\beta$ jointly is ill-conditioned with noisy data; the optimum $N^*$ is sensitive to them"
+   ],
+   "related": [
+    "perplexity",
+    "learning-rate-schedules",
+    "transfer-learning-fine-tuning"
+   ],
+   "diagram": []
+  },
+  {
    "slug": "self-attention",
    "title": "Self-Attention",
    "platform": "NLP",
@@ -7917,6 +8793,89 @@
    "diagram": [
     "self-attention"
    ]
+  },
+  {
+   "slug": "sentencepiece-unigram",
+   "title": "SentencePiece Unigram Tokenisation",
+   "platform": "NLP",
+   "url": "https://huggingface.co/learn/llm-course/chapter6/7",
+   "difficulty": "Hard",
+   "topics": [
+    "Tokenisation",
+    "Subwords",
+    "Language Modeling"
+   ],
+   "patterns": [
+    "Text processing"
+   ],
+   "summary": "Give every token a probability and segment a word with the split that maximises the sum of token log-probabilities, found by Viterbi. Train by starting from a large vocabulary, fitting probabilities with EM and pruning the tokens whose removal costs the least likelihood.",
+   "bruteForce": "When a simple deterministic vocabulary is enough and training speed matters most, since Unigram training with EM and pruning is slower than counting merges in BPE.",
+   "intuition": "BPE and WordPiece build a vocabulary by adding merges. Unigram goes the other way: it keeps a probabilistic model of the text and deletes the tokens it does not need. Because every segmentation has a probability, tokenisation is a best-path search, and the ambiguity can even be sampled. SentencePiece also treats text as a raw character stream, with the space turned into a visible marker such as \"▁\", so no language-specific pre-tokeniser is needed. Flow: big vocabulary → EM probabilities → prune weakest → Viterbi segment.",
+   "whyItWorks": "Under a unigram model the probability of a word is the sum over its segmentations of the product of token probabilities, so the best segmentation maximises $\\sum \\log p(t)$, which dynamic programming solves exactly because the score is additive along the path. EM then raises the corpus likelihood at every step, and the loss increase from deleting a token measures how much the model relies on it.",
+   "approach": [
+    "Start with a large vocabulary of frequent substrings plus all single characters — characters guarantee every word can be segmented",
+    "Give each token a probability $p(t)$ — a segmentation scores $\\sum \\log p(t)$",
+    "E step: use forward and backward sums over the lattice to get the expected count of each token — all segmentations count, weighted by probability",
+    "M step: set $p(t)$ proportional to its expected count — this never lowers the corpus likelihood",
+    "Prune the tokens whose removal raises the loss least, never the characters — shrinks the vocabulary towards the target size",
+    "Segment with Viterbi over positions: best score ending at each position — exact in $O(L^2)$ lookups"
+   ],
+   "time": "O(L²) per word for Viterbi and for each lattice pass; one EM step is O(L²) per word in the corpus",
+   "space": "O(V) probabilities plus O(L) lattice arrays per word",
+   "solution": "import numpy as np\n\ndef viterbi_segment(word, logp):\n    n = len(word)\n    best = [0.0] + [-np.inf] * n\n    back = [0] * (n + 1)\n    for j in range(1, n + 1):\n        for i in range(j):\n            s = word[i:j]\n            if s in logp and best[i] + logp[s] > best[j]:\n                best[j] = best[i] + logp[s]\n                back[j] = i\n    if best[n] == -np.inf:\n        return None, best[n]\n    out, j = [], n\n    while j > 0:\n        out.append(word[back[j]:j])\n        j = back[j]\n    return out[::-1], best[n]\n\ndef lattice(word, p):\n    n = len(word)\n    a = [1.0] + [0.0] * n\n    b = [0.0] * n + [1.0]\n    for j in range(1, n + 1):\n        for i in range(j):\n            a[j] += a[i] * p.get(word[i:j], 0.0)\n    for i in range(n - 1, -1, -1):\n        for j in range(i + 1, n + 1):\n            b[i] += p.get(word[i:j], 0.0) * b[j]\n    return a, b\n\ndef em_step(freqs, p):\n    cnt = dict.fromkeys(p, 0.0)\n    ll = 0.0\n    for w, f in freqs.items():\n        a, b = lattice(w, p)\n        ll += f * np.log(a[-1])\n        for i in range(len(w)):\n            for j in range(i + 1, len(w) + 1):\n                s = w[i:j]\n                if s in p:\n                    cnt[s] += f * a[i] * p[s] * b[j] / a[-1]\n    tot = sum(cnt.values())\n    return {s: c / tot for s, c in cnt.items()}, ll",
+   "keyLines": [
+    10,
+    11,
+    43
+   ],
+   "dryRun": [
+    "$P(x) = \\sum_{s}\\prod_{i} p(t_i)$ over segmentations",
+    "Viterbi: $b_j = \\max_{i<j}\\,(b_i + \\log p(x_{i:j}))$",
+    "E-step: $c(t) = \\sum_{w} f_w\\, P(t \\in w)$",
+    "M-step: $p(t) = c(t) / \\sum_{t^\\prime} c(t^\\prime)$",
+    "Loss $= -\\sum_{w} f_w \\log P(w)$"
+   ],
+   "description": "Languages without spaces or with rich morphology, multilingual models, and settings where sampling several segmentations (subword regularisation) helps robustness.",
+   "examples": [
+    {
+     "input": "How does Unigram tokenisation differ from BPE?",
+     "output": "BPE greedily adds merges and applies them in order. Unigram holds a probabilistic model over a large vocabulary, prunes it down, and segments with the highest-probability path, so it can also sample alternative segmentations.",
+     "explanation": ""
+    },
+    {
+     "input": "How is the best segmentation found?",
+     "output": "By Viterbi dynamic programming over end positions: the best score ending at $j$ is the best over previous cut points $i$ of the score at $i$ plus $\\log p$ of the piece.",
+     "explanation": ""
+    },
+    {
+     "input": "How are tokens pruned?",
+     "output": "For each token compute how much the corpus loss would rise if it were removed and refit; drop the lowest-impact fraction each round, always keeping single characters.",
+     "explanation": ""
+    },
+    {
+     "input": "What does SentencePiece do with spaces?",
+     "output": "It treats the text as a raw character sequence and replaces the space by a marker such as \"▁\", so detokenising is lossless and no pre-tokeniser is needed.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Target vocabulary size",
+    "Initial vocabulary size (candidate substrings)",
+    "Fraction pruned per round",
+    "Sampling temperature $\\alpha$ for subword regularisation"
+   ],
+   "edgeCases": [
+    "Single characters must never be pruned, or some words become unsegmentable",
+    "Viterbi favours fewer, longer tokens because every extra token multiplies in another probability below 1",
+    "Probabilities must be renormalised after pruning so they sum to 1",
+    "A hard Viterbi count is only an approximation of the EM expected counts"
+   ],
+   "related": [
+    "bpe-tokenization",
+    "wordpiece",
+    "perplexity"
+   ],
+   "diagram": []
   },
   {
    "slug": "silhouette-clustering-metrics",
@@ -8314,6 +9273,160 @@
     "logistic-regression",
     "gradient-descent",
     "softmax-cross-entropy"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "temperature-sampling",
+   "title": "Temperature Sampling",
+   "platform": "LLM",
+   "url": "https://huggingface.co/blog/how-to-generate",
+   "difficulty": "Easy",
+   "topics": [
+    "Sampling",
+    "Softmax",
+    "Generation"
+   ],
+   "patterns": [],
+   "summary": "Divide the logits by a temperature $T$ before the softmax. Low $T$ sharpens the distribution towards greedy, high $T$ flattens it towards uniform.",
+   "bruteForce": "When you need a deterministic answer: use greedy decoding, not a tiny $T$ with a random draw. $T=0$ is also undefined as a division, so implementations special-case it as argmax.",
+   "intuition": "Dividing logits by $T$ changes the gaps between them while keeping their order. Small $T$ stretches the gaps, so the top token takes almost all the probability. Large $T$ shrinks them, so every token becomes about equally likely. One scalar therefore slides between deterministic and random, and the entropy rises as it grows. Flow: logits → divide by T → softmax → sample a token.",
+   "whyItWorks": "The scaled softmax is $p_i \\propto \\exp(z_i/T)$. As $T \\to 0^+$ the largest logit dominates, so the mass concentrates on the argmax. At $T=1$ the model's own distribution is unchanged. As $T \\to \\infty$ all $z_i/T \\to 0$, so $p_i \\to 1/V$ and the entropy approaches $\\log V$. The entropy grows monotonically with $T$.",
+   "approach": [
+    "Divide the logits by $T$ — scales all gaps between logits",
+    "Subtract the max before exponentiating — keeps $\\exp$ from overflowing",
+    "Normalise to get probabilities — a valid distribution over the vocabulary",
+    "Draw one token from it with a seeded generator — reproducible randomness",
+    "Compute the entropy if needed — shows how spread out the choice is"
+   ],
+   "time": "O(V) per token for a vocabulary of size V",
+   "space": "O(V) for the probability vector",
+   "solution": "import numpy as np\n\ndef softmax_t(z, T=1.0):\n    z = np.asarray(z, dtype=float) / T\n    e = np.exp(z - z.max())\n    return e / e.sum()\n\ndef entropy(p):\n    p = p[p > 0]\n    return float(-(p * np.log(p)).sum())\n\ndef sample(z, T, rng, n=1):\n    p = softmax_t(z, T)\n    return rng.choice(len(p), size=n, p=p)",
+   "keyLines": [
+    4,
+    5,
+    6
+   ],
+   "dryRun": [
+    "$p_i(T) = \\frac{\\exp(z_i/T)}{\\sum_{j} \\exp(z_j/T)}$",
+    "$T \\to 0^{+}$: one-hot at argmax. $T=1$: softmax",
+    "As $T \\to \\infty$: $p_i \\to 1/V$",
+    "$H(T) = -\\sum_{i} p_i \\log p_i \\leq \\log V$"
+   ],
+   "description": "Creative or varied text generation, where you want to control how adventurous the model is with a single knob. Use a low $T$ for factual or code answers and a higher one for brainstorming.",
+   "examples": [
+    {
+     "input": "What does temperature do to the logits?",
+     "output": "It divides them by $T$ before the softmax. Their order stays the same, only the spread between them changes.",
+     "explanation": ""
+    },
+    {
+     "input": "What happens at $T \\to 0$ and $T \\to \\infty$?",
+     "output": "At $T \\to 0$ decoding becomes greedy argmax. At $T \\to \\infty$ the distribution becomes uniform over the vocabulary.",
+     "explanation": ""
+    },
+    {
+     "input": "Does temperature change which token is most likely?",
+     "output": "No. The ranking is unchanged, so the argmax is the same for any $T>0$. It only changes how much probability the others get.",
+     "explanation": ""
+    },
+    {
+     "input": "How does temperature combine with top-$k$ or top-$p$?",
+     "output": "They are usually applied together: scale the logits by $T$, then truncate the distribution, then renormalise and sample.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Temperature $T$ (often between 0.2 and 1.5 in practice)",
+    "Random seed for reproducible sampling",
+    "Truncation such as top-$k$ or top-$p$ applied alongside"
+   ],
+   "edgeCases": [
+    "$T=0$ divides by zero; handle it as argmax rather than passing it to the formula",
+    "Skipping the max subtraction overflows $\\exp$ for large logits at small $T$",
+    "High $T$ gives the long tail of junk tokens real probability; truncate with top-$p$ if quality drops"
+   ],
+   "related": [
+    "top-k-top-p-sampling",
+    "softmax-cross-entropy",
+    "entropy-kl-divergence"
+   ],
+   "diagram": []
+  },
+  {
+   "slug": "text-preprocessing-stemming",
+   "title": "Text Preprocessing, Stemming and Lemmatisation",
+   "platform": "NLP",
+   "url": "https://tartarus.org/martin/PorterStemmer/",
+   "difficulty": "Easy",
+   "topics": [
+    "Preprocessing",
+    "Tokenisation",
+    "Stemming",
+    "Lemmatisation"
+   ],
+   "patterns": [
+    "Text processing"
+   ],
+   "summary": "Turn raw text into clean tokens: lowercase, strip punctuation, split, drop stop words, then collapse word variants with a suffix-stripping stemmer or a dictionary lemmatiser.",
+   "bruteForce": "Pretrained subword or transformer models, which expect raw text and its own tokenizer. Stripping stop words or suffixes also destroys negation and tense (\"not good\", \"was\") that some tasks need.",
+   "intuition": "A model that counts words sees \"run\", \"runs\" and \"running\" as three unrelated symbols, which splits the evidence for one idea. A stemmer merges them cheaply by chopping suffixes with rules, so its output may not be a real word (\"ponies\" becomes \"poni\"). A lemmatiser looks each word up in a dictionary and returns the true base form, so it maps \"ran\" to \"run\" and \"mice\" to \"mouse\", at the cost of needing a lexicon. Flow: raw text → lowercase → tokens → stop words out → stems.",
+   "whyItWorks": "English inflection is mostly regular, so a short ordered list of suffix rules maps most variants to one key without any dictionary. Merging variants raises each key's count, which reduces sparsity and vocabulary size. A stem only has to be consistent, not a real word, because it is used as a lookup key and never shown to a reader.",
+   "approach": [
+    "Lowercase and keep only letters and digits — removes case and punctuation variants",
+    "Split into tokens — gives the units that will be counted",
+    "Drop stop words — removes very frequent words that carry little topic signal",
+    "Apply plural rules ($\\mathrm{sses}\\rightarrow\\mathrm{ss}$, $\\mathrm{ies}\\rightarrow\\mathrm{i}$, drop a final s) — merges singular and plural",
+    "Strip ing or ed only if a vowel remains, then tidy the ending — avoids turning sing into s",
+    "Optionally map irregular words with a dictionary lemmatiser — fixes forms no suffix rule can reach"
+   ],
+   "time": "O(n·L) for n tokens of length L; each token is a few suffix checks",
+   "space": "O(n) for the token list, plus the stop-word set and lemma dictionary",
+   "solution": "import re\n\nSTOP = {\"the\", \"a\", \"an\", \"is\", \"are\", \"and\", \"of\", \"to\", \"over\"}\nLEMMA = {\"ran\": \"run\", \"mice\": \"mouse\", \"better\": \"good\"}\n\ndef normalise(text):\n    return re.findall(r\"[a-z0-9]+\", text.lower())\n\ndef has_vowel(s):\n    return re.search(r\"[aeiou]\", s) is not None\n\ndef stem(w):\n    for suf, rep in [(\"sses\", \"ss\"), (\"ies\", \"i\"), (\"ss\", \"ss\"),\n                     (\"s\", \"\")]:\n        if w.endswith(suf):\n            w = w[:-len(suf)] + rep\n            break\n    for suf in (\"ing\", \"ed\"):\n        if w.endswith(suf) and has_vowel(w[:-len(suf)]):\n            w = w[:-len(suf)]\n            if w.endswith((\"at\", \"bl\", \"iz\")):\n                w += \"e\"\n            elif len(w) > 1 and w[-1] == w[-2] and w[-1] not in \"lsz\":\n                w = w[:-1]\n            break\n    if w.endswith(\"y\") and has_vowel(w[:-1]):\n        w = w[:-1] + \"i\"\n    return w\n\ndef lemmatise(w):\n    return LEMMA.get(w, w)\n\ndef pipeline(text, use_stem=True):\n    toks = [t for t in normalise(text) if t not in STOP]\n    return [stem(t) if use_stem else lemmatise(t) for t in toks]",
+   "keyLines": [
+    16,
+    19,
+    35
+   ],
+   "dryRun": [
+    "Tokens: lowercase, keep letter and digit runs",
+    "Plurals: $\\mathrm{ies}\\rightarrow\\mathrm{i}$, $\\mathrm{sses}\\rightarrow\\mathrm{ss}$",
+    "Drop ing or ed if a vowel is left",
+    "Merging forms gives $|V_{stem}| \\leq |V_{raw}|$"
+   ],
+   "description": "Bag-of-words, TF-IDF and search pipelines where vocabulary size and sparsity matter, and classical models that cannot share statistics between word forms on their own.",
+   "examples": [
+    {
+     "input": "What is the difference between stemming and lemmatisation?",
+     "output": "A stemmer chops suffixes with rules and may output a non-word such as poni. A lemmatiser uses a dictionary and part of speech to return a real base form, so it handles ran to run and mice to mouse but is slower.",
+     "explanation": ""
+    },
+    {
+     "input": "Why remove stop words, and when is it harmful?",
+     "output": "They are very frequent and add little topic signal to counts. They matter for negation, phrases and language models, so removing them hurts sentiment and generation tasks.",
+     "explanation": ""
+    },
+    {
+     "input": "What is over-stemming and under-stemming?",
+     "output": "Over-stemming merges unrelated words into one stem; under-stemming leaves related words apart, such as ran and running. Aggressive rules trade one error for the other.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Stop-word list (language and domain specific)",
+    "Stemmer or lemmatiser choice, and how aggressive its rules are",
+    "Whether to lowercase and how to treat digits and hyphens",
+    "Minimum token length"
+   ],
+   "edgeCases": [
+    "Apply the same preprocessing at training and inference time, or the vocabulary will not match",
+    "This simplified stemmer covers only a few rules; words like branches or hoped need later Porter steps and come out differently",
+    "Stemming ignores meaning, so unrelated words can collide and irregular forms such as ran stay apart"
+   ],
+   "related": [
+    "tf-idf",
+    "bpe-tokenization",
+    "word2vec-skipgram"
    ],
    "diagram": []
   },
@@ -9103,6 +10216,87 @@
     "tf-idf"
    ],
    "diagram": []
+  },
+  {
+   "slug": "wordpiece",
+   "title": "WordPiece Subword Tokenisation",
+   "platform": "NLP",
+   "url": "https://huggingface.co/learn/llm-course/chapter6/6",
+   "difficulty": "Medium",
+   "topics": [
+    "Tokenisation",
+    "Subwords",
+    "BERT"
+   ],
+   "patterns": [
+    "Text processing"
+   ],
+   "summary": "Split a word greedily into the longest vocabulary pieces, marking every non-initial piece with $\\#\\#$. Training merges the pair with the highest $\\mathrm{freq}(ab)/(\\mathrm{freq}(a)\\,\\mathrm{freq}(b))$, not the most frequent pair.",
+   "bruteForce": "When you need byte-level coverage with no unknown tokens at all, where byte-level BPE is the usual choice. WordPiece also replaces a whole word by [UNK] if any part cannot be matched.",
+   "intuition": "BPE merges whatever pair is most common, which favours pairs made of very frequent pieces that would often appear together anyway. WordPiece divides by the frequencies of the two parts, so it prefers pairs that occur together far more often than chance, which is close to the likelihood gain of adding the merged token. At inference only the final vocabulary is kept and the word is cut by longest match, with $\\#\\#$ marking a piece that continues a word. Flow: characters → pair scores → best merge → vocabulary → longest match.",
+   "whyItWorks": "Choosing the pair with the highest $\\mathrm{freq}(ab)/(\\mathrm{freq}(a)\\,\\mathrm{freq}(b))$ approximates the merge that most increases the training-corpus likelihood under a unigram model, because it measures how much more often $a$ and $b$ co-occur than independence predicts. Longest-match inference is a cheap greedy cut using only the final vocabulary.",
+   "approach": [
+    "Start from single characters, with $\\#\\#$ on every non-initial one — the base alphabet can spell any known word",
+    "Count each token and each adjacent pair, weighted by word frequency — the score needs both",
+    "Score each pair as $\\mathrm{freq}(ab)/(\\mathrm{freq}(a)\\,\\mathrm{freq}(b))$ — rewards association, not raw popularity",
+    "Merge the best pair into one token in every word — the merged token joins the vocabulary",
+    "Repeat until the vocabulary reaches the target size — only the vocabulary is kept",
+    "Tokenise by taking the longest matching prefix, then continuing with $\\#\\#$ — if no piece matches, the whole word is [UNK]"
+   ],
+   "time": "O(L²) substring lookups per word of length L at inference; O(pairs) per merge in training",
+   "space": "O(V) for the vocabulary, plus the split corpus during training",
+   "solution": "from collections import Counter\n\ndef wordpiece_tokenize(word, vocab):\n    out, start = [], 0\n    while start < len(word):\n        end = len(word)\n        while end > start:\n            s = word[start:end]\n            if start > 0:\n                s = \"##\" + s\n            if s in vocab:\n                break\n            end -= 1\n        if end == start:\n            return [\"[UNK]\"]\n        out.append(s)\n        start = end\n    return out\n\ndef split_word(w):\n    return [w[0]] + [\"##\" + c for c in w[1:]]\n\ndef pair_stats(splits, freqs):\n    one, two = Counter(), Counter()\n    for w, toks in splits.items():\n        for t in toks:\n            one[t] += freqs[w]\n        for p in zip(toks, toks[1:]):\n            two[p] += freqs[w]\n    return one, two\n\ndef best_pair(splits, freqs, use_score=True):\n    one, two = pair_stats(splits, freqs)\n    if not use_score:\n        return max(two, key=two.get)\n    return max(two, key=lambda p:\n               two[p] / (one[p[0]] * one[p[1]]))\n\ndef merge(splits, pair):\n    a, b = pair\n    new = a + (b[2:] if b.startswith(\"##\") else b)\n    out = {}\n    for w, toks in splits.items():\n        r, i = [], 0\n        while i < len(toks):\n            if tuple(toks[i:i + 2]) == pair:\n                r.append(new)\n                i += 2\n            else:\n                r.append(toks[i])\n                i += 1\n        out[w] = r\n    return out",
+   "keyLines": [
+    7,
+    11,
+    37
+   ],
+   "dryRun": [
+    "score $(a,b) = \\frac{\\mathrm{freq}(ab)}{\\mathrm{freq}(a)\\,\\mathrm{freq}(b)}$",
+    "BPE picks the pair maximising $\\mathrm{freq}(ab)$",
+    "Token = longest prefix in $V$; rest gets $\\#\\#$",
+    "No prefix of the rest in $V$: word $\\rightarrow$ [UNK]"
+   ],
+   "description": "Building a subword vocabulary for BERT-style encoders, where an open vocabulary with a small table is needed and rare words should break into known pieces instead of one unknown token.",
+   "examples": [
+    {
+     "input": "How does WordPiece differ from BPE?",
+     "output": "BPE merges the most frequent pair. WordPiece merges the pair with the highest $\\mathrm{freq}(ab)/(\\mathrm{freq}(a)\\,\\mathrm{freq}(b))$, so pieces that are individually common are not merged just because they are common. At inference WordPiece uses longest match, not the learned merge order.",
+     "explanation": ""
+    },
+    {
+     "input": "What does the $\\#\\#$ prefix mean?",
+     "output": "It marks a piece that continues the previous one inside a word, so the original words can be rebuilt by joining pieces and stripping $\\#\\#$.",
+     "explanation": ""
+    },
+    {
+     "input": "What happens to a word that cannot be segmented?",
+     "output": "If at some position no prefix of the remainder is in the vocabulary, the whole word becomes [UNK], not just the unmatched part.",
+     "explanation": ""
+    },
+    {
+     "input": "Is greedy longest match always the best segmentation?",
+     "output": "No. It is fast and deterministic but can choose a worse split than a search over all segmentations, as a unigram model with Viterbi would.",
+     "explanation": ""
+    }
+   ],
+   "constraints": [
+    "Target vocabulary size",
+    "Base alphabet and normalisation (lower-casing, accent stripping)",
+    "Continuation prefix (## in BERT)",
+    "Maximum characters per word before falling back to [UNK]"
+   ],
+   "edgeCases": [
+    "Training needs the splits to start as characters with $\\#\\#$; plain characters give a different vocabulary",
+    "The merged token drops the $\\#\\#$ of its second part, and keeps the $\\#\\#$ of its first part",
+    "Inference ignores merge order, so it can differ from how the vocabulary was built"
+   ],
+   "related": [
+    "bpe-tokenization",
+    "bert-masked-lm",
+    "word2vec-skipgram"
+   ],
+   "diagram": []
   }
  ],
  "sheets": [
@@ -9305,6 +10499,178 @@
      "slug": "graph-attention-layer",
      "section": "Graph neural networks",
      "order": 39
+    }
+   ]
+  },
+  {
+   "id": "llm-engineer",
+   "name": "LLM Engineer",
+   "description": "The LLM engineer roadmap: language, transformers, how LLMs work and tokenisation.",
+   "entries": [
+    {
+     "slug": "text-preprocessing-stemming",
+     "section": "5. Natural language processing",
+     "order": 1
+    },
+    {
+     "slug": "bag-of-words-ngram-lm",
+     "section": "5. Natural language processing",
+     "order": 2
+    },
+    {
+     "slug": "tf-idf",
+     "section": "5. Natural language processing",
+     "order": 3
+    },
+    {
+     "slug": "word2vec-skipgram",
+     "section": "5. Natural language processing",
+     "order": 4
+    },
+    {
+     "slug": "glove-embeddings",
+     "section": "5. Natural language processing",
+     "order": 5
+    },
+    {
+     "slug": "rnn-cell",
+     "section": "5. Natural language processing",
+     "order": 6
+    },
+    {
+     "slug": "lstm-cell",
+     "section": "5. Natural language processing",
+     "order": 7
+    },
+    {
+     "slug": "gru-cell",
+     "section": "5. Natural language processing",
+     "order": 8
+    },
+    {
+     "slug": "perplexity",
+     "section": "5. Natural language processing",
+     "order": 9
+    },
+    {
+     "slug": "self-attention",
+     "section": "6. Transformer architecture",
+     "order": 10
+    },
+    {
+     "slug": "multi-head-attention",
+     "section": "6. Transformer architecture",
+     "order": 11
+    },
+    {
+     "slug": "positional-encoding",
+     "section": "6. Transformer architecture",
+     "order": 12
+    },
+    {
+     "slug": "feed-forward-gelu-swiglu",
+     "section": "6. Transformer architecture",
+     "order": 13
+    },
+    {
+     "slug": "layer-normalization",
+     "section": "6. Transformer architecture",
+     "order": 14
+    },
+    {
+     "slug": "residual-connections",
+     "section": "6. Transformer architecture",
+     "order": 15
+    },
+    {
+     "slug": "causal-masking",
+     "section": "6. Transformer architecture",
+     "order": 16
+    },
+    {
+     "slug": "transformer-block",
+     "section": "6. Transformer architecture",
+     "order": 17
+    },
+    {
+     "slug": "decoder-only-block",
+     "section": "6. Transformer architecture",
+     "order": 18
+    },
+    {
+     "slug": "cross-attention-encoder-decoder",
+     "section": "6. Transformer architecture",
+     "order": 19
+    },
+    {
+     "slug": "next-token-prediction-loss",
+     "section": "7. Understanding large language models",
+     "order": 20
+    },
+    {
+     "slug": "autoregressive-decoding",
+     "section": "7. Understanding large language models",
+     "order": 21
+    },
+    {
+     "slug": "temperature-sampling",
+     "section": "7. Understanding large language models",
+     "order": 22
+    },
+    {
+     "slug": "top-k-top-p-sampling",
+     "section": "7. Understanding large language models",
+     "order": 23
+    },
+    {
+     "slug": "kv-cache",
+     "section": "7. Understanding large language models",
+     "order": 24
+    },
+    {
+     "slug": "scaling-laws",
+     "section": "7. Understanding large language models",
+     "order": 25
+    },
+    {
+     "slug": "parameter-count-flops",
+     "section": "7. Understanding large language models",
+     "order": 26
+    },
+    {
+     "slug": "context-window-limits",
+     "section": "7. Understanding large language models",
+     "order": 27
+    },
+    {
+     "slug": "hallucination-detection",
+     "section": "7. Understanding large language models",
+     "order": 28
+    },
+    {
+     "slug": "bpe-tokenization",
+     "section": "8. Tokenisation and embeddings",
+     "order": 29
+    },
+    {
+     "slug": "wordpiece",
+     "section": "8. Tokenisation and embeddings",
+     "order": 30
+    },
+    {
+     "slug": "sentencepiece-unigram",
+     "section": "8. Tokenisation and embeddings",
+     "order": 31
+    },
+    {
+     "slug": "cosine-similarity-embeddings",
+     "section": "8. Tokenisation and embeddings",
+     "order": 32
+    },
+    {
+     "slug": "contextual-embeddings",
+     "section": "8. Tokenisation and embeddings",
+     "order": 33
     }
    ]
   },
@@ -10031,7 +11397,10 @@
     "bahdanau-additive-attention",
     "cross-attention-encoder-decoder",
     "gru-cell",
-    "bidirectional-rnn"
+    "bidirectional-rnn",
+    "decoder-only-block",
+    "contextual-embeddings",
+    "autoregressive-decoding"
    ],
    "aliases": [
     "Attention and sequences"
@@ -10087,7 +11456,8 @@
     "vae-reparameterization",
     "focal-loss",
     "label-smoothing",
-    "clip-contrastive-loss"
+    "clip-contrastive-loss",
+    "next-token-prediction-loss"
    ],
    "aliases": [
     "Information-theoretic losses"
@@ -10112,7 +11482,8 @@
    "problems": [
     "activation-functions",
     "mlp-forward-pass",
-    "residual-connections"
+    "residual-connections",
+    "feed-forward-gelu-swiglu"
    ],
    "aliases": [
     "Network building blocks"
@@ -10174,7 +11545,13 @@
     "top-k-top-p-sampling",
     "perplexity",
     "cosine-similarity-embeddings",
-    "bert-masked-lm"
+    "bert-masked-lm",
+    "text-preprocessing-stemming",
+    "bag-of-words-ngram-lm",
+    "glove-embeddings",
+    "wordpiece",
+    "sentencepiece-unigram",
+    "contextual-embeddings"
    ],
    "aliases": [
     "Text processing"
@@ -10353,7 +11730,8 @@
     "bleu-score",
     "rouge-score",
     "retrieval-metrics-recall-at-k",
-    "rag-dense-retrieval"
+    "rag-dense-retrieval",
+    "hallucination-detection"
    ],
    "aliases": [
     "Text evaluation and retrieval"

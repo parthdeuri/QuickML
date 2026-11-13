@@ -1,0 +1,87 @@
+slug: contextual-embeddings
+title: Static vs Contextual Embeddings
+url: https://arxiv.org/abs/1802.05365
+difficulty: Medium
+area: NLP
+topics: [Embeddings, Self-Attention, Representation Learning]
+summary: |
+  A static table gives each word one vector whatever the sentence. A
+  contextual model feeds the same table through attention, so each output
+  vector is a mix of the word and its neighbours and changes with them.
+intuition: |
+  A lookup table cannot tell "river bank" from "money bank" because the
+  row for "bank" is fixed. Attention fixes this without changing the table:
+  each token's output is a weighted average of value vectors over the whole
+  sentence, with weights from query-key similarity, so the neighbours
+  decide what the "bank" output contains. Stack such layers and the output
+  becomes a representation of the word in its context, not of the word alone.
+  Flow: tokens → static lookup → attention weights → mixed vectors.
+approach:
+  - "Look up each token id in the embedding table $E$ — this is the static vector, identical in every sentence"
+  - "Project the rows to queries, keys and values with $W_q, W_k, W_v$ — three roles for the same token"
+  - "Score all pairs with $QK^{\\top}/\\sqrt{d}$ — how relevant each token is to each other"
+  - "Softmax each row — turns scores into mixing weights that sum to 1"
+  - "Output $A V$ — each token becomes a context-weighted average, so the same word gets different vectors"
+code: |
+  import numpy as np
+
+  def softmax(s):
+      e = np.exp(s - s.max(axis=-1, keepdims=True))
+      return e / e.sum(axis=-1, keepdims=True)
+
+  def static_embed(ids, E):
+      return E[ids]
+
+  def self_attention(X, W):
+      Q, K, V = X @ W["q"], X @ W["k"], X @ W["v"]
+      A = softmax(Q @ K.T / np.sqrt(K.shape[1]))
+      return A @ V, A
+key_lines: [11, 12, 13]
+time: "O(n²·d) for the attention scores over n tokens, O(n·d²) for the projections"
+space: "O(n²) for the attention matrix plus O(V·d) for the embedding table"
+when_to_use: |
+  Whenever meaning depends on context: word sense, coreference, any task
+  where a word's role is set by its neighbours. Contextual outputs of a
+  pretrained encoder are the standard input to downstream classifiers.
+when_not_to_use: |
+  When a cheap, fixed vector per word is enough, such as for fast
+  retrieval baselines or low-resource devices, where a static table such as
+  word2vec is smaller and faster.
+why_it_works: |
+  The output for token $i$ is $\sum_j A_{ij} v_j$, a convex combination of
+  value vectors. Since the weights $A_{ij}$ depend on the other tokens in the
+  sentence, the output is a function of the whole input, so one word can
+  map to different vectors. Without positional information the layer is
+  permutation-equivariant: reordering the tokens just reorders the outputs.
+math:
+  - "static:  eᵢ = E[idᵢ]  (same row in every sentence)"
+  - "Q = X W_q,  K = X W_k,  V = X W_v"
+  - "A = softmax(Q Kᵀ / √d)"
+  - "contextual output  H = A V"
+  - "Hᵢ = Σⱼ Aᵢⱼ vⱼ,  with Σⱼ Aᵢⱼ = 1"
+interview_qa:
+  - q: "Why can a static embedding not handle polysemy?"
+    a: "It stores one vector per word type, so every sense of \"bank\" shares the same vector, and the model downstream sees no difference between them."
+  - q: "How do contextual embeddings get different vectors for the same word?"
+    a: "The output at a position is a weighted mix of all tokens in the sentence, and the weights depend on those tokens, so a different sentence gives a different mix."
+  - q: "Why is attention without positions permutation-equivariant?"
+    a: "Every token is treated with the same weights and the output depends on the set of other tokens, not their order, so permuting the inputs permutes the outputs. Positional encodings are added to break this."
+  - q: "What do ELMo and BERT do differently from word2vec?"
+    a: "word2vec learns a fixed table. ELMo uses the states of a bidirectional language model and BERT uses a transformer encoder, so their vectors depend on the sentence."
+hyperparameters:
+  - "Embedding dimension $d$"
+  - "Number of attention heads and layers"
+  - "Projection (key) dimension $d_k$"
+  - "Whether positional information is added"
+pitfalls:
+  - "With no positional encoding the layer ignores word order; \"dog bites man\" and \"man bites dog\" give the same set of outputs"
+  - "One attention layer on random weights only shows the mechanism; useful contextual vectors need trained weights and several layers"
+  - "A word's contextual vector is not a single \"meaning\"; compare vectors in the same context, not across layers blindly"
+related: [self-attention, word2vec-skipgram, positional-encoding]
+math_tex:
+- 'Static: $e_i = E[\mathrm{id}_i]$, same in every sentence'
+- '$Q = X W_q,\;\; K = X W_k,\;\; V = X W_v$'
+- '$A = \mathrm{softmax}\left(\frac{Q K^{\top}}{\sqrt{d}}\right)$'
+- 'Contextual output $H = A V$'
+- '$H_i = \sum_{j} A_{ij}\, v_j$, with $\sum_{j} A_{ij} = 1$'
+patterns: ["Attention and sequences", "Text processing"]

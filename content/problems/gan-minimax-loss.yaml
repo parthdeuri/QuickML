@@ -84,7 +84,6 @@ pitfalls:
   - "A very strong $D$ starves $G$ of gradient; balance the two networks"
 related: [vae-reparameterization, softmax-cross-entropy, logistic-regression]
 diagram: gan-minimax-loss
-patterns: ["Generative models"]
 math_tex:
 - $D(x) = \sigma(\ell(x))$,  $\ell$ = discriminator logit
 - $L_D = -\mathbb{E}[\log D(x)] - \mathbb{E}[\log(1 - D(G(z)))]$
@@ -93,3 +92,4 @@ math_tex:
 - $-\log\sigma(\ell) = \mathrm{softplus}(-\ell),\;\; -\log(1-\sigma(\ell)) = \mathrm{softplus}(\ell)$
 - $\frac{\partial L_G^{sat}}{\partial \ell_f} = -\frac{\sigma(\ell_f)}{n},\;\; \frac{\partial L_G^{ns}}{\partial \ell_f} = \frac{\sigma(\ell_f) - 1}{n}$
 - Optimal $D^* = \frac{p_{data}}{p_{data} + p_g}$
+patterns: ["Generative models"]

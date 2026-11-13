@@ -71,10 +71,10 @@ interview_qa:
   - q: "How do you choose $k$?"
     a: "Use at least the size of the smallest group you would still call a cluster; larger $k$ smooths the scores, and ranking stability across a range of $k$ is a useful check."
 related: [knn, dbscan, k-means]
-patterns: ["Distance and clustering"]
 math_tex:
 - $k$-$\mathrm{dist}(o)$ = distance from $o$ to its $k$-th neighbour
 - $\mathrm{reach}(p, o) = \max(\mathrm{kdist}(o),\ d(p, o))$
 - $\mathrm{lrd}(p) = \frac{1}{\mathrm{mean}_{o \in N_k(p)}\ \mathrm{reach}(p, o)}$
 - $\mathrm{LOF}(p) = \frac{\mathrm{mean}_{o \in N_k(p)}\ \mathrm{lrd}(o)}{\mathrm{lrd}(p)}$
 - $\mathrm{LOF} \approx 1$ inlier, $\mathrm{LOF} \gg 1$ outlier
+patterns: ["Distance and clustering"]

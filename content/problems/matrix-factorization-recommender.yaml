@@ -90,7 +90,6 @@ interview_qa:
   - q: "How do you evaluate a recommender factorisation?"
     a: "Hold out some observed ratings and compare RMSE against simple baselines like the global or per-item mean; also use ranking metrics when top-N matters."
 related: [svd, pca, ridge-lasso-regularization]
-patterns: ["Dimensionality reduction"]
 math_tex:
 - 'Prediction: $\hat{r}_{ui} = u_u^{\top} v_i$'
 - 'Loss: $L = \sum_{(u,i)\in\Omega} (r_{ui} - u_u^{\top} v_i)^2 + \lambda(\|U\|^2 + \|V\|^2)$'
@@ -99,3 +98,4 @@ math_tex:
 - $V_u$ = rows of $V$ for items rated by user $u$
 - 'Item step: $(U_i^{\top} U_i + \lambda I)\,v_i = U_i^{\top} r_i$'
 - Each half-step is an exact ridge regression
+patterns: ["Dimensionality reduction"]

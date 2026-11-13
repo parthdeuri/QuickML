@@ -74,10 +74,10 @@ interview_qa:
   - q: "How do you stratify on several columns?"
     a: "Combine them into one composite label (for example class and region) and stratify on that, making sure each combination has enough samples."
 related: [cross-validation, class-imbalance, data-leakage]
-patterns: ["Validation hygiene"]
 math_tex:
 - 'Class share: $\pi_c = \frac{n_c}{n}$'
 - 'Test count per class: $k_c = \mathrm{round}(f\cdot n_c)$'
 - Test $T = \bigcup_c$ ($k_c$ random of class $c$), train = rest
 - 'Gap: $\left|\frac{k_c}{|T|} - \pi_c\right|$ within rounding of $f\cdot n_c$'
 - 'Unstratified: $k_c \sim \mathrm{Hypergeom.}$, var $> 0$ for small $n_c$'
+patterns: ["Validation hygiene"]

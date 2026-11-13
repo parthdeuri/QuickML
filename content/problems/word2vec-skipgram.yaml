@@ -80,7 +80,6 @@ interview_qa:
   - q: "Why are there two embedding matrices?"
     a: "A word plays two roles, centre and context. Separate tables keep the scores asymmetric, and the input table is usually kept as the final embedding."
 related: [softmax-cross-entropy, tf-idf]
-patterns: ["Text processing"]
 math_tex:
 - 'Pair $(c, o)$: predict context $o$ from centre $c$'
 - $s = U v_c$ (one score per vocabulary word)
@@ -90,3 +89,4 @@ math_tex:
 - $\frac{\partial L}{\partial U} = (p - \mathrm{onehot}(o))\,v_c^{\top}$
 - $\frac{\partial L}{\partial v_c} = U^{\top}(p - \mathrm{onehot}(o))$
 - 'Negative sampling: a few sigmoid terms, not softmax'
+patterns: ["Text processing"]

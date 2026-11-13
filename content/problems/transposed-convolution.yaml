@@ -75,10 +75,10 @@ interview_qa:
   - q: "Why do checkerboard artefacts appear?"
     a: "Stamps from neighbouring inputs overlap unevenly when the kernel size is not a multiple of the stride."
 related: [convolution-2d, autoencoder, receptive-field]
-patterns: ["Convolution and vision"]
 math_tex:
 - 'Input $x$: $(N, C, H, W)$; kernel $w$: $(C, F, kH, kW)$'
 - $\mathrm{full}[n,f,si{+}u,sj{+}v]\ {+}{=}\ \sum_c w[c,f,u,v]\,x[n,c,i,j]$
 - 'Full size: $(H - 1)\cdot s + kH$ (same for width)'
 - 'Output size: $(H - 1)\cdot s - 2p + kH$'
 - Padding $p$ crops $p$ entries per border of full map
+patterns: ["Convolution and vision"]

@@ -66,10 +66,10 @@ interview_qa:
   - q: "How does momentum change the effective learning rate?"
     a: "For a steady gradient the velocity approaches a geometric series in $\\mu$, so the effective step is larger by $1 / (1 - \\mu)$."
 related: [gradient-descent, adam-optimizer, learning-rate-schedules]
-patterns: ["Gradient-based optimisation"]
 math_tex:
 - $v \leftarrow \mu\,v + g$
 - 'Classical: $w \leftarrow w - \eta\,v$'
 - 'Nesterov: $w \leftarrow w - \eta\,(g + \mu\,v)$ (using the updated $v$)'
 - 'Unrolled: $v_t = \sum_k \mu^{t-k} g_k$ (weighted sum)'
 - 'Common choice: $\mu = 0.9$'
+patterns: ["Gradient-based optimisation"]

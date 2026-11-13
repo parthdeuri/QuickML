@@ -102,7 +102,6 @@ interview_qa:
   - q: "How is NMI different from accuracy for clustering?"
     a: "NMI does not need cluster ids to match class ids; it measures shared information between the two partitions, so permuting cluster names leaves it unchanged."
 related: [k-means, dbscan, entropy-kl-divergence]
-patterns: ["Distance and clustering"]
 math_tex:
 - $a_i$ = mean distance to other points in $i$'s cluster
 - $b_i$ = smallest mean distance from $i$ to a cluster
@@ -111,3 +110,4 @@ math_tex:
 - $\mathrm{ARI} = \frac{\sum \binom{n_{ij}}{2} - E}{\frac{1}{2}\left[\sum \binom{a_i}{2} + \sum \binom{b_j}{2}\right] - E}$
 - $E = \frac{\sum \binom{a_i}{2} \cdot \sum \binom{b_j}{2}}{\binom{n}{2}}$
 - $\mathrm{MI} = \sum p_{ij}\log\frac{p_{ij}}{p_i\,p_j},\;\; \mathrm{NMI} = \frac{\mathrm{MI}}{(H(U) + H(V))/2}$
+patterns: ["Distance and clustering"]

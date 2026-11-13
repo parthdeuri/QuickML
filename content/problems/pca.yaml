@@ -82,7 +82,6 @@ interview_qa:
   - q: "Why centre the data?"
     a: "Without centring, the first component mostly points at the mean instead of the direction of maximum spread."
 related: [k-means, linear-regression, ridge-lasso-regularization]
-patterns: ["Dimensionality reduction"]
 math_tex:
 - $X_c = X - \mu$ (centre each column)
 - $X_c = U S V^{\top}$ (SVD)
@@ -91,3 +90,4 @@ math_tex:
 - Scores $Z = X_c V_{[:,:k]}$
 - Explained ratio $= \frac{\lambda_j}{\sum_i \lambda_i}$
 - Reconstruction $\hat{X} = Z V_{[:,:k]}^{\top} + \mu$
+patterns: ["Dimensionality reduction"]

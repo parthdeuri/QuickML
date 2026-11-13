@@ -1,0 +1,91 @@
+slug: feed-forward-gelu-swiglu
+title: Transformer Feed-Forward Network (GELU and SwiGLU)
+url: https://arxiv.org/abs/2002.05202
+difficulty: Medium
+area: NLP
+topics: [Transformers, Architecture, Activations]
+summary: |
+  The position-wise feed-forward network expands each token from $d$ to a
+  wider hidden size, applies a nonlinearity and projects back; the gated
+  SwiGLU variant multiplies a SiLU branch by a linear branch.
+intuition: |
+  Attention only mixes tokens linearly, so the feed-forward network is
+  where each token gets its nonlinear processing, and most of a block's
+  parameters live there. A gated unit lets one linear branch decide, per
+  hidden unit, how much of the other branch passes, which is a richer
+  nonlinearity for the same parameter budget once the hidden size is
+  shrunk to about $\frac{8}{3}d$.
+  Flow: token vector → expand → gate or activate → project back.
+approach:
+  - 'Expand $x$ to a hidden size $h$ with $W_1$ — a wide space where features can be separated'
+  - 'Apply GELU, or compute a SiLU branch $\mathrm{silu}(xW_1)$ — the nonlinearity'
+  - 'For SwiGLU multiply elementwise by a linear branch $xW_3$ — a learned gate per hidden unit'
+  - 'Project back to $d$ with $W_2$ — so the output can join the residual stream'
+  - 'Set $h \approx \frac{8}{3}d$ for the gated form — keeps parameters equal to the $4d$ ungated FFN'
+code: |
+  import numpy as np
+  from math import erf
+
+  def gelu(x, approx=False):
+      if approx:
+          c = np.sqrt(2 / np.pi)
+          t = c * (x + 0.044715 * x**3)
+          return 0.5 * x * (1 + np.tanh(t))
+      return 0.5 * x * (1 + np.vectorize(erf)(x / np.sqrt(2)))
+
+  def silu(x):
+      return x / (1 + np.exp(-x))
+
+  def ffn_gelu(x, W1, b1, W2, b2):
+      return gelu(x @ W1 + b1) @ W2 + b2
+
+  def ffn_swiglu(x, W1, W3, W2):
+      return (silu(x @ W1) * (x @ W3)) @ W2
+key_lines: [9, 15, 18]
+time: "O(T·d·h) per layer, with h = 4d or about 8d/3"
+space: "$2dh$ weights for the plain FFN, $3dh$ for the gated one"
+when_to_use: |
+  Inside every transformer block. Use GELU for the classic BERT or GPT-2
+  style FFN, and SwiGLU when following modern LLM designs that report
+  better quality at matched parameters.
+when_not_to_use: |
+  When the model has no token-wise MLP at all, or on tiny models where
+  the extra weight matrix and the hidden-size bookkeeping buy little.
+why_it_works: |
+  GELU is a smooth version of ReLU, $x\,\Phi(x)$, so gradients do not
+  die at zero. In the gated form, the product of two linear projections
+  adds a multiplicative interaction between features, a second-order
+  term a single activation cannot express, and the SiLU branch keeps it
+  smooth. Shazeer found such gated variants improve quality over ReLU
+  and GELU FFNs.
+math:
+  - "FFN(x) = GELU(x W₁ + b₁) W₂ + b₂"
+  - "GELU(x) = x Φ(x) = ½ x (1 + erf(x / √2))"
+  - "GELU(x) ≈ ½ x (1 + tanh(√(2/π) (x + 0.044715 x³)))"
+  - "silu(x) = x σ(x) = x / (1 + e⁻ˣ)"
+  - "SwiGLU(x) = (silu(x W₁) ⊙ (x W₃)) W₂"
+  - "Params: 2 · d · 4d = 8d²  vs  3 · d · h with h = 8d/3"
+interview_qa:
+  - q: "Why is the gated hidden size about 8d/3 instead of 4d?"
+    a: "The gated form has three weight matrices instead of two. Using $h = \\frac{8}{3}d$ gives $3dh = 8d^2$, the same count as the $4d$ ungated FFN."
+  - q: "What is the difference between exact GELU and the tanh approximation?"
+    a: "Exact GELU uses the Gaussian CDF via erf; the tanh form is a cheap polynomial-inside-tanh fit that differs by about $10^{-3}$ at most."
+  - q: "Why do gated FFNs help?"
+    a: "The elementwise product of two projections gives each hidden unit a learned input-dependent gate, a multiplicative interaction that improves quality at matched parameters."
+hyperparameters:
+  - "Hidden size $h$ ($4d$ plain, about $\\frac{8}{3}d$ gated, often rounded to a multiple of 64)"
+  - "Activation (ReLU, GELU exact or tanh, SiLU gate)"
+  - "Whether to use biases (many LLMs drop them)"
+pitfalls:
+  - "Comparing a gated and an ungated FFN at the same $h$ gives the gated one 50% more parameters"
+  - "The tanh and erf GELU variants differ slightly, so match the variant a checkpoint was trained with"
+  - "SwiGLU needs three matrices; loading weights with only $W_1$ and $W_2$ silently breaks the layer"
+related: [activation-functions, transformer-block, residual-connections]
+math_tex:
+- 'FFN: $\mathrm{FFN}(x) = \mathrm{GELU}(xW_1 + b_1)\,W_2 + b_2$'
+- 'GELU: $x\,\Phi(x) = \frac{1}{2}x\left(1 + \mathrm{erf}\frac{x}{\sqrt{2}}\right)$'
+- 'Tanh form: $\approx \frac{1}{2}x\left(1 + \tanh\left(\sqrt{\frac{2}{\pi}}(x + 0.044715x^3)\right)\right)$'
+- 'SiLU: $\mathrm{silu}(x) = x\,\sigma(x) = \frac{x}{1 + e^{-x}}$'
+- 'SwiGLU: $(\mathrm{silu}(xW_1) \odot xW_3)\,W_2$'
+- 'Params: $2 \cdot d \cdot 4d = 8d^2$ vs $3dh$, $h = \frac{8}{3}d$'
+patterns: ["Network building blocks"]

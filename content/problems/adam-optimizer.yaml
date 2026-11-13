@@ -73,10 +73,10 @@ interview_qa:
   - q: "How does AdamW differ from Adam with L2?"
     a: "AdamW applies weight decay directly to the weights instead of adding it to the gradient, so the decay is not rescaled by the adaptive denominator."
 related: [gradient-descent, backpropagation, mlp-forward-pass]
-patterns: ["Gradient-based optimisation"]
 math_tex:
 - $m \leftarrow \beta_1 m + (1-\beta_1)\,g$
 - $v \leftarrow \beta_2 v + (1-\beta_2)\,g^2$
 - $\hat{m} = \frac{m}{1-\beta_1^{\,t}},\;\; \hat{v} = \frac{v}{1-\beta_2^{\,t}}$
 - $w \leftarrow w - \eta\,\frac{\hat{m}}{\sqrt{\hat{v}}+\epsilon}$
 - 'Defaults: $\beta_1=0.9,\ \beta_2=0.999,\ \epsilon=10^{-8}$'
+patterns: ["Gradient-based optimisation"]

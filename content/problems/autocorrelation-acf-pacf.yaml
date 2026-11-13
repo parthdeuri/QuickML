@@ -80,7 +80,6 @@ interview_qa:
   - q: "Why divide by $n$ and not $n-k$ in the autocovariance?"
     a: "Dividing by $n$ guarantees the estimated autocovariance sequence is positive semi-definite, which the Yule-Walker system needs; $n-k$ is less biased but can give invalid values."
 related: [linear-regression, maximum-likelihood]
-patterns: ["Time series"]
 math_tex:
 - 'Autocovariance: $c_k = \frac{1}{n}\sum_t (y_t - \bar{y})(y_{t+k} - \bar{y})$'
 - 'ACF: $\rho_k = \frac{c_k}{c_0}$'
@@ -89,3 +88,4 @@ math_tex:
 - $\phi_{kk} = \frac{\rho_k - \sum_j \phi_{k-1,j}\,\rho_{k-j}}{1 - \sum_j \phi_{k-1,j}\,\rho_j}$
 - $\phi_{kj} = \phi_{k-1,j} - \phi_{kk}\,\phi_{k-1,k-j}$ for $j < k$
 - 'Approximate 95% band: $\pm\,\frac{1.96}{\sqrt{n}}$'
+patterns: ["Time series"]

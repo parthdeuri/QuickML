@@ -97,7 +97,6 @@ pitfalls:
   - "Unsorted detections, or unfiltered duplicates, change the result"
   - "No crowd or ignore regions, area ranges or maximum-detection caps in this sketch"
 related: [iou-and-nms, precision-recall-f1, roc-auc]
-patterns: ["Convolution and vision"]
 math_tex:
 - $\mathrm{IoU}(a,b) = \frac{|a \cap b|}{|a \cup b|}$;  TP if $\mathrm{IoU} \geq t$ and GT unmatched
 - Sort by score; $TP_k, FP_k$ = cumulative counts at $k$
@@ -105,3 +104,4 @@ math_tex:
 - $p_{interp}(r) = \max_{r' \geq r}\ \mathrm{precision}(r')$
 - $AP = \sum_k (R_k - R_{k-1})\cdot p_{interp}(R_k),\;\; R_0 = 0$
 - '$\mathrm{mAP} = \frac{1}{C}\sum_c AP_c$; COCO: IoU 0.50 to 0.95'
+patterns: ["Convolution and vision"]

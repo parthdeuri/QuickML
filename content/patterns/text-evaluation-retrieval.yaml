@@ -31,5 +31,6 @@ problems:
 - rouge-score
 - retrieval-metrics-recall-at-k
 - rag-dense-retrieval
+- hallucination-detection
 aliases:
 - Text evaluation and retrieval

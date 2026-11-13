@@ -80,7 +80,6 @@ interview_qa:
   - q: "What is the kernel trick?"
     a: "The dual problem uses only dot products $x_i\\cdot x_j$, so replacing them with a kernel $k(x_i, x_j)$ gives a linear margin in an implicit high-dimensional space without computing it."
 related: [logistic-regression, gradient-descent, softmax-cross-entropy]
-patterns: ["Linear models"]
 math_tex:
 - $f(x) = w^{\top}x + b,\;\; \hat{y} = \mathrm{sign}\,f(x),\;\; y \in \{-1, +1\}$
 - Margin width $= \frac{2}{\|w\|}$
@@ -90,3 +89,4 @@ math_tex:
 - $\partial b = -\frac{1}{n}\sum_{i \in V} y_i$
 - Step size $\eta_t = \frac{1}{\lambda(t + 10)}$
 - Equivalent to sklearn $C = \frac{1}{\lambda n}$
+patterns: ["Linear models"]

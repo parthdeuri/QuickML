@@ -81,7 +81,6 @@ interview_qa:
   - q: "How does PPO relate to TRPO?"
     a: "Both limit how far the policy moves per update. TRPO enforces a KL constraint with second-order optimisation, while PPO uses a first-order clipped objective that is simpler to implement."
 related: [reinforce-policy-gradient, gae-advantage, entropy-kl-divergence]
-patterns: ["Reinforcement learning", "Preference alignment and policy gradients"]
 math_tex:
 - 'Ratio: $\rho = \frac{\pi_{new}(a|s)}{\pi_{old}(a|s)} = \exp(\mathrm{logp}_{new} - \mathrm{logp}_{old})$'
 - 'Unclipped: $\rho\cdot\hat{A}$'
@@ -91,3 +90,4 @@ math_tex:
 - $\frac{\partial L_{CLIP}}{\partial\,\mathrm{logp}_{new}} = \rho\hat{A}$ if unclipped is the min, else 0
 - '$\hat{A} > 0$: gradient stops once $\rho > 1 + \epsilon$'
 - '$\hat{A} < 0$: gradient stops once $\rho < 1 - \epsilon$'
+patterns: ["Reinforcement learning", "Preference alignment and policy gradients"]

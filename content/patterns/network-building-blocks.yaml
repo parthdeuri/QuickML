@@ -25,5 +25,6 @@ problems:
 - activation-functions
 - mlp-forward-pass
 - residual-connections
+- feed-forward-gelu-swiglu
 aliases:
 - Network building blocks

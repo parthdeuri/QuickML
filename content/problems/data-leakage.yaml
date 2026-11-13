@@ -74,9 +74,9 @@ interview_qa:
   - q: "Is scaling before the split really a problem?"
     a: "It is a mild leak since only means and variances cross over, but selection, imputation and target encoding can leak far more."
 related: [cross-validation, bias-variance-tradeoff]
-patterns: ["Validation hygiene"]
 math_tex:
 - 'Correct: $\hat{\theta} = \mathrm{fit}(X_{train}),\;\; Z = \mathrm{transform}(X;\hat{\theta})$'
 - 'Leaky: $\hat{\theta} = \mathrm{fit}(X_{train} \cup X_{test})$'
 - 'Standardise: $z = \frac{x - \hat{\mu}}{\hat{\sigma}}$, using train $\hat{\mu}$ and $\hat{\sigma}$ only'
 - 'Leaky stats shrink the train/test shift: test looks easier'
+patterns: ["Validation hygiene"]

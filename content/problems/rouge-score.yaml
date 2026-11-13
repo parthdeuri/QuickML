@@ -93,7 +93,6 @@ interview_qa:
   - q: "How is the longest common subsequence computed?"
     a: "Dynamic programming over prefixes: if the last words match, extend the diagonal cell by one; otherwise take the larger of dropping the last word of either sequence."
 related: [bleu-score, precision-recall-f1, tf-idf]
-patterns: ["Text evaluation and retrieval"]
 math_tex:
 - $\mathrm{overlap} = \sum_g \min(c_{cand}(g),\, c_{ref}(g))$ over n-grams $g$
 - $P = \frac{\mathrm{overlap}}{\#\ \mathrm{n\text{-}grams\ in\ candidate}}$
@@ -102,3 +101,4 @@ math_tex:
 - 'LCS DP: $L[i,j] = L[i-1,j-1] + 1$ if $a_i = b_j$'
 - else $\max(L[i-1,j],\, L[i,j-1])$
 - 'ROUGE-L: overlap $= L[|cand|, |ref|]$, then $P, R, F_1$'
+patterns: ["Text evaluation and retrieval"]

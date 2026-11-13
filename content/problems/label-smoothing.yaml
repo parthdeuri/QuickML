@@ -67,9 +67,9 @@ interview_qa:
   - q: "How is it related to KL divergence?"
     a: "It adds a penalty that pulls predictions toward the uniform distribution, equal to a KL term up to a constant."
 related: [softmax-cross-entropy, entropy-kl-divergence, probability-calibration]
-patterns: ["Regularisation", "Information-theoretic losses"]
 math_tex:
 - 'Target: $q_k = (1 - \epsilon)\,\mathbf{1}[k = y] + \frac{\epsilon}{K}$ for $K$ classes'
 - $\log p_k = z_k - \log \sum_j \exp(z_j)$
 - $\mathrm{Loss} = -\sum_k q_k \log p_k$
 - 'Equivalent: $(1 - \epsilon)(-\log p_y) + \epsilon\,\mathrm{mean}_k(-\log p_k)$'
+patterns: ["Regularisation", "Information-theoretic losses"]

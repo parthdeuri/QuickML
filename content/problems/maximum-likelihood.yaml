@@ -69,7 +69,6 @@ interview_qa:
   - q: "How does MAP differ from MLE?"
     a: "MAP maximises likelihood times a prior, which adds a regulariser; with a flat prior they coincide."
 related: [bayes-theorem, logistic-regression, entropy-kl-divergence]
-patterns: ["Probabilistic models", "Information-theoretic losses"]
 math_tex:
 - $L(\theta) = \prod_i p(x_i\,|\,\theta)$
 - $\ell(\theta) = \sum_i \log p(x_i\,|\,\theta)$
@@ -77,3 +76,4 @@ math_tex:
 - 'Gaussian: $\hat{\mu} = \frac{1}{n}\sum_i x_i$'
 - 'Gaussian: $\hat{\sigma}^2 = \frac{1}{n}\sum_i (x_i - \hat{\mu})^2$'
 - $\mathrm{NLL} = \frac{n}{2}\log(2\pi\sigma^2) + \sum_i \frac{(x_i - \mu)^2}{2\sigma^2}$
+patterns: ["Probabilistic models", "Information-theoretic losses"]

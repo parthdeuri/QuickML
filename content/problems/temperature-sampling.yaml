@@ -1,0 +1,83 @@
+slug: temperature-sampling
+title: Temperature Sampling
+url: https://huggingface.co/blog/how-to-generate
+difficulty: Easy
+area: LLM
+topics: [Sampling, Softmax, Generation]
+summary: |
+  Divide the logits by a temperature $T$ before the softmax. Low $T$
+  sharpens the distribution towards greedy, high $T$ flattens it
+  towards uniform.
+intuition: |
+  Dividing logits by $T$ changes the gaps between them while keeping
+  their order. Small $T$ stretches the gaps, so the top token takes
+  almost all the probability. Large $T$ shrinks them, so every token
+  becomes about equally likely. One scalar therefore slides between
+  deterministic and random, and the entropy rises as it grows.
+  Flow: logits → divide by T → softmax → sample a token.
+approach:
+  - "Divide the logits by $T$ — scales all gaps between logits"
+  - "Subtract the max before exponentiating — keeps $\\exp$ from overflowing"
+  - "Normalise to get probabilities — a valid distribution over the vocabulary"
+  - "Draw one token from it with a seeded generator — reproducible randomness"
+  - "Compute the entropy if needed — shows how spread out the choice is"
+code: |
+  import numpy as np
+
+  def softmax_t(z, T=1.0):
+      z = np.asarray(z, dtype=float) / T
+      e = np.exp(z - z.max())
+      return e / e.sum()
+
+  def entropy(p):
+      p = p[p > 0]
+      return float(-(p * np.log(p)).sum())
+
+  def sample(z, T, rng, n=1):
+      p = softmax_t(z, T)
+      return rng.choice(len(p), size=n, p=p)
+key_lines: [4, 5, 6]
+time: "O(V) per token for a vocabulary of size V"
+space: "O(V) for the probability vector"
+when_to_use: |
+  Creative or varied text generation, where you want to control how
+  adventurous the model is with a single knob. Use a low $T$ for
+  factual or code answers and a higher one for brainstorming.
+when_not_to_use: |
+  When you need a deterministic answer: use greedy decoding, not a tiny
+  $T$ with a random draw. $T=0$ is also undefined as a division, so
+  implementations special-case it as argmax.
+why_it_works: |
+  The scaled softmax is $p_i \propto \exp(z_i/T)$. As $T \to 0^+$ the
+  largest logit dominates, so the mass concentrates on the argmax. At
+  $T=1$ the model's own distribution is unchanged. As $T \to \infty$
+  all $z_i/T \to 0$, so $p_i \to 1/V$ and the entropy approaches
+  $\log V$. The entropy grows monotonically with $T$.
+math:
+  - "p_i(T) = exp(z_i / T) / Σ_j exp(z_j / T)"
+  - "T → 0⁺: p → one-hot at argmax;  T = 1: p = softmax(z)"
+  - "T → ∞: p_i → 1/V"
+  - "H(T) = −Σ_i p_i log p_i,  0 ≤ H ≤ log V"
+interview_qa:
+  - q: "What does temperature do to the logits?"
+    a: "It divides them by $T$ before the softmax. Their order stays the same, only the spread between them changes."
+  - q: "What happens at $T \\to 0$ and $T \\to \\infty$?"
+    a: "At $T \\to 0$ decoding becomes greedy argmax. At $T \\to \\infty$ the distribution becomes uniform over the vocabulary."
+  - q: "Does temperature change which token is most likely?"
+    a: "No. The ranking is unchanged, so the argmax is the same for any $T>0$. It only changes how much probability the others get."
+  - q: "How does temperature combine with top-$k$ or top-$p$?"
+    a: "They are usually applied together: scale the logits by $T$, then truncate the distribution, then renormalise and sample."
+hyperparameters:
+  - "Temperature $T$ (often between 0.2 and 1.5 in practice)"
+  - "Random seed for reproducible sampling"
+  - "Truncation such as top-$k$ or top-$p$ applied alongside"
+pitfalls:
+  - "$T=0$ divides by zero; handle it as argmax rather than passing it to the formula"
+  - "Skipping the max subtraction overflows $\\exp$ for large logits at small $T$"
+  - "High $T$ gives the long tail of junk tokens real probability; truncate with top-$p$ if quality drops"
+related: [top-k-top-p-sampling, softmax-cross-entropy, entropy-kl-divergence]
+math_tex:
+- '$p_i(T) = \frac{\exp(z_i/T)}{\sum_{j} \exp(z_j/T)}$'
+- '$T \to 0^{+}$: one-hot at argmax. $T=1$: softmax'
+- 'As $T \to \infty$: $p_i \to 1/V$'
+- '$H(T) = -\sum_{i} p_i \log p_i \leq \log V$'

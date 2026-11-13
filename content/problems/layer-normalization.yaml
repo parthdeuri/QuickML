@@ -63,9 +63,9 @@ pitfalls:
   - "Normalising over the wrong axis silently runs but is a different layer"
   - "Constant input has zero variance, so $\\epsilon$ controls the output there"
 related: [batch-normalization, residual-connections, multi-head-attention]
-patterns: ["Normalisation"]
 math_tex:
 - $\mu = \frac{1}{D}\sum_j x_j$
 - $\sigma^2 = \frac{1}{D}\sum_j (x_j - \mu)^2$ (biased, divide by $D$)
 - $\hat{x}_j = \frac{x_j - \mu}{\sqrt{\sigma^2 + \epsilon}}$
 - $y_j = \gamma_j\cdot\hat{x}_j + \beta_j$
+patterns: ["Normalisation"]

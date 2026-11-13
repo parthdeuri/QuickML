@@ -1,0 +1,101 @@
+slug: parameter-count-flops
+title: Parameter Count, FLOPs and Memory of a Transformer
+url: https://arxiv.org/abs/2001.08361
+difficulty: Medium
+area: LLM
+topics: [Transformers, Scaling, Compute and Memory]
+summary: |
+  A decoder-only transformer has about $12 L d^2$ parameters plus $V d$
+  for embeddings, costs about $6 N D$ FLOPs to train and $2 N$ FLOPs per
+  generated token, and needs bytes proportional to $N$.
+intuition: |
+  Almost all parameters live in a few square-ish matrices per layer, so
+  the count is set by depth and width: $4 d^2$ for attention and $8 d^2$
+  for a $4\times$ FFN. Compute follows the same count, because each
+  parameter is used in one multiply-add per token on the forward pass
+  and about twice that on the backward pass. Memory is the count times
+  bytes per value, plus gradients and optimizer state when training.
+  Flow: layers and width → parameters → FLOPs per token → bytes.
+approach:
+  - "Count one block: $4 d^2$ attention plus $2 d\\, d_{ff}$ FFN (biases and norms are lower order) — this is the per-layer cost"
+  - "Multiply by $L$ and add the embedding $V d$ (once if tied, twice if not) — the table is shared or separate"
+  - "Training FLOPs $\\approx 6 N D$ for $D$ tokens — $2N$ forward and $4N$ backward per token"
+  - "Inference FLOPs $\\approx 2 N$ per token — forward pass only, ignoring attention over the context"
+  - "Weights take $N \\cdot$ bytes per value; training adds gradients and Adam states, about $16 N$ bytes in mixed precision — a stated rule of thumb"
+code: |
+  import numpy as np
+
+  def count_params(L, d, d_ff, V, tied=True):
+      # Biases are counted; LayerNorm has gain and bias.
+      attn = 4 * (d * d + d)            # Wq, Wk, Wv, Wo
+      ffn = 2 * d * d_ff + d_ff + d     # up and down projections
+      norms = 2 * (2 * d)               # two LayerNorms per block
+      block = attn + ffn + norms
+      head = 0 if tied else V * d       # separate output matrix
+      return L * block + V * d + 2 * d + head
+
+  def train_flops(N, D):
+      return 6 * N * D                  # forward 2ND + backward 4ND
+
+  def infer_flops_per_token(N):
+      return 2 * N
+
+  def memory_bytes(N, bytes_per=2, training=False):
+      if not training:
+          return N * bytes_per          # weights only
+      # fp16 weights 2 + fp16 grads 2 + fp32 master 4 + Adam m, v 8
+      return N * 16
+
+  def rule_of_thumb(L, d, V):
+      return 12 * L * d * d + V * d
+key_lines: [5, 13, 21]
+time: "O(1) arithmetic once the shape is known; training compute scales as $6ND$"
+space: "O(N) bytes for weights, about 16 bytes per parameter to train with Adam"
+when_to_use: |
+  Budgeting a training run, sizing a GPU for serving, or checking that a
+  quoted model size matches its architecture before running anything.
+when_not_to_use: |
+  Precise accounting. The rules ignore attention over the context
+  (matters for long sequences), activations, the KV cache, and sparse
+  or mixture-of-experts models where only some parameters are active.
+why_it_works: |
+  Each weight matrix of shape $a \times b$ applied to a token costs $a b$
+  multiply-adds, which is $2ab$ FLOPs, so forward compute per token is
+  about twice the parameter count. The backward pass computes gradients
+  with respect to both activations and weights, about two more forward
+  passes, giving $6N$ per token in total.
+math:
+  - "Attention per layer: 4d² (Q, K, V, O)"
+  - "FFN per layer: 2·d·d_ff = 8d² when d_ff = 4d"
+  - "Total: N ≈ 12·L·d² + V·d"
+  - "Training: FLOPs ≈ 6·N·D"
+  - "Inference: ≈ 2·N FLOPs per token"
+  - "Weight bytes = N · bytes per value"
+  - "Training state ≈ 16·N bytes (mixed precision, Adam)"
+interview_qa:
+  - q: "Why is training about $6ND$ FLOPs?"
+    a: "The forward pass is about $2N$ per token (a multiply-add per weight) and the backward pass is about twice that, so $6N$ per token and $6ND$ for $D$ tokens."
+  - q: "How much memory does training need beyond the weights?"
+    a: "Gradients and optimizer state. With mixed precision and Adam a common estimate is 16 bytes per parameter: 2 for fp16 weights, 2 for gradients, 4 for fp32 master weights, 8 for the two Adam moments. Activations come on top."
+  - q: "Where are most parameters in a transformer?"
+    a: "In the per-layer matrices, about $12 d^2$ each layer, so they grow with depth and the square of width. The embedding adds $V d$, which matters for small models with large vocabularies."
+  - q: "Does weight tying change the count?"
+    a: "Yes. Sharing the input embedding with the output projection saves $V d$ parameters."
+hyperparameters:
+  - "Number of layers $L$ and model width $d$"
+  - "FFN width $d_{ff}$ (often $4d$)"
+  - "Vocabulary size $V$ and whether embeddings are tied"
+  - "Precision (fp32, fp16/bf16, int8) and optimizer"
+pitfalls:
+  - "The $6ND$ and $2N$ rules drop attention over the context, which adds real cost at long sequence lengths"
+  - "The 16 bytes per parameter figure assumes mixed-precision Adam with fp32 master weights; other setups differ, and activations are extra"
+  - "Biases are counted here; many modern models drop them, and gated FFNs use three matrices, so recount for the actual architecture"
+related: [transformer-block, kv-cache, lora-low-rank-adaptation]
+math_tex:
+- 'Attention per layer: $4 d^2$ (Q, K, V, O)'
+- 'FFN per layer: $2 d\, d_{ff} = 8 d^2$'
+- 'Total: $N \approx 12 L d^2 + V d$'
+- 'Training: $\mathrm{FLOPs} \approx 6 N D$'
+- 'Inference: $\approx 2 N$ FLOPs per token'
+- 'Weight bytes $= N \cdot \mathrm{bytes}$'
+- 'Training state $\approx 16 N$ bytes'

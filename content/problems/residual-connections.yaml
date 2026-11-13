@@ -63,9 +63,9 @@ pitfalls:
   - "Residual stacks can grow activation scale with depth; normalisation or scaled initialisation controls it"
 related: [layer-normalization, backpropagation, batch-normalization]
 diagram: residual-connections
-patterns: ["Network building blocks"]
 math_tex:
 - $y = x + F(x)$
 - $F(x) = \mathrm{relu}(xW_1 + b_1)W_2 + b_2$
 - $\frac{\partial y}{\partial x} = I + \frac{\partial F}{\partial x}$
 - 'Stack of $L$ blocks: $\frac{\partial y_L}{\partial x} = \prod_{l}\left(I + \frac{\partial F_l}{\partial x}\right)$'
+patterns: ["Network building blocks"]

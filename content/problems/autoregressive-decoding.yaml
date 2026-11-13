@@ -1,0 +1,98 @@
+slug: autoregressive-decoding
+title: Autoregressive Decoding Loop
+url: https://huggingface.co/docs/transformers/generation_strategies
+difficulty: Easy
+area: LLM
+topics: [Generation, Inference, Language Modeling]
+summary: |
+  Generate text one token at a time. Read the next-token logits at the
+  last position, pick a token, append it, and repeat until an end token
+  or the length limit.
+intuition: |
+  A language model only ever answers one question: given everything so
+  far, what comes next? Generation is that question asked in a loop,
+  with each answer fed back as input. Token $t+1$ needs token $t$, so
+  the decode steps cannot run in parallel, unlike the prompt, which is
+  processed in one pass (prefill). The loop is therefore latency-bound.
+  Flow: prompt → logits → pick token → append → repeat until EOS.
+approach:
+  - "Run the prompt through the model once (prefill) — gives logits at every position"
+  - "Take the logits at the last position only — they define the next-token distribution"
+  - "Pick a token, greedy argmax here — any sampling rule plugs in at this step"
+  - "Append it to the sequence — the output becomes part of the next input"
+  - "Stop at the EOS token or after $n_{\\max}$ new tokens — otherwise the loop may never end"
+code: |
+  import numpy as np
+
+  def generate(next_logits, prompt, max_new, eos):
+      tokens = list(prompt)
+      for _ in range(max_new):
+          z = next_logits(tokens)
+          t = int(np.argmax(z))
+          tokens.append(t)
+          if t == eos:
+              break
+      return tokens
+
+  def uncached(emb, W):
+      def f(tokens):
+          return emb[tokens].mean(axis=0) @ W
+      return f
+
+  def cached(emb, W):
+      st = {"n": 0, "sum": np.zeros(emb.shape[1])}
+      def f(tokens):
+          new = tokens[st["n"]:]      # prefill: all, decode: one
+          st["sum"] = st["sum"] + emb[new].sum(axis=0)
+          st["n"] = len(tokens)
+          return st["sum"] / len(tokens) @ W
+      return f
+key_lines: [6, 7, 8]
+time: "O(T) sequential model calls for T new tokens; each call costs one forward pass (cheaper with a KV cache)"
+space: "O(T) for the token list, plus any cache the model keeps"
+when_to_use: |
+  Any decoder-only language model producing text, from a chat reply to
+  code completion. Swap the argmax for a sampling rule to get varied
+  outputs.
+when_not_to_use: |
+  Greedy picking on long open-ended text, where it tends to repeat
+  itself. Use sampling or beam search there. Training and scoring use
+  teacher forcing with one parallel pass, not this loop.
+why_it_works: |
+  The model factorises the sequence probability as
+  $p(x_{1:T}) = \prod_t p(x_t \mid x_{<t})$, so sampling or picking one
+  token at a time from each conditional is a valid way to generate a
+  whole sequence. A causal model's logits at position $t$ do not depend
+  on later positions, so a cached run gives the same logits as a full
+  recompute.
+math:
+  - "p(x₁:T) = Π_t p(x_t | x_<t)"
+  - "z_t = f(x₁:t)[last position],  x_t+1 = argmax_v z_t[v]"
+  - "Stop when x_t+1 = EOS or the number of new tokens = n_max"
+  - "Model calls = 1 (prefill) + n_new decode steps"
+interview_qa:
+  - q: "Why is generation sequential even though training is parallel?"
+    a: "Training knows all the target tokens, so it can score every position at once with a causal mask. At inference the next token is not known until the previous one is chosen, so each step waits for the last."
+  - q: "What are the prefill and decode phases?"
+    a: "Prefill processes the whole prompt in one parallel pass and is compute-bound. Decode generates one token per step, reads the model weights and cache each time, and is usually memory-bandwidth-bound."
+  - q: "How does the loop know when to stop?"
+    a: "It stops when the model emits an end-of-sequence token or when a maximum number of new tokens is reached, whichever comes first."
+  - q: "Why does a KV cache not change the output?"
+    a: "It only stores values that a causal model would recompute identically, so the logits match up to floating-point rounding."
+hyperparameters:
+  - "Maximum number of new tokens $n_{\\max}$"
+  - "EOS token id (and any extra stop tokens)"
+  - "Token selection rule (greedy, temperature, top-$k$, top-$p$)"
+  - "Batch size when decoding many sequences together"
+pitfalls:
+  - "Feeding the whole sequence again every step is correct but costs $O(T^2)$ forward work without a cache"
+  - "Using logits from any position other than the last gives the wrong next token"
+  - "Without a max length, a model that never emits EOS loops forever"
+  - "Greedy decoding can fall into repeating loops, as the repeated token in the example shows"
+related: [kv-cache, top-k-top-p-sampling, beam-search]
+math_tex:
+- '$p(x_{1:T}) = \prod_{t} p(x_t \mid x_{<t})$'
+- 'Next token: $z_t = f(x_{1:t})_{\mathrm{last}}$'
+- '$x_{t+1} = \arg\max_{v}\, z_t[v]$'
+- 'Stop at EOS or after $n_{\max}$ new tokens'
+patterns: ["Attention and sequences"]

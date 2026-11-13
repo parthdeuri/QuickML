@@ -69,10 +69,10 @@ interview_qa:
   - q: "What happens to gradients of dropped units?"
     a: "They are zero for that step, because the same mask multiplies the upstream gradient."
 related: [mlp-forward-pass, batch-normalization, backpropagation]
-patterns: ["Regularisation"]
 math_tex:
 - $m_i \sim \mathrm{Bernoulli}(1-p)$ (1 = keep)
 - 'Train: $y = \frac{x \odot m}{1-p}$'
 - $E[y] = x$ (inverted scaling)
 - 'Eval: $y = x$'
 - 'Backward: $\frac{\partial L}{\partial x} = \frac{\partial L}{\partial y} \odot \frac{m}{1-p}$'
+patterns: ["Regularisation"]

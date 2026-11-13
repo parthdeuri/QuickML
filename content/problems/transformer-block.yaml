@@ -86,10 +86,10 @@ pitfalls:
   - "A final LayerNorm after the last block is still needed in pre-norm models"
 related: [multi-head-attention, layer-normalization, residual-connections]
 diagram: transformer-block
-patterns: ["Attention and sequences"]
 math_tex:
 - $y_1 = \mathrm{LN}(x) = \gamma\odot\frac{x - \mu}{\sqrt{\sigma^2 + \epsilon}} + \beta$
 - $x' = x + \mathrm{MHA}_{causal}(y_1)\,W_o$
 - $y_2 = \mathrm{LN}(x')$
 - $\mathrm{out} = x' + W_2\cdot\mathrm{GELU}(W_1 y_2 + c_1) + c_2$
 - $\mathrm{GELU}(u) = u\cdot\Phi(u) = \frac{1}{2}u\left(1 + \mathrm{erf}\left(\frac{u}{\sqrt{2}}\right)\right)$
+patterns: ["Attention and sequences"]

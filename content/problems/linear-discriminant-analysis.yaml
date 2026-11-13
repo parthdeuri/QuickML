@@ -85,7 +85,6 @@ interview_qa:
   - q: "What do you do when $S_w$ is singular?"
     a: "Shrink it toward a scaled identity, reduce dimension with PCA first, or use the SVD solver, which avoids forming the covariance explicitly."
 related: [pca, logistic-regression, naive-bayes]
-patterns: ["Probabilistic models"]
 math_tex:
 - '$\mu$: overall mean, $\mu_c$: class mean, $n_c$: class size'
 - 'Within: $S_w = \sum_c \sum_{i \in c} (x_i - \mu_c)(x_i - \mu_c)^{\top}$'
@@ -94,3 +93,4 @@ math_tex:
 - 'Optimum: $S_w^{-1} S_b\,w = \lambda w$, top $\leq C-1$'
 - 'Scale: $w^{\top} S_w w = 1$ (unit within-class variance)'
 - $\delta_c(x) = x^{\top}\Sigma^{-1}\mu_c - \frac{1}{2}\mu_c^{\top}\Sigma^{-1}\mu_c + \log\pi_c$
+patterns: ["Probabilistic models"]

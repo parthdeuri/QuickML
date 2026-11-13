@@ -76,10 +76,10 @@ interview_qa:
   - q: "Should a PyTorch model end in softmax before CrossEntropyLoss?"
     a: "No. CrossEntropyLoss takes raw logits and applies log-softmax internally."
 related: [logistic-regression, gradient-descent]
-patterns: ["Information-theoretic losses"]
 math_tex:
 - $\mathrm{softmax}(z)_i = \frac{\exp(z_i)}{\sum_j \exp(z_j)}$
 - 'Stable: subtract $\max(z)$ from $z$ before exp'
 - $CE = -\log p_y = -z_y + \log\sum_j \exp(z_j)$
 - $\frac{\partial CE}{\partial z_i} = p_i - \mathbf{1}[i = y]$
 - 'Batch loss: mean over rows; gradient $/\,n$'
+patterns: ["Information-theoretic losses"]

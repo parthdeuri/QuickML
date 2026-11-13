@@ -1,0 +1,88 @@
+slug: next-token-prediction-loss
+title: Next-Token Prediction Loss and Perplexity
+url: https://d2l.ai/chapter_recurrent-neural-networks/language-model.html
+difficulty: Easy
+area: LLM
+topics: [LLM, Language Modeling, Loss Functions]
+summary: |
+  Shift the sequence by one so position $t$ predicts token $t+1$, average
+  the cross-entropy over all unmasked positions, and report perplexity
+  as the exponential of that loss.
+intuition: |
+  A single sentence gives one training example per position: the input
+  is the prefix and the label is simply the next token, so no human
+  labels are needed. Perplexity turns the average loss into an
+  effective branching factor, the number of equally likely tokens the
+  model is choosing between, which is why uniform logits over $V$ tokens
+  score exactly $V$.
+  Flow: tokens → shift by one → log-probs → masked mean → exp.
+approach:
+  - "Split tokens into inputs $x_{1:T-1}$ and targets $x_{2:T}$ — position $t$ must predict token $t+1$"
+  - "Run the model to get logits of shape $(T-1, V)$ — one distribution per position"
+  - "Take the log-softmax and pick the target's log-probability — the negative is the token loss"
+  - "Mask positions equal to the ignore index — padding and prompt tokens carry no loss"
+  - "Average over unmasked tokens, then $\\exp$ for perplexity — comparable across lengths"
+code: |
+  import numpy as np
+
+  def shift(tokens):
+      return tokens[:-1], tokens[1:]
+
+  def token_ce(logits, targets, ignore=-100):
+      z = logits - logits.max(-1, keepdims=True)
+      logp = z - np.log(np.exp(z).sum(-1, keepdims=True))
+      keep = targets != ignore
+      idx = np.where(keep, targets, 0)
+      nll = -np.take_along_axis(logp, idx[:, None], 1)[:, 0]
+      return (nll * keep).sum() / keep.sum()
+
+  def perplexity(loss):
+      return np.exp(loss)
+key_lines: [9, 12, 15]
+time: "O(T·V) for the softmax over the vocabulary at every position"
+space: "O(T·V) for the logits, often the largest tensor in training"
+when_to_use: |
+  Pretraining and supervised fine-tuning of any autoregressive language
+  model, and evaluating one on held-out text; use the ignore index to
+  train only on response tokens.
+when_not_to_use: |
+  Comparing perplexity across models with different tokenizers, since
+  the per-token loss is not on the same scale. Use bits per byte or
+  character instead.
+why_it_works: |
+  Minimising the average negative log-likelihood of each next token
+  maximises the likelihood of the sequence under the chain rule,
+  $p(x) = \prod_t p(x_t \mid x_{<t})$. The causal mask lets one forward
+  pass produce all $T-1$ predictions, and dividing by the count of
+  unmasked tokens keeps the loss independent of padding.
+math:
+  - "L = −(1/N) Σₜ log p(xₜ₊₁ | x₁:ₜ)  over N unmasked positions"
+  - "p(x) = Πₜ p(xₜ | x<ₜ)"
+  - "perplexity = exp(L)"
+  - "bits per token = L / ln 2"
+  - "Uniform over V tokens: L = ln V, perplexity = V"
+interview_qa:
+  - q: "Why shift the targets by one?"
+    a: "The model output at position $t$ is its prediction for the next token, so the label for position $t$ is token $t+1$; the last position has no label."
+  - q: "Why mask prompt and padding tokens?"
+    a: "Padding is not real text, and in fine-tuning the prompt is given rather than predicted. Masked positions are excluded from both the sum and the divisor."
+  - q: "What does perplexity of 20 mean?"
+    a: "The model is as uncertain as a uniform choice among 20 tokens at each step, on average in the geometric sense."
+  - q: "Why is perplexity not comparable across tokenizers?"
+    a: "A tokenizer with longer tokens makes each prediction harder and the sequence shorter, so per-token loss changes without a real quality difference."
+hyperparameters:
+  - "Ignore index for padding and prompt tokens (commonly $-100$)"
+  - "Reduction: mean over tokens versus mean over sequences"
+  - "Label smoothing, if any"
+pitfalls:
+  - "Dividing by the total number of positions instead of the unmasked count biases the loss low"
+  - "Forgetting to shift makes the model copy its input, giving a near-zero loss that means nothing"
+  - "Masked targets must still be a valid index when gathering, or the lookup fails"
+related: [softmax-cross-entropy, perplexity, label-smoothing]
+math_tex:
+- 'Loss: $L = -\frac{1}{N}\sum_{t}\log p(x_{t+1} \mid x_{1:t})$'
+- 'Chain rule: $p(x) = \prod_{t} p(x_t \mid x_{<t})$'
+- 'Perplexity: $\exp(L)$'
+- 'Bits per token: $\frac{L}{\ln 2}$'
+- 'Uniform over $V$: $L = \ln V$, perplexity $= V$'
+patterns: ["Information-theoretic losses"]

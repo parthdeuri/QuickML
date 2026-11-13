@@ -76,10 +76,10 @@ pitfalls:
   - "Learned position embeddings are tied to one grid size; other resolutions need interpolation"
   - "This sketch has no dropout, layer norm or transformer blocks after the embedding"
 related: [self-attention, positional-encoding, convolution-2d]
-patterns: ["Convolution and vision"]
 math_tex:
 - $N = (H/P)(W/P)$;  $x_p \in \mathbb{R}^{C P^2}$ (flattened)
 - $z_i = x_p^{(i)} W + b,\;\; W \in \mathbb{R}^{C P^2 \times D}$
 - $z_0 = [x_{cls};\ z_1;\ \ldots;\ z_N] + E_{pos},\;\; E_{pos} \in \mathbb{R}^{(N+1) \times D}$
 - 'Equivalent: $\mathrm{Conv2d}(C, D, \mathrm{kernel} = P, \mathrm{stride} = P)$'
 - 'Head reads final CLS token: $\hat{y} = \mathrm{softmax}(W_h z_L^0)$'
+patterns: ["Convolution and vision"]

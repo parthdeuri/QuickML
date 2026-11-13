@@ -78,7 +78,6 @@ interview_qa:
   - q: "How does REINFORCE relate to actor-critic?"
     a: "Actor-critic replaces the Monte Carlo return with a learned value-based estimate, lowering variance at the cost of some bias."
 related: [softmax-cross-entropy, q-learning, gradient-descent]
-patterns: ["Reinforcement learning"]
 math_tex:
 - $J(\theta) = E\left[\sum_t r_t\right]$ over trajectories from $\pi_\theta$
 - $\nabla J = E\left[\sum_t G_t\,\nabla \log \pi(a_t\,|\,s_t)\right]$
@@ -86,3 +85,4 @@ math_tex:
 - 'Baseline: $(G_t - b)$ replaces $G_t$; $b \perp a_t$'
 - 'Softmax policy $z = X\theta$: $\nabla_z \log \pi(a) = \mathrm{onehot}(a) - \pi$'
 - 'Gradient ascent: $\theta \leftarrow \theta + \alpha\,\nabla J$'
+patterns: ["Reinforcement learning"]

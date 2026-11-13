@@ -78,10 +78,10 @@ pitfalls:
   - "Single head, no output nonlinearity, bias or dropout in this sketch"
   - "Dense $N\\times N$ scoring does not scale to large graphs"
 related: [gnn-message-passing, self-attention, multi-head-attention]
-patterns: ["Graph neural networks"]
 math_tex:
 - $h_i = W x_i \quad (H = XW)$
 - $e_{ij} = \mathrm{LReLU}(a^{\top}[h_i \| h_j]) = \mathrm{LReLU}(a_i^{\top} h_i + a_j^{\top} h_j)$
 - $\alpha_{ij} = \frac{\exp(e_{ij})}{\sum_{k \in N(i)\cup\{i\}} \exp(e_{ik})}$
 - $h_i' = \sigma\left(\sum_{j \in N(i)\cup\{i\}} \alpha_{ij}\,h_j\right)$
 - 'Multi-head: concat $K$ heads, or average'
+patterns: ["Graph neural networks"]

@@ -86,10 +86,10 @@ interview_qa:
   - q: "What are the trade-offs of exact versus approximate nearest-neighbour search?"
     a: "Exact search is simple and gives the true top-k but scales linearly with corpus size. Approximate indexes such as graph or clustering based ones are much faster on large corpora but can miss true neighbours."
 related: [cosine-similarity-embeddings, knn, retrieval-metrics-recall-at-k]
-patterns: ["Text evaluation and retrieval"]
 math_tex:
 - 'Chunks: words$[i : i + size]$ for $i = 0, step, 2\cdot step, \ldots$'
 - $step = size - overlap$
 - 'Embedding: $e(x) = \frac{v(x)}{\|v(x)\|_2}$ (unit length)'
 - $\cos(q,c) = e(q)\cdot e(c)$ for unit vectors
 - 'Top-$k$: indices of the $k$ largest $\cos(q, c_i)$'
+patterns: ["Text evaluation and retrieval"]

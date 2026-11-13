@@ -66,10 +66,10 @@ interview_qa:
   - q: "What is the evidence term for?"
     a: "It normalises the numerator so the posterior is a proper distribution; it is often only needed up to a constant."
 related: [maximum-likelihood, entropy-kl-divergence]
-patterns: ["Probabilistic models"]
 math_tex:
 - $P(H\,|\,E) = \frac{P(E\,|\,H)\,P(H)}{P(E)}$
 - $P(E) = \sum_h P(E\,|\,h)\,P(h)$
 - $\mathrm{posterior} \propto \mathrm{likelihood} \times \mathrm{prior}$
 - $\mathrm{odds}(H\,|\,E) = \mathrm{odds}(H)\,\frac{P(E\,|\,H)}{P(E\,|\,\neg H)}$
 - 'Sequential: posterior after $E_1$ is the prior for $E_2$'
+patterns: ["Probabilistic models"]

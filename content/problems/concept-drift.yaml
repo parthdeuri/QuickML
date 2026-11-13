@@ -79,7 +79,6 @@ interview_qa:
   - q: "What do you do when drift is detected?"
     a: "Check data pipelines first, assess impact on a labelled sample, then retrain on recent data, reweight, or roll back depending on the cause."
 related: [entropy-kl-divergence, data-leakage, roc-auc]
-patterns: ["Validation hygiene"]
 math_tex:
 - 'Bin shares: reference $a_i$, current $b_i$'
 - $\mathrm{PSI} = \sum_i (b_i - a_i)\cdot\ln\frac{b_i}{a_i}$
@@ -87,3 +86,4 @@ math_tex:
 - $\mathrm{KS} = \sup_x |F_{ref}(x) - F_{cur}(x)|$
 - 'Covariate: $P(x)$ shifts. Concept: $P(y|x)$ shifts'
 - Shares clipped below by $\epsilon$ keep $\ln$ finite
+patterns: ["Validation hygiene"]

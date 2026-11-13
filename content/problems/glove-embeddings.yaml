@@ -1,0 +1,93 @@
+slug: glove-embeddings
+title: GloVe Embeddings
+url: https://aclanthology.org/D14-1162/
+difficulty: Medium
+area: NLP
+topics: [Word Embeddings, Co-occurrence, Matrix Factorization]
+summary: |
+  Learn word vectors by fitting the dot product of two vectors plus
+  biases to the log of the word-word co-occurrence count, using
+  weighted least squares.
+intuition: |
+  Word2vec learns from one context window at a time; GloVe first sums
+  the whole corpus into a co-occurrence matrix and then factorises it.
+  The target is the log count, so that differences of vectors encode
+  ratios of co-occurrence probabilities, which is what separates
+  "ice" from "steam". The weight $f(x)$ caps the influence of very
+  frequent pairs and shrinks noisy rare ones.
+  Flow: corpus → co-occurrence matrix → log counts → weighted fit → vectors.
+approach:
+  - "Count co-occurrences $X_{ij}$ in a window — one pass summarises the corpus"
+  - "Give each word a vector $w_i$, a context vector $\\tilde{w}_j$ and two biases — the model of $\\log X_{ij}$"
+  - "Compute the residual $w_i \\cdot \\tilde{w}_j + b_i + \\tilde{b}_j - \\log X_{ij}$ — how far the fit is from the target"
+  - "Weight each squared residual by $f(X_{ij})$ — damps rare noise and caps frequent pairs"
+  - "Take gradients of the weighted loss and step downhill — updates vectors and biases"
+  - "Use $w + \\tilde{w}$ as the final vector — the two sets are symmetric and averaging reduces noise"
+code: |
+  import numpy as np
+
+  def weight(X, xmax=100.0, alpha=0.75):
+      return np.minimum(1.0, (X / xmax) ** alpha)
+
+  def residual(P, X):
+      W, Wt, b, bt = P
+      return W @ Wt.T + b[:, None] + bt[None, :] - np.log(X)
+
+  def loss(P, X):
+      return np.sum(weight(X) * residual(P, X) ** 2)
+
+  def grads(P, X):
+      W, Wt, b, bt = P
+      G = 2 * weight(X) * residual(P, X)
+      return [G @ Wt, G.T @ W, G.sum(axis=1), G.sum(axis=0)]
+
+  def step(P, X, lr=0.01):
+      return [p - lr * g for p, g in zip(P, grads(P, X))]
+key_lines: [4, 11, 15]
+time: "O(nnz·d) per epoch over the non-zero entries, after one pass to count"
+space: "O(V·d) for vectors plus the sparse co-occurrence matrix"
+when_to_use: |
+  Static word vectors that use global corpus statistics, trained fast
+  from a count matrix, as features for classical models or for
+  initialising small neural NLP models.
+when_not_to_use: |
+  Tasks needing context-dependent meaning, where contextual models
+  give a different vector for each occurrence. Polysemy and unseen
+  words are not handled by a single static vector per word.
+why_it_works: |
+  If the vector difference $w_a - w_b$ should capture how much more
+  word $a$ than word $b$ co-occurs with a probe word $k$, the ratio
+  of co-occurrence probabilities must become a difference of dot
+  products, which forces the model to fit a log of counts. Weighted
+  least squares then fits this log-bilinear form, and $f$ stops
+  frequent function words from dominating the loss.
+math:
+  - "J = Σᵢⱼ f(Xᵢⱼ) (wᵢ·w̃ⱼ + bᵢ + b̃ⱼ − log Xᵢⱼ)²"
+  - "f(x) = min(1, (x / x_max)^α),  x_max = 100,  α = 3/4"
+  - "rᵢⱼ = wᵢ·w̃ⱼ + bᵢ + b̃ⱼ − log Xᵢⱼ"
+  - "∂J/∂wᵢ = Σⱼ 2 f(Xᵢⱼ) rᵢⱼ w̃ⱼ,   ∂J/∂bᵢ = Σⱼ 2 f(Xᵢⱼ) rᵢⱼ"
+  - "w ← w − η ∂J/∂w"
+math_tex:
+- '$J = \sum_{i,j} f(X_{ij})\, r_{ij}^{2}$'
+- 'Residual: $r_{ij} = w_i \cdot \tilde{w}_j + b_i + \tilde{b}_j - \log X_{ij}$'
+- 'Weight: $f(x) = \min\left(1, (x / x_{max})^{\alpha}\right)$'
+- '$\frac{\partial J}{\partial w_i} = \sum_{j} 2 f(X_{ij})\, r_{ij}\, \tilde{w}_j$'
+- 'Step: $w \leftarrow w - \eta \frac{\partial J}{\partial w}$'
+interview_qa:
+  - q: "How does GloVe differ from word2vec skip-gram?"
+    a: "Skip-gram trains on local windows with a predictive loss, while GloVe fits global co-occurrence counts with a weighted least-squares loss. Both give similar quality when tuned well."
+  - q: "Why fit the log of the counts?"
+    a: "Ratios of co-occurrence probabilities carry meaning, and a log turns a ratio into a difference, which a linear dot-product model can represent."
+  - q: "What does the weighting function do?"
+    a: "It sets the weight to zero for unseen pairs, shrinks rare noisy counts, and caps frequent pairs at 1 so very common words do not dominate."
+hyperparameters:
+  - "Embedding dimension $d$"
+  - "Context window size used for counting"
+  - "$x_{max}$ and $\\alpha$ of the weighting function (100 and 0.75 in the paper)"
+  - "Learning rate and number of epochs"
+pitfalls:
+  - "The loss uses $\\log X_{ij}$, so sum only over non-zero entries; a zero count gives minus infinity"
+  - "Initialise vectors with small random values; identical vectors never separate"
+  - "A fixed learning rate on raw counts can diverge; the paper uses AdaGrad"
+related: [word2vec-skipgram, matrix-factorization-recommender, cosine-similarity-embeddings]
+patterns: ["Text processing"]

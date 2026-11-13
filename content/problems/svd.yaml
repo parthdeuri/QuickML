@@ -81,7 +81,6 @@ interview_qa:
   - q: "Why is SVD better than the normal equations for least squares?"
     a: "It works with $A$ directly, avoiding the squared condition number of $A^{\\top}A$, and gives a stable pseudo-inverse for rank-deficient problems."
 related: [pca, linear-regression, ridge-lasso-regularization]
-patterns: ["Dimensionality reduction"]
 math_tex:
 - $A = U S V^{\top},\;\; U^{\top}U = I,\;\; V^{\top}V = I,\;\; s_1 \geq s_2 \geq \cdots \geq 0$
 - $A^{\top}A = V S^2 V^{\top}$ (eigendecomposition)
@@ -89,3 +88,4 @@ math_tex:
 - 'Rank-$k$ truncation: $A_k = \sum_{i \leq k} s_i\,u_i v_i^{\top}$'
 - $\|A - A_k\|_F^2 = \sum_{i > k} s_i^2$
 - $\|A - A_k\|_2 = s_{k+1}$
+patterns: ["Dimensionality reduction"]

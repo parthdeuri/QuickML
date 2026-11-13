@@ -85,7 +85,6 @@ interview_qa:
   - q: "Why does coordinate descent converge here?"
     a: "The loss is smooth and convex and the penalty is convex and separable by coordinate, so exact one-dimensional minimisation steps decrease the objective and reach the global minimum."
 related: [ridge-lasso-regularization, linear-regression, gradient-descent]
-patterns: ["Linear models", "Regularisation"]
 math_tex:
 - $\min_w\ \frac{1}{2n}\|y - Xw\|^2 + \alpha\rho\|w\|_1 + \frac{1}{2}\alpha(1-\rho)\|w\|^2$
 - $r_j = y - \sum_{k \neq j} x_k w_k$ (partial residual)
@@ -93,3 +92,4 @@ math_tex:
 - $S(a, t) = \mathrm{sign}(a)\cdot\max(|a| - t,\, 0)$
 - $w_j \leftarrow \frac{S(\rho_j,\ \alpha\rho)}{z_j + \alpha(1-\rho)}$
 - $\rho = 1$ gives lasso, $\rho = 0$ gives ridge
+patterns: ["Linear models", "Regularisation"]

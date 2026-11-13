@@ -90,7 +90,6 @@ interview_qa:
   - q: "How is BPE different from WordPiece?"
     a: "BPE merges the most frequent pair. WordPiece picks the merge that most increases the likelihood of the training data under a language model."
 related: [tf-idf, word2vec-skipgram]
-patterns: ["Text processing"]
 math_tex:
 - 'Start: each word is a sequence of characters'
 - $\mathrm{count}(a, b)$ = adjacent occurrences of $(a, b)$
@@ -98,3 +97,4 @@ math_tex:
 - Replace each adjacent $a^*, b^*$ by $a^*b^*$
 - Repeat $k$ times; the merge list is the model
 - 'Encode a word: apply the merges in learned order'
+patterns: ["Text processing"]

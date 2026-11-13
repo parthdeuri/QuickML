@@ -71,9 +71,9 @@ pitfalls:
   - "Cosine from PyTorch with $t$ beyond $T_{\\max}$ rises again; clamp $t$ to the range"
   - "The warmup variant here is a common recipe, not a built-in PyTorch scheduler"
 related: [gradient-descent, adam-optimizer, backpropagation]
-patterns: ["Gradient-based optimisation"]
 math_tex:
 - 'Step: $\eta_t = \eta_0\cdot\gamma^{\lfloor t/s \rfloor}$'
 - 'Cosine: $\eta_t = \eta_{min} + (\eta_0 - \eta_{min})\cdot\frac{1 + \cos(\pi t / T_{max})}{2}$'
 - 'Linear warmup: $\eta_t = \eta_0\cdot\frac{t+1}{W}$ for $t < W$'
 - Warmup, then cosine on $t - W$ over total $- W$
+patterns: ["Gradient-based optimisation"]

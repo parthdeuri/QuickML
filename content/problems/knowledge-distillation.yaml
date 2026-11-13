@@ -71,9 +71,9 @@ interview_qa:
   - q: "Which direction of KL is used?"
     a: "$\\mathrm{KL}(\\mathrm{teacher} \\,\\|\\, \\mathrm{student})$, so the student covers the classes the teacher considers likely."
 related: [softmax-cross-entropy, entropy-kl-divergence, label-smoothing]
-patterns: ["Transfer and adaptation"]
 math_tex:
 - $p_T(z)_k = \frac{\exp(z_k / T)}{\sum_j \exp(z_j / T)}$
 - 'Soft loss: $\mathrm{KL}(p_T(z_{teacher}) \,\|\, p_T(z_{student}))$'
 - 'Hard loss: $\mathrm{CE}(\mathrm{softmax}(z_{student}), y)$'
 - $L = (1 - \alpha)\cdot\mathrm{hard} + \alpha\cdot T^2\cdot\mathrm{soft}$
+patterns: ["Transfer and adaptation"]

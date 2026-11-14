@@ -112,3 +112,4 @@ math_tex:
 - 'Bands: $M_t[j] = \sum_{k} H_j[k]\,P_t[k]$'
 - 'Log: $L_t[j] = \log(M_t[j] + \epsilon)$'
 patterns: ["Multimodal and speech"]
+diagram: audio-log-mel-spectrogram

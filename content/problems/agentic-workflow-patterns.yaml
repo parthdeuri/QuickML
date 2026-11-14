@@ -110,3 +110,4 @@ math_tex:
 - '$p > \frac{1}{2}$: more voters help; $p < \frac{1}{2}$: they hurt'
 - 'Loop, accept prob $q$: $1 - (1-q)^{R}$'
 patterns: ["Agent building blocks"]
+diagram: agentic-workflow-patterns

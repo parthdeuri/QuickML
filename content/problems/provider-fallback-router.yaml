@@ -147,3 +147,4 @@ math_tex:
 - 'Chain up: $P = 1 - \prod_i f_i$'
 - 'Weighted: $P(i) = \frac{w_i}{\sum_j w_j}$'
 patterns: ["LLM production operations"]
+diagram: provider-fallback-router

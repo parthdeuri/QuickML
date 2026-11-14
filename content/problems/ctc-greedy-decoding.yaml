@@ -109,3 +109,4 @@ math_tex:
 - 'Skip allowed only if $l^{\prime}_s \neq \mathrm{blank}$ and $l^{\prime}_s \neq l^{\prime}_{s-2}$'
 - 'Loss: $-\log\left(\alpha_T(2L) + \alpha_T(2L+1)\right)$'
 patterns: ["Multimodal and speech"]
+diagram: ctc-greedy-decoding

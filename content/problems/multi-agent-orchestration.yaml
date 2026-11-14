@@ -95,3 +95,4 @@ math_tex:
 - 'Written: $m\tau$'
 - 'Large $m$: read $\approx \frac{\tau N^2 R^2}{2}$'
 patterns: ["Agent building blocks"]
+diagram: multi-agent-orchestration

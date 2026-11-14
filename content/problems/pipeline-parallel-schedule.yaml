@@ -82,3 +82,4 @@ pitfalls:
   - "Gradients from all microbatches must be accumulated before one optimiser step"
 related: [transformer-block, decoder-only-block, parameter-count-flops]
 patterns: ["LLM efficiency and parallelism"]
+diagram: pipeline-parallel-schedule

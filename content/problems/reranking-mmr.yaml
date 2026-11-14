@@ -103,3 +103,4 @@ math_tex:
 - 'Diversity: $\frac{2}{n(n-1)}\sum_{i<j}\mathrm{sim}(s_i,s_j)$'
 - 'Rerank: sort by $f(q,d)$, keep the top $n$'
 patterns: ["Text evaluation and retrieval", "RAG pipeline stages"]
+diagram: reranking-mmr

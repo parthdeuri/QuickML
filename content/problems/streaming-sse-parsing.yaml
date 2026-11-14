@@ -125,3 +125,4 @@ math_tex:
 - 'UTF-8: 1 to 4 bytes per character'
 - 'Cuts inside a $k$-byte character: $k - 1$'
 patterns: ["LLM production operations"]
+diagram: streaming-sse-parsing

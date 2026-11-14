@@ -100,3 +100,4 @@ math_tex:
 - 'LN: $\gamma\,\frac{x - \mu}{\sqrt{\sigma^2 + \epsilon}} + \beta$'
 - 'Causal: $\frac{\partial y_i}{\partial x_j} = 0$ for $j > i$'
 patterns: ["Attention and sequences"]
+diagram: decoder-only-block

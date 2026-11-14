@@ -31,7 +31,7 @@ names were renamed from Problem to Concept; table and column names were not.
 
 ## Done
 - Skeleton, CI, signing, stable-key builds; logo (flash cards with a bolt).
-- 255 cards (245 full, 10 link-only) with all code tests passing; 33 families, 23 compare cards, 4 sheets.
+- 255 cards (245 full, 10 link-only) with all code tests passing; 54 of them have a diagram; 33 families, 23 compare cards, 4 sheets.
 - Card wording (card / learned / implementation), Ask prompt includes math.
 - Reference links all return HTTP 200 (`tools/check_links.py`).
 - 17 diagrams as pre-drawn light/dark images (replaced the text art that broke on phones).
@@ -54,9 +54,11 @@ the schedules, Dashboard shows flash cards due. The tab has a deck picker (sheet
 daily new-card limit (10/20/30/50), tap to flip, Forgot/Hard/Good/Easy with interval preview, a session
 summary and "Open the full card". Not yet verified on a device (needs a CI build and a phone check).
 
-## Next: image diagrams for the roadmap cards (planned, nothing started)
-New cards have an arrow-flow line instead of a picture; real diagrams (same renderer as the existing
-17) come after the flash cards.
+## Done: image diagrams for the roadmap cards
+37 more pre-drawn diagrams (54 in total) for the LLM, RAG, agent, multimodal and operations cards,
+drawn by `diagrams_llm_a..d.py` on the shared `diagram_lib.py`; `make_diagrams.py` renders them all.
+Assets stay small (diagrams about 1.7 MB). Cards without a picture still end their Intuition with an
+arrow-flow line.
 
 ## Not done
 - Scenario quiz ("which loss or metric fits this?", "what does this curve show?") needs a new quiz

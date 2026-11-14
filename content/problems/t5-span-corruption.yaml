@@ -93,3 +93,4 @@ math_tex:
 - 'BERT: $L = -\sum_{i \in \mathrm{masked}} \log p(x_i \mid \tilde{x})$'
 - 'GPT: $L = -\sum_t \log p(x_t \mid x_{<t})$'
 patterns: ["Text processing"]
+diagram: t5-span-corruption

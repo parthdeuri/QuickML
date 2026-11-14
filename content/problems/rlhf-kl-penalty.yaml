@@ -99,3 +99,4 @@ math_tex:
 - '$k_3 = (\frac{q}{p} - 1) - \log\frac{q}{p}$'
 - 'Unbiased: $\mathbb{E}_p[k_1] = \mathbb{E}_p[k_3] = \mathrm{KL}(p \| q)$'
 patterns: ["Preference alignment and policy gradients"]
+diagram: rlhf-kl-penalty

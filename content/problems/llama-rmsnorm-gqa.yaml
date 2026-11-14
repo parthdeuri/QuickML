@@ -94,3 +94,4 @@ math_tex:
 - 'KV bytes: $2 \cdot L \cdot n_{kv} \cdot T \cdot d_h \cdot b$'
 - 'Saving vs MHA: $\frac{n_q}{n_{kv}}$'
 patterns: ["Normalisation", "Attention and sequences"]
+diagram: llama-rmsnorm-gqa

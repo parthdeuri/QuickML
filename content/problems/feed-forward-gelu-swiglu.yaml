@@ -89,3 +89,4 @@ math_tex:
 - 'SwiGLU: $(\mathrm{silu}(xW_1) \odot xW_3)\,W_2$'
 - 'Params: $2 \cdot d \cdot 4d = 8d^2$ vs $3dh$, $h = \frac{8}{3}d$'
 patterns: ["Network building blocks"]
+diagram: feed-forward-gelu-swiglu

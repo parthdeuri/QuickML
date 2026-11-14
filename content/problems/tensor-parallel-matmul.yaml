@@ -90,3 +90,4 @@ pitfalls:
   - "Tensor parallelism beyond one fast node usually loses to the communication cost"
 related: [feed-forward-gelu-swiglu, multi-head-attention, transformer-block]
 patterns: ["LLM efficiency and parallelism"]
+diagram: tensor-parallel-matmul

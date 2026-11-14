@@ -131,3 +131,4 @@ math_tex:
 - 'Context: $\leq P + s\,(t + o_{\max})$'
 - 'Success: $\prod_{s=1}^{S} p_s = p^{S}$'
 patterns: ["Agent building blocks"]
+diagram: agent-loop-react

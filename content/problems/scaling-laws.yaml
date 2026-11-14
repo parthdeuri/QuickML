@@ -100,3 +100,4 @@ math_tex:
 - '$N^{*} = \left(\frac{\alpha A}{\beta B}\right)^{\frac{1}{\alpha+\beta}} G^{\frac{\beta}{\alpha+\beta}}$'
 - 'Then $D^{*} = G / N^{*}$'
 patterns: ["LLM efficiency and parallelism"]
+diagram: scaling-laws

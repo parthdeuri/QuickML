@@ -125,3 +125,4 @@ pitfalls:
   - "Treating the budget as a target to spend rather than a limit that gates risky releases"
 related: [llm-api-retries-rate-limits, provider-fallback-router, tracing-and-logging]
 patterns: ["LLM production operations"]
+diagram: reliability-circuit-breaker-slo

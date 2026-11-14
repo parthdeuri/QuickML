@@ -1,5 +1,5 @@
 {
- "contentVersion": 17,
+ "contentVersion": 18,
  "problems": [
   {
    "slug": "ab-test-significance",
@@ -477,7 +477,9 @@
     "transfer-learning-fine-tuning",
     "parameter-count-flops"
    ],
-   "diagram": []
+   "diagram": [
+    "adapter-layers"
+   ]
   },
   {
    "slug": "agent-evaluation-safety",
@@ -648,7 +650,9 @@
     "structured-outputs-json-schema",
     "context-window-limits"
    ],
-   "diagram": []
+   "diagram": [
+    "agent-loop-react"
+   ]
   },
   {
    "slug": "agent-memory",
@@ -808,7 +812,9 @@
     "context-engineering",
     "llm-as-judge"
    ],
-   "diagram": []
+   "diagram": [
+    "agentic-workflow-patterns"
+   ]
   },
   {
    "slug": "ai-system-design-capacity-estimation",
@@ -986,7 +992,9 @@
     "rag-dense-retrieval",
     "retrieval-metrics-recall-at-k"
    ],
-   "diagram": []
+   "diagram": [
+    "ann-vector-index"
+   ]
   },
   {
    "slug": "arima-model",
@@ -1145,7 +1153,9 @@
     "rnn-cell",
     "bidirectional-rnn"
    ],
-   "diagram": []
+   "diagram": [
+    "audio-log-mel-spectrogram"
+   ]
   },
   {
    "slug": "autocorrelation-acf-pacf",
@@ -3517,7 +3527,9 @@
     "autoregressive-decoding",
     "context-window-limits"
    ],
-   "diagram": []
+   "diagram": [
+    "continuous-batching"
+   ]
   },
   {
    "slug": "contribute-to-open-source",
@@ -4012,7 +4024,9 @@
     "bidirectional-rnn",
     "hidden-markov-forward"
    ],
-   "diagram": []
+   "diagram": [
+    "ctc-greedy-decoding"
+   ]
   },
   {
    "slug": "data-augmentation",
@@ -4423,7 +4437,9 @@
     "causal-masking",
     "kv-cache"
    ],
-   "diagram": []
+   "diagram": [
+    "decoder-only-block"
+   ]
   },
   {
    "slug": "depthwise-separable-convolution",
@@ -4741,7 +4757,9 @@
     "retrieval-metrics-recall-at-k",
     "context-engineering"
    ],
-   "diagram": []
+   "diagram": [
+    "document-chunking"
+   ]
   },
   {
    "slug": "document-loading-extraction",
@@ -5947,7 +5965,9 @@
     "transformer-block",
     "residual-connections"
    ],
-   "diagram": []
+   "diagram": [
+    "feed-forward-gelu-swiglu"
+   ]
   },
   {
    "slug": "few-shot-prompting",
@@ -6285,7 +6305,9 @@
     "kv-cache",
     "causal-masking"
    ],
-   "diagram": []
+   "diagram": [
+    "flash-attention-online-softmax"
+   ]
   },
   {
    "slug": "focal-loss",
@@ -6444,7 +6466,9 @@
     "output-validation-guardrails",
     "prompt-injection-defense"
    ],
-   "diagram": []
+   "diagram": [
+    "function-calling-dispatch"
+   ]
   },
   {
    "slug": "gae-advantage",
@@ -7094,7 +7118,9 @@
     "bert-masked-lm",
     "next-token-prediction-loss"
    ],
-   "diagram": []
+   "diagram": [
+    "gpt-decoder-only"
+   ]
   },
   {
    "slug": "gpu-computing-roofline",
@@ -8152,7 +8178,9 @@
     "tf-idf",
     "retrieval-metrics-recall-at-k"
    ],
-   "diagram": []
+   "diagram": [
+    "hybrid-search-rrf"
+   ]
   },
   {
    "slug": "hyperparameter-search",
@@ -8314,7 +8342,9 @@
     "next-token-prediction-loss",
     "sft-loss-masking"
    ],
-   "diagram": []
+   "diagram": [
+    "instruction-tuning-chat-templates"
+   ]
   },
   {
    "slug": "int8-quantization",
@@ -9621,7 +9651,9 @@
     "multi-head-attention",
     "kv-cache"
    ],
-   "diagram": []
+   "diagram": [
+    "llama-rmsnorm-gqa"
+   ]
   },
   {
    "slug": "llm-api-retries-rate-limits",
@@ -11133,7 +11165,9 @@
     "decoder-only-block",
     "scaling-laws"
    ],
-   "diagram": []
+   "diagram": [
+    "mixture-of-experts-routing"
+   ]
   },
   {
    "slug": "mlp-forward-pass",
@@ -11298,7 +11332,9 @@
     "prompt-injection-defense",
     "output-validation-guardrails"
    ],
-   "diagram": []
+   "diagram": [
+    "model-context-protocol-jsonrpc"
+   ]
   },
   {
    "slug": "model-landscape",
@@ -11624,7 +11660,9 @@
     "llm-as-judge",
     "context-window-limits"
    ],
-   "diagram": []
+   "diagram": [
+    "multi-agent-orchestration"
+   ]
   },
   {
    "slug": "multi-head-attention",
@@ -11869,7 +11907,9 @@
     "hybrid-search-rrf",
     "cosine-similarity-embeddings"
    ],
-   "diagram": []
+   "diagram": [
+    "multimodal-rag-fusion"
+   ]
   },
   {
    "slug": "naive-bayes",
@@ -12826,7 +12866,9 @@
     "decoder-only-block",
     "parameter-count-flops"
    ],
-   "diagram": []
+   "diagram": [
+    "pipeline-parallel-schedule"
+   ]
   },
   {
    "slug": "planning-decomposition",
@@ -14737,7 +14779,9 @@
     "json-api-requests-retries",
     "tracing-and-logging"
    ],
-   "diagram": []
+   "diagram": [
+    "provider-fallback-router"
+   ]
   },
   {
    "slug": "publish-projects-on-github",
@@ -15197,7 +15241,9 @@
     "int8-quantization",
     "transfer-learning-fine-tuning"
    ],
-   "diagram": []
+   "diagram": [
+    "qlora-nf4-quantization"
+   ]
   },
   {
    "slug": "query-transformation-hyde",
@@ -15282,7 +15328,9 @@
     "cosine-similarity-embeddings",
     "hallucination-detection"
    ],
-   "diagram": []
+   "diagram": [
+    "query-transformation-hyde"
+   ]
   },
   {
    "slug": "rag-dense-retrieval",
@@ -15841,7 +15889,9 @@
     "provider-fallback-router",
     "tracing-and-logging"
    ],
-   "diagram": []
+   "diagram": [
+    "reliability-circuit-breaker-slo"
+   ]
   },
   {
    "slug": "reproducibility-seeds-determinism",
@@ -16016,7 +16066,9 @@
     "cosine-similarity-embeddings",
     "retrieval-metrics-recall-at-k"
    ],
-   "diagram": []
+   "diagram": [
+    "reranking-mmr"
+   ]
   },
   {
    "slug": "residual-connections",
@@ -16496,7 +16548,9 @@
     "ppo-clipped-objective",
     "dpo-loss"
    ],
-   "diagram": []
+   "diagram": [
+    "rlhf-kl-penalty"
+   ]
   },
   {
    "slug": "rmsprop-adagrad",
@@ -17132,7 +17186,9 @@
     "learning-rate-schedules",
     "transfer-learning-fine-tuning"
    ],
-   "diagram": []
+   "diagram": [
+    "scaling-laws"
+   ]
   },
   {
    "slug": "self-attention",
@@ -17296,7 +17352,9 @@
     "probability-calibration",
     "ann-vector-index"
    ],
-   "diagram": []
+   "diagram": [
+    "semantic-cache"
+   ]
   },
   {
    "slug": "sentencepiece-unigram",
@@ -17462,7 +17520,9 @@
     "transfer-learning-fine-tuning",
     "lora-low-rank-adaptation"
    ],
-   "diagram": []
+   "diagram": [
+    "sft-loss-masking"
+   ]
   },
   {
    "slug": "silhouette-clustering-metrics",
@@ -17702,7 +17762,9 @@
     "kv-cache",
     "self-attention"
    ],
-   "diagram": []
+   "diagram": [
+    "sliding-window-attention"
+   ]
   },
   {
    "slug": "softmax-cross-entropy",
@@ -17858,7 +17920,9 @@
     "kv-cache",
     "temperature-sampling"
    ],
-   "diagram": []
+   "diagram": [
+    "speculative-decoding"
+   ]
   },
   {
    "slug": "sql-interview-patterns",
@@ -18034,7 +18098,9 @@
     "prompt-injection-defense",
     "output-validation-guardrails"
    ],
-   "diagram": []
+   "diagram": [
+    "state-graph-workflows"
+   ]
   },
   {
    "slug": "statistics-hypothesis-testing",
@@ -18286,7 +18352,9 @@
     "json-api-requests-retries",
     "bpe-tokenization"
    ],
-   "diagram": []
+   "diagram": [
+    "streaming-sse-parsing"
+   ]
   },
   {
    "slug": "structured-outputs-json-schema",
@@ -18637,7 +18705,9 @@
     "cross-attention-encoder-decoder",
     "causal-masking"
    ],
-   "diagram": []
+   "diagram": [
+    "t5-span-corruption"
+   ]
   },
   {
    "slug": "temperature-sampling",
@@ -18790,7 +18860,9 @@
     "multi-head-attention",
     "transformer-block"
    ],
-   "diagram": []
+   "diagram": [
+    "tensor-parallel-matmul"
+   ]
   },
   {
    "slug": "text-preprocessing-stemming",
@@ -19829,7 +19901,9 @@
     "clip-contrastive-loss",
     "kv-cache"
    ],
-   "diagram": []
+   "diagram": [
+    "vlm-projector-image-tokens"
+   ]
   },
   {
    "slug": "weight-initialization",

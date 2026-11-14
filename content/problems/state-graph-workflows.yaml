@@ -131,3 +131,4 @@ pitfalls:
   - "Re-running a node with side effects after resume repeats the effect; make tool calls idempotent"
 related: [structured-outputs-json-schema, prompt-injection-defense, output-validation-guardrails]
 patterns: ["Agent building blocks"]
+diagram: state-graph-workflows

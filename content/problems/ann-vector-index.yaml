@@ -117,3 +117,4 @@ math_tex:
 - 'Lloyd step: $c_j \leftarrow$ mean of cell $j$ vectors'
 - '$\mathrm{recall@}k = \frac{|\mathrm{approx} \cap \mathrm{exact}|}{k}$'
 patterns: ["Text evaluation and retrieval", "RAG pipeline stages"]
+diagram: ann-vector-index

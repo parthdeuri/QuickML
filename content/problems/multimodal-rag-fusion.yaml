@@ -105,3 +105,4 @@ math_tex:
 - 'RRF: $\sum_{m} \frac{1}{k + \mathrm{rank}_m(i)}$, $k \approx 60$'
 - 'Raw sum: larger-scale list sets the order'
 patterns: ["Multimodal and speech"]
+diagram: multimodal-rag-fusion

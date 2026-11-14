@@ -97,3 +97,4 @@ math_tex:
 - 'Over lists: $\mathrm{RRF}(d) = \sum \frac{1}{k + \mathrm{rank}(d)}$, $k \approx 60$'
 - 'Monotone score maps keep ranks, so RRF is unchanged'
 patterns: ["Text evaluation and retrieval", "RAG pipeline stages"]
+diagram: hybrid-search-rrf

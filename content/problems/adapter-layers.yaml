@@ -86,3 +86,4 @@ pitfalls:
   - "Remember to unfreeze layer norms or task heads if the recipe trains them; this code covers only the adapter"
 related: [lora-low-rank-adaptation, transfer-learning-fine-tuning, parameter-count-flops]
 patterns: ["Transfer and adaptation"]
+diagram: adapter-layers

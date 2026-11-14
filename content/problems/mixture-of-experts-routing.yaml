@@ -105,3 +105,4 @@ math_tex:
 - 'Balance loss: $E \sum_i f_i P_i \geq 1$'
 - 'Capacity: $c \cdot \frac{T k}{E}$ tokens per expert'
 patterns: ["Network building blocks"]
+diagram: mixture-of-experts-routing

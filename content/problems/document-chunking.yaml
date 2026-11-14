@@ -118,3 +118,4 @@ math_tex:
 - 'Fact of length $L$ whole if $\mathrm{overlap} \geq L - 1$'
 - '$P(\mathrm{cut}) = \frac{L - 1}{\mathrm{size}}$ with no overlap'
 patterns: ["Text evaluation and retrieval", "RAG pipeline stages"]
+diagram: document-chunking

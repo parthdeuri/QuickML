@@ -107,3 +107,4 @@ math_tex:
 - 'Target: $y_t = x_{t+1}$ if response, else $-100$'
 - 'Mask: $M_{ij} = 1$ if $s_i = s_j$ and $j \leq i$'
 patterns: ["Transfer and adaptation"]
+diagram: sft-loss-masking

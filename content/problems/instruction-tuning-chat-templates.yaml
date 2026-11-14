@@ -106,3 +106,4 @@ math_tex:
 - '$\alpha = 1$: $p_i \propto n_i$;  $\alpha = 0$: $p_i = \frac{1}{K}$'
 - 'Expected draws from set $i$: $N p_i$'
 patterns: ["Transfer and adaptation"]
+diagram: instruction-tuning-chat-templates

@@ -99,3 +99,4 @@ math_tex:
 - 'Result: $\frac{o}{\ell} = \sum_i \mathrm{softmax}(s)_i\, v_i$'
 - 'Scores: $s_j = \frac{q \cdot k_j}{\sqrt{d}}$'
 patterns: ["Attention and sequences", "LLM efficiency and parallelism"]
+diagram: flash-attention-online-softmax

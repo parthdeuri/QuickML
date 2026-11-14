@@ -103,3 +103,4 @@ pitfalls:
   - "Dequantisation happens on every forward pass, so 4-bit saves memory, not necessarily time"
 related: [lora-low-rank-adaptation, int8-quantization, transfer-learning-fine-tuning]
 patterns: ["Transfer and adaptation", "LLM efficiency and parallelism"]
+diagram: qlora-nf4-quantization

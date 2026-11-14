@@ -111,3 +111,4 @@ math_tex:
 - 'Break-even: $h^{*} = \frac{c_{lookup}}{c_{llm}}$'
 - 'Live iff $\mathrm{now} - t_{put} < \mathrm{TTL}$'
 patterns: ["LLM production operations"]
+diagram: semantic-cache

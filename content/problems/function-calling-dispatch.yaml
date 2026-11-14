@@ -131,3 +131,4 @@ math_tex:
 - 'Parallel latency: $\max_{i} \ell_i$'
 - 'Success: $P = \prod_{s=1}^{S} p_s$'
 patterns: ["Agent building blocks"]
+diagram: function-calling-dispatch

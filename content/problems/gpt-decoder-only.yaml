@@ -111,3 +111,4 @@ math_tex:
 - 'Next token: $p(x_{t+1} \mid x_{\leq t}) = \mathrm{softmax}(\mathrm{logits}_t)$'
 - 'Loss: $-\frac{1}{T}\sum_t \log p(x_{t+1} \mid x_{\leq t})$'
 patterns: ["Attention and sequences"]
+diagram: gpt-decoder-only

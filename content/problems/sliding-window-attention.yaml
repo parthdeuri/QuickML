@@ -84,3 +84,4 @@ math_tex:
 - 'Reach after $L$ layers: $L\,(W - 1)$'
 - 'Ring slot: $\mathrm{pos} \mathrm{mod} W$'
 patterns: ["Attention and sequences"]
+diagram: sliding-window-attention

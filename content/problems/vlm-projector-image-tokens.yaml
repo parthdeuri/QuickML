@@ -109,3 +109,4 @@ math_tex:
 - 'Cost: attention $\propto (N^{\prime}+L)^2 d_l$'
 - 'Example: $N = 24^2 = 576$, so $N^{\prime} = 144$ at $k = 2$'
 patterns: ["Multimodal and speech"]
+diagram: vlm-projector-image-tokens
